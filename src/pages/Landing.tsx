@@ -11,10 +11,10 @@ const Landing = () => {
     <div className="flex min-h-screen flex-col bg-background">
       {/* Hero Section */}
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
-        <img src={logo} alt="SAVE CAR BRASIL" className="h-36 mb-8 object-contain" />
+        <img src={logo} alt="SAVE CAR BRASIL" className="h-20 mb-8 object-contain" />
 
-        <h1 className="text-2xl font-bold text-center text-foreground mb-3">
-          Proteção veicular <span className="text-primary">de verdade</span>
+        <h1 className="text-2xl font-bold text-center text-foreground mb-3">Proteção Veicular de verdade
+          <span className="text-primary">de verdade</span>
         </h1>
         <p className="text-muted-foreground text-center mb-10 max-w-xs">
           Proteja seu veículo com as melhores coberturas do mercado. Simples, rápido e seguro.
@@ -23,8 +23,8 @@ const Landing = () => {
         <Button
           onClick={() => navigate("/cotacao")}
           className="w-full max-w-xs h-14 text-base font-bold rounded-xl shadow-lg"
-          size="lg"
-        >
+          size="lg">
+
           Cotação em menos de 30 segundos
           <ArrowRight className="ml-2 h-5 w-5" />
         </Button>
@@ -34,8 +34,8 @@ const Landing = () => {
       <div className="px-6 pb-8 space-y-3 max-w-xs mx-auto w-full">
         <a
           href="#"
-          className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-sm text-foreground hover:bg-muted transition-colors"
-        >
+          className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-sm text-foreground hover:bg-muted transition-colors">
+
           <HelpCircle className="h-5 w-5 text-primary" />
           Dúvidas sobre a cotação?
         </a>
@@ -43,8 +43,8 @@ const Landing = () => {
           href="https://wa.me/5500000000000"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-sm text-foreground hover:bg-muted transition-colors"
-        >
+          className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-sm text-foreground hover:bg-muted transition-colors">
+
           <MessageCircle className="h-5 w-5 text-primary" />
           Atendimento pelo WhatsApp
         </a>
@@ -64,8 +64,8 @@ const Landing = () => {
           © 2026 SAVE CAR BRASIL. Todos os direitos reservados.
         </p>
       </footer>
-    </div>
-  );
+    </div>);
+
 };
 
 export default Landing;
