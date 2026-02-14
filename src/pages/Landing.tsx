@@ -11,7 +11,7 @@ const Landing = () => {
     <div className="flex min-h-screen flex-col bg-background">
       {/* Hero Section */}
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
-        <img src={logo} alt="SAVE CAR BRASIL" className="h-20 mb-8 object-contain" />
+        <img src={logo} alt="SAVE CAR BRASIL" className="h-28 mb-8 object-contain" />
 
         <h1 className="text-2xl font-bold text-center text-foreground mb-3">
           Proteção veicular <span className="text-primary">de verdade</span>
