@@ -13,8 +13,8 @@ const Landing = () => {
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
         <img src={logo} alt="SAVE CAR BRASIL" className="h-44 mb-8 object-contain" />
 
-        <h1 className="text-2xl font-bold text-center text-foreground mb-3">Proteção Veicular de verdade
-          <span className="text-primary">de verdade</span>
+        <h1 className="text-2xl font-bold text-center text-foreground mb-3">
+          Proteção Veicular <span className="text-primary">de Verdade</span>
         </h1>
         <p className="text-muted-foreground text-center mb-10 max-w-xs">
           Proteja seu veículo com as melhores coberturas do mercado. Simples, rápido e seguro.
