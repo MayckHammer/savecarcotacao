@@ -6,6 +6,7 @@ const corsHeaders = {
 };
 
 const FIPE_BASE = 'https://fipe.parallelum.com.br/api/v2';
+const VALID_TYPES = ['cars', 'motorcycles', 'trucks'];
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -21,26 +22,27 @@ serve(async (req) => {
       );
     }
 
-    const { action, brandCode, modelCode, yearCode } = await req.json();
+    const { action, brandCode, modelCode, yearCode, vehicleType } = await req.json();
+    const type = VALID_TYPES.includes(vehicleType) ? vehicleType : 'cars';
     const headers = { 'X-Subscription-Token': token };
 
     let url = '';
 
     switch (action) {
       case 'brands':
-        url = `${FIPE_BASE}/cars/brands`;
+        url = `${FIPE_BASE}/${type}/brands`;
         break;
       case 'models':
         if (!brandCode) throw new Error('brandCode é obrigatório');
-        url = `${FIPE_BASE}/cars/brands/${brandCode}/models`;
+        url = `${FIPE_BASE}/${type}/brands/${brandCode}/models`;
         break;
       case 'years':
         if (!brandCode || !modelCode) throw new Error('brandCode e modelCode são obrigatórios');
-        url = `${FIPE_BASE}/cars/brands/${brandCode}/models/${modelCode}/years`;
+        url = `${FIPE_BASE}/${type}/brands/${brandCode}/models/${modelCode}/years`;
         break;
       case 'price':
         if (!brandCode || !modelCode || !yearCode) throw new Error('brandCode, modelCode e yearCode são obrigatórios');
-        url = `${FIPE_BASE}/cars/brands/${brandCode}/models/${modelCode}/years/${yearCode}`;
+        url = `${FIPE_BASE}/${type}/brands/${brandCode}/models/${modelCode}/years/${yearCode}`;
         break;
       default:
         return new Response(
