@@ -1,52 +1,60 @@
 
 
-# Consulta de Placa com Tabela FIPE
+# Integrar API Fipe Online para Consulta de Valores FIPE
+
+## Situacao atual
+
+A edge function `consulta-placa` gera dados simulados. A API do fipe.online (parallelum.com.br) nao possui endpoint de consulta por placa -- ela funciona por navegacao em cascata: marca, modelo, ano e preco.
 
 ## O que sera feito
 
-Quando o usuario digitar a placa do veiculo no passo 2 da cotacao, o app vai automaticamente buscar as informacoes do veiculo (marca, modelo, ano) e o valor da tabela FIPE, exibindo os dados na tela.
-
-## Como funciona
-
-1. O usuario digita a placa no campo
-2. Ao completar 7 caracteres, o app faz uma busca automatica
-3. Exibe os dados do veiculo encontrado (marca, modelo, ano, valor FIPE)
-4. Os dados sao salvos no contexto da cotacao para uso nas proximas etapas
-
-## Detalhes tecnicos
-
-### 1. Habilitar Lovable Cloud
-- Necessario para criar uma edge function segura que faz a consulta da placa
-- A chamada sera feita pelo servidor para evitar problemas de CORS e proteger a logica
-
-### 2. Criar Edge Function `consulta-placa`
-- Recebe a placa como parametro
-- Consulta uma API publica/gratuita de placas brasileiras
-- Retorna: marca, modelo, ano, cor, valor FIPE estimado
-- Tratamento de erros (placa nao encontrada, API fora do ar)
-
-### 3. Atualizar o contexto `QuoteContext.tsx`
-- Adicionar campos ao `VehicleData`: `brand` (marca), `year` (ano), `color` (cor), `fipeValue` (valor FIPE)
-- Adicionar funcao `updateVehicleFromPlate` para preencher todos os dados de uma vez
-
-### 4. Atualizar a pagina `Quote.tsx` (Passo 2)
-- Adicionar estado de loading durante a busca
-- Ao digitar 7 caracteres na placa, dispara a busca automaticamente
-- Exibir card com os dados do veiculo encontrado (marca, modelo, ano, cor, valor FIPE)
-- Mostrar skeleton/loading enquanto busca
-- Mostrar mensagem de erro caso a placa nao seja encontrada
-- Pre-selecionar o tipo do veiculo automaticamente quando possivel
-
-### 5. Atualizar a pagina `Result.tsx`
-- Usar o valor FIPE real retornado pela API em vez do valor fixo atual
+Integrar a API fipe.online no passo 2 da cotacao para que o usuario selecione marca, modelo e ano do veiculo e obtenha o valor FIPE real. O campo de placa sera mantido como dado informativo.
 
 ## Fluxo do usuario
 
-```
-Digita placa -> Loading... -> Exibe dados do veiculo + valor FIPE -> Continua preenchimento
+```text
+1. Digita a placa (dado informativo, sem consulta automatica)
+2. Seleciona a marca (lista carregada da API fipe.online)
+3. Seleciona o modelo (carregado com base na marca)
+4. Seleciona o ano (carregado com base no modelo)
+5. Valor FIPE e exibido automaticamente
 ```
 
-## Observacao importante
-- APIs gratuitas podem ter limitacoes de uso (quantidade de consultas por dia)
-- Caso a API esteja indisponivel, o usuario podera preencher os dados manualmente
+## Detalhes tecnicos
+
+### 1. Armazenar a chave da API como secret
+- Nome: `FIPE_ONLINE_TOKEN`
+- Valor: a chave JWT que voce forneceu
+- Armazenada de forma segura no backend, nunca exposta no codigo
+
+### 2. Atualizar a Edge Function `consulta-placa`
+- Remover toda a logica de dados simulados (funcao `generateVehicleData`)
+- Criar novos endpoints/acoes dentro da mesma function:
+  - `action: "brands"` -- retorna marcas via `GET https://fipe.parallelum.com.br/api/v2/cars/brands` com header `X-Subscription-Token`
+  - `action: "models"` -- retorna modelos via `GET https://fipe.parallelum.com.br/api/v2/cars/brands/{brandCode}/models`
+  - `action: "years"` -- retorna anos via `GET https://fipe.parallelum.com.br/api/v2/cars/brands/{brandCode}/models/{modelCode}/years`
+  - `action: "price"` -- retorna preco FIPE via `GET https://fipe.parallelum.com.br/api/v2/cars/brands/{brandCode}/models/{modelCode}/years/{yearCode}`
+- Todas as chamadas incluem o header `X-Subscription-Token` com o token armazenado
+- Timeout de 10 segundos por chamada
+
+### 3. Atualizar `QuoteContext.tsx`
+- Adicionar campos para armazenar as selecoes intermediarias: `brandCode`, `modelCode`, `yearCode`
+- Manter os campos existentes (`brand`, `model`, `year`, `fipeValue`, `fipeFormatted`)
+
+### 4. Atualizar `Quote.tsx` (Passo 2)
+- Manter campo de placa como input de texto simples (sem consulta automatica)
+- Adicionar 3 selects em cascata:
+  - **Marca**: carrega lista ao montar o componente
+  - **Modelo**: carrega ao selecionar marca
+  - **Ano**: carrega ao selecionar modelo
+- Ao selecionar o ano, busca automaticamente o valor FIPE e exibe em um card
+- Loading states para cada select durante o carregamento
+- Manter selects de "Tipo do veiculo" e "Uso do veiculo" existentes
+
+### 5. Atualizar `Result.tsx`
+- Exibir o valor FIPE real retornado pela API (ja funciona com os campos existentes)
+
+## Limite de uso
+- Com a chave gratuita: ate 1.000 requisicoes por dia
+- Cada cotacao completa usa aproximadamente 4 requisicoes (marcas + modelos + anos + preco)
 
