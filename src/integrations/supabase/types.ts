@@ -14,7 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      quotes: {
+        Row: {
+          address_data: Json
+          created_at: string
+          crm_error: string | null
+          crm_quotation_code: string | null
+          crm_submitted: boolean
+          id: string
+          inspection_link: string | null
+          inspection_status: string
+          personal_data: Json
+          plan_data: Json
+          session_id: string
+          updated_at: string
+          vehicle_data: Json
+        }
+        Insert: {
+          address_data?: Json
+          created_at?: string
+          crm_error?: string | null
+          crm_quotation_code?: string | null
+          crm_submitted?: boolean
+          id?: string
+          inspection_link?: string | null
+          inspection_status?: string
+          personal_data?: Json
+          plan_data?: Json
+          session_id: string
+          updated_at?: string
+          vehicle_data?: Json
+        }
+        Update: {
+          address_data?: Json
+          created_at?: string
+          crm_error?: string | null
+          crm_quotation_code?: string | null
+          crm_submitted?: boolean
+          id?: string
+          inspection_link?: string | null
+          inspection_status?: string
+          personal_data?: Json
+          plan_data?: Json
+          session_id?: string
+          updated_at?: string
+          vehicle_data?: Json
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

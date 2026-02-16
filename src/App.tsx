@@ -9,6 +9,8 @@ import Quote from "./pages/Quote";
 import Result from "./pages/Result";
 import PlanDetails from "./pages/PlanDetails";
 import Payment from "./pages/Payment";
+import Inspection from "./pages/Inspection";
+import Admin from "./pages/Admin";
 import Confirmation from "./pages/Confirmation";
 import NotFound from "./pages/NotFound";
 
@@ -27,6 +29,8 @@ const App = () => (
             <Route path="/resultado" element={<Result />} />
             <Route path="/detalhes" element={<PlanDetails />} />
             <Route path="/pagamento" element={<Payment />} />
+            <Route path="/vistoria" element={<Inspection />} />
+            <Route path="/admin" element={<Admin />} />
             <Route path="/confirmacao" element={<Confirmation />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

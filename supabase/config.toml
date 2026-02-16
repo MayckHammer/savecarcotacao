@@ -2,3 +2,9 @@ project_id = "vjrzedpujsdcyeoqbzfg"
 
 [functions.consulta-placa]
 verify_jwt = false
+
+[functions.submit-to-crm]
+verify_jwt = false
+
+[functions.update-inspection]
+verify_jwt = false
