@@ -1,105 +1,94 @@
 
+# Adicionar Forma de Pagamento na Tela de Detalhes
 
-# Upgrade Visual com Efeito Liquid Glass
+## Resumo
+Mover a selecao de forma de pagamento para a pagina de Detalhes (/detalhes), com duas opcoes: Cartao de Credito (com 10% de desconto) e PIX/Boleto (carne). Quando cartao for selecionado, exibir formulario de cadastro do cartao diretamente na pagina. O resumo financeiro sera atualizado dinamicamente conforme a opcao escolhida.
 
-## Objetivo
-Aplicar o efeito "liquid glass" (glassmorphism com refracao) da biblioteca `liquid-glass-react` em pontos estrategicos do app para criar uma estetica moderna e premium, mantendo a identidade visual verde (#0D5C3E) e amarelo (#F2B705) da Save Car.
+## Regras de negocio
 
-## Abordagem
+| Forma de pagamento | Adesao | Mensalidades | Desconto |
+|---|---|---|---|
+| Cartao de credito | Cobrada no cartao | 11 parcelas no cartao | 10% de desconto no total |
+| PIX / Boleto | Adesao via PIX | 11 boletos (carne) | Sem desconto |
 
-Em vez de aplicar o efeito em todos os elementos (o que seria pesado e poluido), vamos usa-lo de forma seletiva nos pontos de maior impacto visual:
+## Alteracoes
 
-### 1. Landing Page - Hero com fundo gradiente e glass CTA
-- Adicionar um fundo gradiente suave verde-para-amarelo na secao hero
-- Aplicar o `LiquidGlass` no botao CTA principal ("Cotacao em menos de 30 segundos")
-- Aplicar glass nos cards de link (Duvidas, WhatsApp)
-- O `overLight={true}` sera usado pois o fundo e claro
+### 1. QuoteContext (`src/contexts/QuoteContext.tsx`)
+- Adicionar novo campo `paymentMethod: "credit" | "pix"` ao `QuoteData`
+- Adicionar funcao `setPaymentMethod` ao contexto
+- Atualizar `getTotal()` para aplicar 10% de desconto quando `paymentMethod === "credit"`
 
-### 2. Result Page - Card FIPE com glass
-- Card do valor FIPE envolvido em LiquidGlass com cornerRadius adequado
-- Fundo gradiente sutil atras do card
+### 2. PlanDetails (`src/pages/PlanDetails.tsx`)
+Adicionar as seguintes secoes entre o toggle Mensal/Anual e o resumo financeiro:
 
-### 3. PlanDetails - Seletor de planos com glass
-- Os dois botoes de selecao (COMPLETO/PREMIUM) envolvidos em LiquidGlass
-- Card de resumo financeiro com efeito glass
-- Botao "Contratar" com glass
+**a) Secao "Forma de pagamento"**
+- Titulo "Forma de pagamento"
+- Dois botoes lado a lado (igual ao seletor de plano):
+  - "Cartao de Credito" com icone CreditCard — mostra badge "10% OFF"
+  - "PIX / Boleto" com icone QrCode — mostra subtexto "Carne 11x"
 
-### 4. Inspection Page - Status card com glass
-- Card de status da vistoria com efeito glass
-- Card do aviso WhatsApp com glass sutil
+**b) Formulario de cartao (condicional)**
+- Quando "Cartao de Credito" selecionado, exibir campos:
+  - Numero do cartao (com mascara)
+  - Validade e CVV (lado a lado)
+  - Nome do titular
+- Reutilizar as mascaras ja existentes em `src/lib/masks.ts`
 
-### 5. Fundo global com gradiente
-- Adicionar classe CSS reutilizavel `bg-savecar-gradient` com gradiente suave usando as cores da marca
-- Aplicar nas paginas principais como background
+**c) Descricao PIX/Boleto (condicional)**
+- Quando "PIX / Boleto" selecionado, exibir texto informativo:
+  - "Adesao paga via PIX"
+  - "11 boletos mensais enviados por e-mail"
 
-## Arquivos a alterar
+**d) Resumo financeiro atualizado**
+- Mostrar desconto de 10% na linha do plano quando cartao selecionado
+- Exibir valor original riscado + valor com desconto
+- Linha extra: "Desconto cartao (10%)" com valor negativo em verde
+- Detalhamento: "Adesao R$ X + 11x de R$ Y"
 
-| Arquivo | Mudanca |
-|---|---|
-| `package.json` | Adicionar dependencia `liquid-glass-react` |
-| `src/index.css` | Adicionar classe utilitaria `bg-savecar-gradient` |
-| `src/pages/Landing.tsx` | Glass no CTA e cards de link, fundo gradiente |
-| `src/pages/Result.tsx` | Glass no card FIPE |
-| `src/pages/PlanDetails.tsx` | Glass nos seletores de plano e resumo |
-| `src/pages/Inspection.tsx` | Glass no card de status |
-| `src/pages/Payment.tsx` | Glass no resumo e metodo de pagamento |
-| `src/pages/Confirmation.tsx` | Glass no card de resumo |
+### 3. Payment Page (`src/pages/Payment.tsx`)
+- Simplificar: remover seletor de metodo de pagamento (ja foi escolhido em /detalhes)
+- Usar `quote.paymentMethod` do contexto para mostrar o formulario correto
+- Se cartao: mostrar dados ja preenchidos (somente leitura) ou permitir edicao
+- Se PIX: mostrar QR Code e chave como esta hoje
 
 ## Detalhes tecnicos
 
-### Instalacao
-```
-npm install liquid-glass-react
-```
+### QuoteContext - novo campo e desconto
+```typescript
+// Novo campo
+paymentMethod: "credit" | "pix";
 
-### Configuracao padrao para cards (fundo claro)
-```tsx
-<LiquidGlass
-  displacementScale={40}
-  blurAmount={0.08}
-  saturation={140}
-  aberrationIntensity={1}
-  elasticity={0.2}
-  cornerRadius={16}
-  overLight={true}
->
-  <div className="p-6">...</div>
-</LiquidGlass>
+// getTotal atualizado
+const getTotal = () => {
+  const base = quote.billingPeriod === "monthly" ? quote.monthlyPrice : quote.annualPrice;
+  const planMultiplier = quote.planName === "PREMIUM" ? 1.35 : 1;
+  const subtotal = base * planMultiplier;
+  const discount = quote.paymentMethod === "credit" ? 0.9 : 1;
+  return subtotal * discount;
+};
 ```
 
-### Configuracao para botoes
-```tsx
-<LiquidGlass
-  displacementScale={64}
-  blurAmount={0.1}
-  saturation={130}
-  aberrationIntensity={2}
-  elasticity={0.35}
-  cornerRadius={100}
-  padding="8px 16px"
-  overLight={true}
-  onClick={handleClick}
->
-  <span className="text-white font-medium">Texto</span>
-</LiquidGlass>
+### PlanDetails - seletor de pagamento
+Dois botoes com estilo identico ao seletor de plano (COMPLETO/PREMIUM), com destaque visual para o desconto no cartao usando um badge verde "10% OFF".
+
+### PlanDetails - resumo financeiro com desconto
+Quando cartao selecionado:
+```
+Plano COMPLETO — Mensal          R$ 189,90 (riscado)
+Desconto cartão (10%)           -R$ 18,99
+Subtotal mensalidade             R$ 170,91
+Taxa de ativação                 R$ 299,90
+---
+Total (Adesão + 11x R$ 170,91)  R$ 2.179,91
 ```
 
-### Gradiente de fundo (CSS)
-```css
-.bg-savecar-gradient {
-  background: linear-gradient(
-    135deg,
-    hsl(153, 75%, 95%) 0%,
-    hsl(43, 90%, 95%) 50%,
-    hsl(153, 75%, 92%) 100%
-  );
-}
+Quando PIX/Boleto:
+```
+Plano COMPLETO — Mensal          R$ 189,90
+Taxa de ativação (PIX)           R$ 299,90
+---
+Total (Adesão + 11 boletos)      R$ 2.388,80
 ```
 
-Tons muito claros do verde e amarelo da marca para servir de fundo sem competir com o conteudo, mas dando "vida" ao background para o efeito glass funcionar bem (o glass precisa de variacao de cor atras para ser visivel).
-
-### Consideracoes de performance
-- O LiquidGlass usa canvas, entao sera aplicado apenas em 2-3 elementos por pagina
-- Nos formularios (Quote.tsx) nao sera aplicado para nao interferir com inputs
-- Em mobile, valores de `displacementScale` menores serao usados para manter performance
-
+### Campos do cartao armazenados no contexto
+Adicionar campos `cardNumber`, `cardExpiry`, `cardCvv`, `cardName` ao QuoteData para que os dados preenchidos em /detalhes sejam preservados ao navegar para /pagamento.
