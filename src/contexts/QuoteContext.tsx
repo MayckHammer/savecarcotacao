@@ -33,14 +33,53 @@ export interface AddressData {
   noNumber: boolean;
 }
 
-export interface OptionalCoverage {
-  id: string;
-  name: string;
-  description: string;
-  monthlyPrice: number;
-  annualPrice: number;
-  selected: boolean;
-}
+export type PlanName = "COMPLETO" | "PREMIUM";
+
+export const PLAN_COVERAGES: Record<PlanName, string[]> = {
+  COMPLETO: [
+    "Colisão (Até 100% FIPE)",
+    "Incêndio somente por colisão (Até 100% FIPE)",
+    "Acidentes (Até 100% FIPE)",
+    "Roubo e Furto (Até 100% FIPE)",
+    "Fenômenos da Natureza (Até 100% FIPE)",
+    "Veículos de leilão/+25 anos: 75% FIPE",
+    "RCF R$ 30.000,00 — Danos materiais",
+    "Clube de vantagens",
+    "Assistência 24h em Todo Brasil",
+    "Reboque em Casos de Colisão",
+    "Chaveiro Auto",
+    "Mão de obra para troca de pneus",
+    "Auxílio na Falta de Combustível",
+    "Táxi ou veículo de Aplicativo",
+    "Retorno a Domicílio em caso de acidente",
+    "Hospedagem Emergencial",
+    "Assistência 24h — 300 km totais (150 ida/150 volta), 1 acionamento a cada 30 dias, limitado a 4 por ano",
+    "Clube de Descontos (CLUBE CERTO)",
+    "Assistência funeral Zelo (carência 90 dias)",
+  ],
+  PREMIUM: [
+    "Colisão (Até 100% FIPE)",
+    "Incêndio somente por colisão (Até 100% FIPE)",
+    "Acidentes (Até 100% FIPE)",
+    "Roubo e Furto (Até 100% FIPE)",
+    "Fenômenos da Natureza (Até 100% FIPE)",
+    "Veículos de leilão/+25 anos: 75% FIPE",
+    "RCF R$ 100.000,00 — Danos materiais (cota de participação R$ 1.000 para danos acima de R$ 50 mil)",
+    "Vidros Totais ilimitado (carência 30 dias, cota 50% XENON/LED e 20% demais)",
+    "Clube de vantagens",
+    "Assistência 24h em Todo Brasil",
+    "Reboque em Casos de Colisão",
+    "Chaveiro Auto",
+    "Mão de obra para troca de pneus",
+    "Auxílio na Falta de Combustível",
+    "Táxi ou veículo de Aplicativo",
+    "Retorno a Domicílio em caso de acidente",
+    "Hospedagem Emergencial",
+    "Assistência 24h — 600 km totais (300 ida/300 volta), 1 acionamento a cada 30 dias",
+    "Clube de Descontos (CLUBE CERTO)",
+    "Assistência funeral Zelo (carência 90 dias)",
+  ],
+};
 
 export interface QuoteData {
   personal: PersonalData;
@@ -51,7 +90,7 @@ export interface QuoteData {
   activationFee: number;
   vehicleValue: string;
   billingPeriod: "monthly" | "annual";
-  optionalCoverages: OptionalCoverage[];
+  planName: PlanName;
   coupon: string;
   sessionId: string;
 }
@@ -65,25 +104,8 @@ const defaultQuote: QuoteData = {
   activationFee: 299.9,
   vehicleValue: "R$ 50.000 — R$ 70.000",
   billingPeriod: "monthly",
+  planName: "COMPLETO",
   sessionId: localStorage.getItem("savecar_session_id") || "",
-  optionalCoverages: [
-    {
-      id: "collision",
-      name: "Colisão + Terceiros + APP",
-      description: "Cobertura para danos causados por colisão, proteção contra terceiros e Acidentes Pessoais de Passageiros.",
-      monthlyPrice: 49.9,
-      annualPrice: 499.0,
-      selected: false,
-    },
-    {
-      id: "glass",
-      name: "Vidros Completo",
-      description: "Cobertura para todos os vidros do veículo: para-brisa, traseiro, laterais e retrovisores.",
-      monthlyPrice: 29.9,
-      annualPrice: 299.0,
-      selected: false,
-    },
-  ],
   coupon: "",
 };
 
@@ -93,7 +115,7 @@ interface QuoteContextType {
   updateVehicle: (data: Partial<VehicleData>) => void;
   updateAddress: (data: Partial<AddressData>) => void;
   setBillingPeriod: (period: "monthly" | "annual") => void;
-  toggleOptionalCoverage: (id: string) => void;
+  setPlanName: (plan: PlanName) => void;
   setCoupon: (coupon: string) => void;
   setSessionId: (id: string) => void;
   resetQuote: () => void;
@@ -117,13 +139,8 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
   const setBillingPeriod = (period: "monthly" | "annual") =>
     setQuote((prev) => ({ ...prev, billingPeriod: period }));
 
-  const toggleOptionalCoverage = (id: string) =>
-    setQuote((prev) => ({
-      ...prev,
-      optionalCoverages: prev.optionalCoverages.map((c) =>
-        c.id === id ? { ...c, selected: !c.selected } : c
-      ),
-    }));
+  const setPlanName = (planName: PlanName) =>
+    setQuote((prev) => ({ ...prev, planName }));
 
   const setCoupon = (coupon: string) => setQuote((prev) => ({ ...prev, coupon }));
 
@@ -136,15 +153,14 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
 
   const getTotal = () => {
     const base = quote.billingPeriod === "monthly" ? quote.monthlyPrice : quote.annualPrice;
-    const extras = quote.optionalCoverages
-      .filter((c) => c.selected)
-      .reduce((sum, c) => sum + (quote.billingPeriod === "monthly" ? c.monthlyPrice : c.annualPrice), 0);
-    return base + extras;
+    // PREMIUM adds a surcharge
+    const planMultiplier = quote.planName === "PREMIUM" ? 1.35 : 1;
+    return base * planMultiplier;
   };
 
   return (
     <QuoteContext.Provider
-      value={{ quote, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, toggleOptionalCoverage, setCoupon, setSessionId, resetQuote, getTotal }}
+      value={{ quote, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setCoupon, setSessionId, resetQuote, getTotal }}
     >
       {children}
     </QuoteContext.Provider>
