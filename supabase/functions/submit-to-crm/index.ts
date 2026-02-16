@@ -53,24 +53,43 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build observation with full vehicle details
+    // Phone & CPF: digits only
+    const phone = (personal.phone || "").replace(/\D/g, "");
+    const cpfDigits = (personal.cpf || "").replace(/\D/g, "");
+
+    const planName = plan?.planName || "COMPLETO";
+    const totalValue = plan?.total || 0;
+    const billingLabel = plan?.billingPeriod === "annual" ? "Anual" : "Mensal";
+
+    // Build rich observation
     const observation = [
+      `=== PLANO: ${planName} ===`,
+      `Valor: R$ ${totalValue.toFixed(2).replace(".", ",")}/${billingLabel === "Anual" ? "ano" : "mês"}`,
+      ``,
+      `=== ASSOCIADO ===`,
+      `Nome: ${personal.name || "N/A"}`,
+      `Telefone: ${personal.phone || "N/A"}`,
+      `CPF: ${personal.cpf || "N/A"}`,
+      `Email: ${personal.email || "N/A"}`,
+      ``,
+      `=== VEÍCULO ===`,
       `Marca: ${vehicle.brand || "N/A"}`,
       `Modelo: ${vehicle.model || "N/A"}`,
       `Ano: ${vehicle.year || "N/A"}`,
       `Cor: ${vehicle.color || "N/A"}`,
+      `Placa: ${vehicle.plate || "N/A"}`,
       `Valor FIPE: ${vehicle.fipeFormatted || "N/A"}`,
       `Uso: ${vehicle.usage || "N/A"}`,
-      `CPF: ${personal.cpf || "N/A"}`,
-      `Email: ${personal.email || "N/A"}`,
-      `Endereço: ${address.street || ""}, ${address.number || "S/N"} - ${address.neighborhood || ""}, ${address.city || ""}/${address.state || ""}`,
+      ``,
+      `=== ENDEREÇO ===`,
+      `${address.street || ""}, ${address.number || "S/N"} — ${address.neighborhood || ""}, ${address.city || ""}/${address.state || ""}`,
       `CEP: ${address.cep || "N/A"}`,
-      `Plano: ${plan?.billingPeriod === "annual" ? "Anual" : "Mensal"}`,
-      `Valor: R$ ${plan?.total?.toFixed(2) || "N/A"}`,
-      plan?.coverages ? `Coberturas: ${plan.coverages.join(", ")}` : "",
-    ].filter(Boolean).join("\n");
+      ``,
+      `=== COBERTURAS ===`,
+      plan?.coverages ? plan.coverages.join(", ") : "N/A",
+    ].join("\n");
 
-    // Resolve state code from Power CRM API
+    // Resolve state/city codes
     let stateCode: number | null = null;
     let cityCode: number | null = null;
 
@@ -84,7 +103,6 @@ Deno.serve(async (req) => {
         );
         if (found) {
           stateCode = found.id;
-          // Fetch city
           const citiesRes = await fetch(`https://utilities.powercrm.com.br/city/ct?st=${stateCode}`);
           if (citiesRes.ok) {
             const cities = await citiesRes.json();
@@ -99,10 +117,6 @@ Deno.serve(async (req) => {
       console.error("Error fetching state/city codes:", e);
     }
 
-    // Phone: digits only
-    const phone = (personal.phone || "").replace(/\D/g, "");
-    const cpfDigits = (personal.cpf || "").replace(/\D/g, "");
-
     // Build CRM payload
     const crmPayload: Record<string, unknown> = {
       companyHash: "Sav3c4r1Czwe3",
@@ -116,11 +130,15 @@ Deno.serve(async (req) => {
       pwrVhclPlt: vehicle.plate || "",
       pwrVhclTyp: VEHICLE_TYPE_MAP[vehicle.type?.toLowerCase()] || 1,
       pwrVhclSWrk: vehicle.usage === "aplicativo",
+      pwrQttnVl: totalValue,
       observation,
     };
 
     if (stateCode) crmPayload.pwrStt = stateCode;
     if (cityCode) crmPayload.pwrCt = cityCode;
+
+    // Log full payload for debugging
+    console.log("CRM payload:", JSON.stringify(crmPayload, null, 2));
 
     // Submit to Power CRM
     let crmSuccess = false;
@@ -135,7 +153,7 @@ Deno.serve(async (req) => {
       });
 
       const crmData = await crmRes.json();
-      console.log("CRM response:", crmData);
+      console.log("CRM response:", JSON.stringify(crmData, null, 2));
 
       if (crmData.success) {
         crmSuccess = true;

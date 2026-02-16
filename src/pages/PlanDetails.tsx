@@ -1,31 +1,25 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, Check, Tag, Lock, ChevronDown, ChevronUp, Shield, Car, Wrench, Eye } from "lucide-react";
+import { ArrowRight, Check, Tag, Lock, ChevronDown, ChevronUp, Shield, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
-import { useQuote } from "@/contexts/QuoteContext";
+import { useQuote, PLAN_COVERAGES, PlanName } from "@/contexts/QuoteContext";
 import { supabase } from "@/integrations/supabase/client";
 
 const PlanDetails = () => {
   const navigate = useNavigate();
-  const { quote, setBillingPeriod, toggleOptionalCoverage, setCoupon, setSessionId, getTotal } = useQuote();
+  const { quote, setBillingPeriod, setPlanName, setCoupon, setSessionId, getTotal } = useQuote();
   const [showUserInfo, setShowUserInfo] = useState(false);
   const [couponInput, setCouponInput] = useState(quote.coupon);
   const [submitting, setSubmitting] = useState(false);
 
   const total = getTotal();
-  const price = quote.billingPeriod === "monthly" ? total : total;
-
-  const includedCoverages = [
-    { icon: Shield, name: "Furto e Roubo", desc: "Proteção completa contra furto e roubo do veículo, com indenização integral baseada na tabela de referência." },
-    { icon: Car, name: "Assistência 24h + Carro reserva", desc: "Assistência 24 horas com guincho, troca de pneus, socorro mecânico e carro reserva por até 7 dias." },
-  ];
+  const coverages = PLAN_COVERAGES[quote.planName];
 
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
@@ -57,59 +51,58 @@ const PlanDetails = () => {
         {/* Vehicle Info */}
         <Card className="border-border">
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Meu plano</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Meu veículo</p>
             <p className="text-sm font-bold text-foreground">{quote.vehicle.model || "Veículo não identificado"}</p>
             <p className="text-xs text-muted-foreground">Placa: {quote.vehicle.plate || "—"}</p>
           </CardContent>
         </Card>
 
-        {/* Included Coverages */}
+        {/* Plan Selector */}
         <div>
-          <h3 className="text-sm font-bold text-foreground mb-2">Coberturas incluídas</h3>
-          <Accordion type="multiple">
-            {includedCoverages.map((cov, i) => (
-              <AccordionItem key={i} value={`inc-${i}`} className="border rounded-lg mb-2 px-3">
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">{cov.name}</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <p className="text-xs text-muted-foreground">{cov.desc}</p>
-                </AccordionContent>
-              </AccordionItem>
+          <h3 className="text-sm font-bold text-foreground mb-2">Escolha seu plano</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {(["COMPLETO", "PREMIUM"] as PlanName[]).map((plan) => (
+              <button
+                key={plan}
+                onClick={() => setPlanName(plan)}
+                className={`relative rounded-xl border-2 p-4 text-center transition-all ${
+                  quote.planName === plan
+                    ? "border-primary bg-primary/5 shadow-md"
+                    : "border-border bg-card hover:border-muted-foreground/30"
+                }`}
+              >
+                {plan === "PREMIUM" && (
+                  <Star className="absolute top-2 right-2 h-4 w-4 text-primary fill-primary" />
+                )}
+                <div className="flex flex-col items-center gap-1">
+                  <Shield className={`h-6 w-6 ${quote.planName === plan ? "text-primary" : "text-muted-foreground"}`} />
+                  <span className={`text-sm font-bold ${quote.planName === plan ? "text-primary" : "text-foreground"}`}>
+                    {plan}
+                  </span>
+                  {plan === "PREMIUM" && (
+                    <span className="text-[10px] text-muted-foreground">+Vidros +RCF 100k</span>
+                  )}
+                </div>
+              </button>
             ))}
-          </Accordion>
+          </div>
         </div>
 
-        {/* Optional Coverages */}
+        {/* Coverages List */}
         <div>
-          <h3 className="text-sm font-bold text-foreground mb-2">Coberturas opcionais</h3>
-          <Accordion type="multiple">
-            {quote.optionalCoverages.map((cov) => (
-              <AccordionItem key={cov.id} value={cov.id} className="border rounded-lg mb-2 px-3">
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center gap-2 flex-1">
-                    <Checkbox
-                      checked={cov.selected}
-                      onCheckedChange={() => toggleOptionalCoverage(cov.id)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <div className="text-left">
-                      <span className="text-sm font-medium">{cov.name}</span>
-                      <span className="text-xs text-accent ml-2 font-semibold">
-                        +R$ {(quote.billingPeriod === "monthly" ? cov.monthlyPrice : cov.annualPrice).toFixed(2).replace(".", ",")}/{quote.billingPeriod === "monthly" ? "mês" : "ano"}
-                      </span>
-                    </div>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <p className="text-xs text-muted-foreground">{cov.description}</p>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+          <h3 className="text-sm font-bold text-foreground mb-2">
+            Coberturas — {quote.planName}
+          </h3>
+          <Card className="border-border">
+            <CardContent className="p-4 space-y-2">
+              {coverages.map((cov, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                  <span className="text-xs text-muted-foreground">{cov}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Billing Toggle */}
@@ -137,9 +130,9 @@ const PlanDetails = () => {
           <CardContent className="p-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">
-                {quote.billingPeriod === "monthly" ? "Mensalidade" : "Anuidade"}
+                Plano {quote.planName} — {quote.billingPeriod === "monthly" ? "Mensal" : "Anual"}
               </span>
-              <span className="font-semibold text-foreground">R$ {price.toFixed(2).replace(".", ",")}</span>
+              <span className="font-semibold text-foreground">R$ {total.toFixed(2).replace(".", ",")}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Taxa de ativação</span>
@@ -148,7 +141,7 @@ const PlanDetails = () => {
             <div className="flex justify-between border-t border-border pt-2">
               <span className="font-bold text-foreground">Total</span>
               <span className="font-bold text-primary text-lg">
-                R$ {(price + quote.activationFee).toFixed(2).replace(".", ",")}
+                R$ {(total + quote.activationFee).toFixed(2).replace(".", ",")}
               </span>
             </div>
           </CardContent>
@@ -181,12 +174,7 @@ const PlanDetails = () => {
           onClick={async () => {
             setSubmitting(true);
             try {
-              const total = getTotal();
-              const selectedCoverages = [
-                "Furto e Roubo",
-                "Assistência 24h + Carro reserva",
-                ...quote.optionalCoverages.filter((c) => c.selected).map((c) => c.name),
-              ];
+              const totalValue = getTotal();
               const { data, error } = await supabase.functions.invoke("submit-to-crm", {
                 body: {
                   personal: quote.personal,
@@ -194,9 +182,10 @@ const PlanDetails = () => {
                   address: quote.address,
                   plan: {
                     billingPeriod: quote.billingPeriod,
-                    total,
+                    planName: quote.planName,
+                    total: totalValue,
                     activationFee: quote.activationFee,
-                    coverages: selectedCoverages,
+                    coverages: PLAN_COVERAGES[quote.planName],
                   },
                 },
               });

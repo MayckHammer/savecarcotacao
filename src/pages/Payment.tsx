@@ -53,11 +53,7 @@ const Payment = () => {
   };
 
   const total = getTotal();
-  const selectedCoverages = [
-    "Furto e Roubo",
-    "Assistência 24h + Carro reserva",
-    ...quote.optionalCoverages.filter((c) => c.selected).map((c) => c.name),
-  ];
+  const selectedCoverages = ["Plano " + quote.planName];
 
   const handleFinalize = () => {
     if (!acceptTerms) return;

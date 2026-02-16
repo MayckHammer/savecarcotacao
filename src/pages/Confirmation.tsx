@@ -36,8 +36,7 @@ const Confirmation = () => {
               <p>Placa: {quote.vehicle.plate}</p>
               <p>Plano: {quote.billingPeriod === "monthly" ? "Mensal" : "Anual"}</p>
               <p className="font-semibold text-foreground">
-                Coberturas: Furto e Roubo, Assistência 24h
-                {quote.optionalCoverages.filter(c => c.selected).map(c => `, ${c.name}`).join("")}
+                Plano: {quote.planName}
               </p>
             </div>
           </CardContent>
