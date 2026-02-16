@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { ArrowRight, Check, Tag, Lock, ChevronDown, ChevronUp, Shield, Car, Wrench, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,12 +10,14 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/
 import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import { useQuote } from "@/contexts/QuoteContext";
+import { supabase } from "@/integrations/supabase/client";
 
 const PlanDetails = () => {
   const navigate = useNavigate();
-  const { quote, setBillingPeriod, toggleOptionalCoverage, setCoupon, getTotal } = useQuote();
+  const { quote, setBillingPeriod, toggleOptionalCoverage, setCoupon, setSessionId, getTotal } = useQuote();
   const [showUserInfo, setShowUserInfo] = useState(false);
   const [couponInput, setCouponInput] = useState(quote.coupon);
+  const [submitting, setSubmitting] = useState(false);
 
   const total = getTotal();
   const price = quote.billingPeriod === "monthly" ? total : total;
@@ -174,9 +177,55 @@ const PlanDetails = () => {
         </div>
 
         {/* CTA */}
-        <Button onClick={() => navigate("/pagamento")} className="w-full h-14 rounded-xl font-bold text-base">
-          Contratar
-          <ArrowRight className="ml-2 h-5 w-5" />
+        <Button
+          onClick={async () => {
+            setSubmitting(true);
+            try {
+              const total = getTotal();
+              const selectedCoverages = [
+                "Furto e Roubo",
+                "Assistência 24h + Carro reserva",
+                ...quote.optionalCoverages.filter((c) => c.selected).map((c) => c.name),
+              ];
+              const { data, error } = await supabase.functions.invoke("submit-to-crm", {
+                body: {
+                  personal: quote.personal,
+                  vehicle: quote.vehicle,
+                  address: quote.address,
+                  plan: {
+                    billingPeriod: quote.billingPeriod,
+                    total,
+                    activationFee: quote.activationFee,
+                    coverages: selectedCoverages,
+                  },
+                },
+              });
+              if (error) throw error;
+              if (data?.session_id) {
+                setSessionId(data.session_id);
+              }
+              navigate("/vistoria");
+            } catch (e) {
+              console.error("Submit error:", e);
+              toast.error("Erro ao enviar cotação. Tente novamente.");
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+          disabled={submitting}
+          className="w-full h-14 rounded-xl font-bold text-base"
+        >
+          {submitting ? (
+            <>
+              <span className="animate-spin mr-2">⏳</span>
+              Enviando...
+            </>
+          ) : (
+            <>
+              Contratar
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </>
+          )}
         </Button>
 
         {/* Legal */}

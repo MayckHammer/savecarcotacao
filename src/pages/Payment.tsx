@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Check, CreditCard, Lock, ChevronDown, ChevronUp, QrCode, Copy, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,11 +10,32 @@ import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import { useQuote } from "@/contexts/QuoteContext";
 import { maskCardNumber, maskExpiry, maskCVV } from "@/lib/masks";
+import { supabase } from "@/integrations/supabase/client";
 
 const Payment = () => {
   const navigate = useNavigate();
   const { quote, getTotal } = useQuote();
   const [showUserInfo, setShowUserInfo] = useState(false);
+
+  // Gate: check inspection is approved
+  useEffect(() => {
+    const sessionId = quote.sessionId || localStorage.getItem("savecar_session_id");
+    if (!sessionId) {
+      navigate("/");
+      return;
+    }
+    const check = async () => {
+      const { data } = await supabase
+        .from("quotes")
+        .select("inspection_status")
+        .eq("session_id", sessionId)
+        .single();
+      if (!data || data.inspection_status !== "approved") {
+        navigate("/vistoria");
+      }
+    };
+    check();
+  }, [navigate, quote.sessionId]);
   const [paymentMethod, setPaymentMethod] = useState<"credit" | "pix">("credit");
   const [cardNumber, setCardNumber] = useState("");
   const [expiry, setExpiry] = useState("");

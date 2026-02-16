@@ -53,6 +53,7 @@ export interface QuoteData {
   billingPeriod: "monthly" | "annual";
   optionalCoverages: OptionalCoverage[];
   coupon: string;
+  sessionId: string;
 }
 
 const defaultQuote: QuoteData = {
@@ -64,6 +65,7 @@ const defaultQuote: QuoteData = {
   activationFee: 299.9,
   vehicleValue: "R$ 50.000 — R$ 70.000",
   billingPeriod: "monthly",
+  sessionId: localStorage.getItem("savecar_session_id") || "",
   optionalCoverages: [
     {
       id: "collision",
@@ -93,6 +95,7 @@ interface QuoteContextType {
   setBillingPeriod: (period: "monthly" | "annual") => void;
   toggleOptionalCoverage: (id: string) => void;
   setCoupon: (coupon: string) => void;
+  setSessionId: (id: string) => void;
   resetQuote: () => void;
   getTotal: () => number;
 }
@@ -124,6 +127,11 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
 
   const setCoupon = (coupon: string) => setQuote((prev) => ({ ...prev, coupon }));
 
+  const setSessionId = (id: string) => {
+    localStorage.setItem("savecar_session_id", id);
+    setQuote((prev) => ({ ...prev, sessionId: id }));
+  };
+
   const resetQuote = () => setQuote(defaultQuote);
 
   const getTotal = () => {
@@ -136,7 +144,7 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <QuoteContext.Provider
-      value={{ quote, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, toggleOptionalCoverage, setCoupon, resetQuote, getTotal }}
+      value={{ quote, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, toggleOptionalCoverage, setCoupon, setSessionId, resetQuote, getTotal }}
     >
       {children}
     </QuoteContext.Provider>
