@@ -1,56 +1,122 @@
 
 
-# Corrigir envio de nome e telefone no card do Power CRM
+# Corrigir Card no CRM e Atualizar Planos Reais
 
-## Problema
+## Problemas identificados nos prints
 
-Os screenshots mostram que o card no CRM aparece com "Null" no nome e todos os campos do Associado vazios (Nome Completo, CPF/CNPJ, Telefone, E-mail). O campo de observacoes internas funciona corretamente.
-
-Isso indica que os campos `pwrClntNm` e `pwrCltPhn` estao sendo enviados mas nao estao populando corretamente o card e a ficha do associado.
+1. **Nome "Null"** no card do CRM - os campos `pwrClntNm` e `pwrCltPhn` nao estao populando o card corretamente, possivelmente por nomes de campo incorretos
+2. **"Nao definido"** no tipo de protecao - nao estamos enviando o nome do plano (ex: PREMIUM, COMPLETO)
+3. **"R$ 0,00"** no valor - nao estamos enviando o campo de valor da cotacao ao CRM
+4. **Coberturas desatualizadas** - o app mostra apenas "Furto e Roubo" e "Assistencia 24h" como basico, mas os planos reais (PREMIUM e COMPLETO) tem coberturas muito mais detalhadas
 
 ## Solucao
 
-Atualizar a edge function `submit-to-crm` para enviar campos adicionais que o formulario do Power CRM aceita. Baseado na estrutura do formulario e na aba "Associado" do CRM, vamos adicionar:
+### 1. Reestruturar os planos no app
 
-- `pwrClntCpf` - CPF do cliente (campo visivel na aba Associado)
-- `pwrClntEml` - Email do cliente
-- `pwrClntPhn2` - Telefone secundario (opcional)
+Substituir o modelo atual (preco base + opcionais) por dois planos reais baseados nos prints:
 
-Alem disso, vamos incluir nome e telefone tambem no campo `observation` como fallback, garantindo que o vendedor tenha acesso a todas as informacoes mesmo que os campos do associado nao populem automaticamente.
+**COMPLETO** (base):
+- Colisao (Ate 100% FIPE)
+- Incendio somente por colisao (Ate 100% FIPE)
+- Acidentes (Ate 100% FIPE)
+- Roubo e Furto (Ate 100% FIPE)
+- Fenomenos da Natureza (Ate 100% FIPE)
+- Veiculos de leilao/+25 anos: 75% FIPE
+- RCF R$ 30.000,00 - Danos materiais
+- Clube de vantagens
+- Assistencia 24h em Todo Brasil
+- Reboque em Casos de Colisao
+- Chaveiro Auto
+- Mao de obra para troca de pneus
+- Auxilio na Falta de Combustivel
+- Taxi ou veiculo de Aplicativo
+- Retorno a Domicilio em caso de acidente
+- Hospedagem Emergencial
+- Assistencia 24h 300 km totais (150 ida/150 volta), 1 acionamento a cada 30 dias, limitado a 4 por ano
+- Clube de Descontos (CLUBE CERTO)
+- Assistencia funeral Zelo (carencia 90 dias)
 
-## Alteracao tecnica
+**PREMIUM** (upgrade):
+- Tudo do COMPLETO, mais:
+- RCF R$ 100.000,00 (com cota de participacao de R$ 1.000 para danos acima de R$ 50 mil)
+- Vidros Totais ilimitado (carencia 30 dias, cota 50% XENON/LED e 20% demais)
+- Assistencia 24h 600 km totais (300 ida/300 volta), 1 acionamento a cada 30 dias
 
-**Arquivo**: `supabase/functions/submit-to-crm/index.ts`
+### 2. Atualizar QuoteContext
 
-Mudancas no payload do CRM:
+- Adicionar campo `planName` ("COMPLETO" ou "PREMIUM") ao estado
+- Adicionar funcao `setPlanName` ao contexto
+- Remover optionalCoverages (substituido pela selecao de plano)
+- Manter `monthlyPrice` e `annualPrice` como calculados (os precos exatos dependem do valor FIPE, entao mantemos os valores atuais como placeholder)
 
-1. Adicionar `pwrClntCpf` com o CPF (somente digitos)
-2. Adicionar `pwrClntEml` com o email
-3. Garantir que o telefone esteja no formato correto (com DDD, somente digitos)
-4. Incluir nome, telefone, CPF e email no campo `observation` como informacoes complementares
+### 3. Atualizar PlanDetails.tsx
 
-O observation passara a conter:
+- Mostrar selecao entre COMPLETO e PREMIUM em vez de coberturas opcionais
+- Listar todas as coberturas do plano selecionado
+- Enviar nome do plano na submissao ao CRM
 
+### 4. Atualizar edge function submit-to-crm
+
+Adicionar campos que podem resolver o nome/valor no card:
+- Adicionar `pwrQttnVl` (valor da cotacao) ao payload
+- Adicionar nome do plano no observation de forma mais proeminente
+- Adicionar log do payload completo antes do envio para debugging
+- Testar variantes de nomes de campo para nome/telefone
+
+O observation passara a incluir:
 ```text
+=== PLANO: PREMIUM ===
+Valor: R$ 316,08/mes
+
+=== ASSOCIADO ===
+Nome: Fulano de Tal
+Telefone: (34) 99999-9999
+CPF: 084.904.246-16
+Email: email@exemplo.com
+
+=== VEICULO ===
 Marca: Ford
 Modelo: Fusion SEL 2.3 16V 162cv Aut.
 Ano: 2007 Gasolina
-Cor: N/A
+Placa: ABC1D23
 Valor FIPE: R$ 28.152,00
 Uso: particular
-CPF: 084.904.246-16
-Email: email@exemplo.com
-Endereco: Rua X, 123 - Bairro, Cidade/UF
+
+=== ENDERECO ===
+Rua X, 123 - Bairro, Cidade/UF
 CEP: 38400-639
-Plano: Mensal
-Valor: R$ 269.70
-Coberturas: Furto e Roubo, Assistencia 24h + Carro reserva
+
+=== COBERTURAS ===
+Colisao (100% FIPE), Incendio, Acidentes, Roubo e Furto, ...
 ```
 
-## Resultado esperado
+### 5. Arquivos a alterar
 
-Apos a mudanca, novos cards no CRM devem mostrar:
-- Nome do cliente no titulo do card (em vez de "Null")
-- Telefone e CPF populados na ficha do associado
-- Todas as informacoes detalhadas nas observacoes internas
+| Arquivo | Mudanca |
+|---|---|
+| `src/contexts/QuoteContext.tsx` | Adicionar `planName`, remover `optionalCoverages`, adicionar lista de coberturas por plano |
+| `src/pages/PlanDetails.tsx` | Seletor de plano COMPLETO/PREMIUM com lista completa de coberturas |
+| `src/pages/Result.tsx` | Ajustar referencia a precos (remover optionalCoverages) |
+| `supabase/functions/submit-to-crm/index.ts` | Enviar nome do plano, valor, melhorar observation, log do payload |
+
+### 6. Detalhes tecnicos
+
+**QuoteContext** - novo campo:
+```typescript
+planName: "COMPLETO" | "PREMIUM"
+```
+
+**Coberturas por plano** - constante exportavel com array de strings de cada cobertura para exibir no PlanDetails e enviar no observation.
+
+**Edge function** - payload adicional:
+```typescript
+pwrQttnVl: plan.total, // valor numerico
+```
+
+E log completo:
+```typescript
+console.log("CRM payload:", JSON.stringify(crmPayload, null, 2));
+```
+
+Isso vai permitir debugar nos logs exatamente o que esta sendo enviado e identificar se algum campo precisa de ajuste de nome.
 
