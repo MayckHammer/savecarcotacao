@@ -27,19 +27,6 @@ const Result = () => {
                 {quote.vehicle.fipeFormatted || quote.vehicleValue}
               </p>
             </div>
-            <div className="border-t border-border pt-3">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Proteção mensal a partir de</p>
-              <p className="text-2xl font-bold text-primary">
-                R$ {quote.monthlyPrice.toFixed(2).replace(".", ",")}
-                <span className="text-sm font-normal text-muted-foreground">/mês</span>
-              </p>
-            </div>
-            <div className="border-t border-border pt-3">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Taxa única de ativação</p>
-              <p className="text-base font-semibold text-foreground">
-                R$ {quote.activationFee.toFixed(2).replace(".", ",")}
-              </p>
-            </div>
           </CardContent>
         </Card>
 
