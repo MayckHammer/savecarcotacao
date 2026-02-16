@@ -1,122 +1,47 @@
 
+# Ajustes na Tela de Resultado e Vistoria
 
-# Corrigir Card no CRM e Atualizar Planos Reais
+## 1. Remover precos da tela de Resultado (/resultado)
 
-## Problemas identificados nos prints
+A tela de resultado atualmente mostra "Protecao mensal a partir de R$ 189,90/mes" e "Taxa unica de ativacao R$ 299,90" antes do usuario escolher o plano. Esses valores serao removidos, mantendo apenas a faixa de valor do veiculo (FIPE).
 
-1. **Nome "Null"** no card do CRM - os campos `pwrClntNm` e `pwrCltPhn` nao estao populando o card corretamente, possivelmente por nomes de campo incorretos
-2. **"Nao definido"** no tipo de protecao - nao estamos enviando o nome do plano (ex: PREMIUM, COMPLETO)
-3. **"R$ 0,00"** no valor - nao estamos enviando o campo de valor da cotacao ao CRM
-4. **Coberturas desatualizadas** - o app mostra apenas "Furto e Roubo" e "Assistencia 24h" como basico, mas os planos reais (PREMIUM e COMPLETO) tem coberturas muito mais detalhadas
+**Arquivo**: `src/pages/Result.tsx`
+- Remover o bloco "Protecao mensal a partir de" (linhas 30-36)
+- Remover o bloco "Taxa unica de ativacao" (linhas 37-42)
+- Manter apenas "Faixa de valor do veiculo" com o valor FIPE
 
-## Solucao
+## 2. Adicionar aviso de WhatsApp na tela de Vistoria (/vistoria)
 
-### 1. Reestruturar os planos no app
+Adicionar um aviso informando que o usuario recebera as informacoes da vistoria no WhatsApp cadastrado durante o preenchimento. O telefone do usuario sera exibido parcialmente mascarado para confirmacao.
 
-Substituir o modelo atual (preco base + opcionais) por dois planos reais baseados nos prints:
+**Arquivo**: `src/pages/Inspection.tsx`
+- Adicionar um card/aviso abaixo do card de status com icone do WhatsApp e texto:
+  "Voce recebera as informacoes da vistoria no WhatsApp (34) 9****-9999"
+  (usando o telefone do quote.personal.phone com mascara parcial)
 
-**COMPLETO** (base):
-- Colisao (Ate 100% FIPE)
-- Incendio somente por colisao (Ate 100% FIPE)
-- Acidentes (Ate 100% FIPE)
-- Roubo e Furto (Ate 100% FIPE)
-- Fenomenos da Natureza (Ate 100% FIPE)
-- Veiculos de leilao/+25 anos: 75% FIPE
-- RCF R$ 30.000,00 - Danos materiais
-- Clube de vantagens
-- Assistencia 24h em Todo Brasil
-- Reboque em Casos de Colisao
-- Chaveiro Auto
-- Mao de obra para troca de pneus
-- Auxilio na Falta de Combustivel
-- Taxi ou veiculo de Aplicativo
-- Retorno a Domicilio em caso de acidente
-- Hospedagem Emergencial
-- Assistencia 24h 300 km totais (150 ida/150 volta), 1 acionamento a cada 30 dias, limitado a 4 por ano
-- Clube de Descontos (CLUBE CERTO)
-- Assistencia funeral Zelo (carencia 90 dias)
+## 3. Trocar icone do botao flutuante do WhatsApp
 
-**PREMIUM** (upgrade):
-- Tudo do COMPLETO, mais:
-- RCF R$ 100.000,00 (com cota de participacao de R$ 1.000 para danos acima de R$ 50 mil)
-- Vidros Totais ilimitado (carencia 30 dias, cota 50% XENON/LED e 20% demais)
-- Assistencia 24h 600 km totais (300 ida/300 volta), 1 acionamento a cada 30 dias
+O botao flutuante atualmente usa o icone generico `MessageCircle` do Lucide. Sera substituido por um SVG real do logo do WhatsApp para ficar mais reconhecivel.
 
-### 2. Atualizar QuoteContext
+**Arquivo**: `src/components/WhatsAppButton.tsx`
+- Substituir o icone `MessageCircle` por um SVG inline do logo oficial do WhatsApp
 
-- Adicionar campo `planName` ("COMPLETO" ou "PREMIUM") ao estado
-- Adicionar funcao `setPlanName` ao contexto
-- Remover optionalCoverages (substituido pela selecao de plano)
-- Manter `monthlyPrice` e `annualPrice` como calculados (os precos exatos dependem do valor FIPE, entao mantemos os valores atuais como placeholder)
+## Detalhes tecnicos
 
-### 3. Atualizar PlanDetails.tsx
+### Result.tsx - Card simplificado
+O card passara a mostrar apenas:
+- Faixa de valor do veiculo (valor FIPE)
+- Botoes "Continuar" e "Nova cotacao" permanecem iguais
 
-- Mostrar selecao entre COMPLETO e PREMIUM em vez de coberturas opcionais
-- Listar todas as coberturas do plano selecionado
-- Enviar nome do plano na submissao ao CRM
-
-### 4. Atualizar edge function submit-to-crm
-
-Adicionar campos que podem resolver o nome/valor no card:
-- Adicionar `pwrQttnVl` (valor da cotacao) ao payload
-- Adicionar nome do plano no observation de forma mais proeminente
-- Adicionar log do payload completo antes do envio para debugging
-- Testar variantes de nomes de campo para nome/telefone
-
-O observation passara a incluir:
-```text
-=== PLANO: PREMIUM ===
-Valor: R$ 316,08/mes
-
-=== ASSOCIADO ===
-Nome: Fulano de Tal
-Telefone: (34) 99999-9999
-CPF: 084.904.246-16
-Email: email@exemplo.com
-
-=== VEICULO ===
-Marca: Ford
-Modelo: Fusion SEL 2.3 16V 162cv Aut.
-Ano: 2007 Gasolina
-Placa: ABC1D23
-Valor FIPE: R$ 28.152,00
-Uso: particular
-
-=== ENDERECO ===
-Rua X, 123 - Bairro, Cidade/UF
-CEP: 38400-639
-
-=== COBERTURAS ===
-Colisao (100% FIPE), Incendio, Acidentes, Roubo e Furto, ...
+### Inspection.tsx - Aviso WhatsApp
+Sera adicionado apos o card de status:
 ```
-
-### 5. Arquivos a alterar
-
-| Arquivo | Mudanca |
-|---|---|
-| `src/contexts/QuoteContext.tsx` | Adicionar `planName`, remover `optionalCoverages`, adicionar lista de coberturas por plano |
-| `src/pages/PlanDetails.tsx` | Seletor de plano COMPLETO/PREMIUM com lista completa de coberturas |
-| `src/pages/Result.tsx` | Ajustar referencia a precos (remover optionalCoverages) |
-| `supabase/functions/submit-to-crm/index.ts` | Enviar nome do plano, valor, melhorar observation, log do payload |
-
-### 6. Detalhes tecnicos
-
-**QuoteContext** - novo campo:
-```typescript
-planName: "COMPLETO" | "PREMIUM"
+<div className="flex items-center gap-3 ...">
+  <WhatsAppIcon />
+  <p>Voce recebera as informacoes no WhatsApp cadastrado: (34) 9****-9999</p>
+</div>
 ```
+O telefone sera mascarado mostrando apenas DDD e ultimos 4 digitos.
 
-**Coberturas por plano** - constante exportavel com array de strings de cada cobertura para exibir no PlanDetails e enviar no observation.
-
-**Edge function** - payload adicional:
-```typescript
-pwrQttnVl: plan.total, // valor numerico
-```
-
-E log completo:
-```typescript
-console.log("CRM payload:", JSON.stringify(crmPayload, null, 2));
-```
-
-Isso vai permitir debugar nos logs exatamente o que esta sendo enviado e identificar se algum campo precisa de ajuste de nome.
-
+### WhatsAppButton.tsx - Icone SVG
+O `MessageCircle` sera substituido por um SVG path do logo do WhatsApp, mantendo o mesmo estilo e tamanho do botao.
