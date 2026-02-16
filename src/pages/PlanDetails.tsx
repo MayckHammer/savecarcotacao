@@ -10,6 +10,7 @@ import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import { useQuote, PLAN_COVERAGES, PlanName } from "@/contexts/QuoteContext";
 import { supabase } from "@/integrations/supabase/client";
+import LiquidGlass from "liquid-glass-react";
 
 const PlanDetails = () => {
   const navigate = useNavigate();
@@ -22,7 +23,7 @@ const PlanDetails = () => {
   const coverages = PLAN_COVERAGES[quote.planName];
 
   return (
-    <div className="flex min-h-screen flex-col bg-background pb-20">
+    <div className="flex min-h-screen flex-col bg-savecar-gradient pb-20">
       <Header dark />
 
       <div className="flex-1 px-4 py-6 space-y-4">
@@ -62,28 +63,38 @@ const PlanDetails = () => {
           <h3 className="text-sm font-bold text-foreground mb-2">Escolha seu plano</h3>
           <div className="grid grid-cols-2 gap-3">
             {(["COMPLETO", "PREMIUM"] as PlanName[]).map((plan) => (
-              <button
+              <LiquidGlass
                 key={plan}
-                onClick={() => setPlanName(plan)}
-                className={`relative rounded-xl border-2 p-4 text-center transition-all ${
-                  quote.planName === plan
-                    ? "border-primary bg-primary/5 shadow-md"
-                    : "border-border bg-card hover:border-muted-foreground/30"
-                }`}
+                displacementScale={40}
+                blurAmount={0.08}
+                saturation={140}
+                aberrationIntensity={1}
+                elasticity={0.2}
+                cornerRadius={16}
+                overLight={true}
               >
-                {plan === "PREMIUM" && (
-                  <Star className="absolute top-2 right-2 h-4 w-4 text-primary fill-primary" />
-                )}
-                <div className="flex flex-col items-center gap-1">
-                  <Shield className={`h-6 w-6 ${quote.planName === plan ? "text-primary" : "text-muted-foreground"}`} />
-                  <span className={`text-sm font-bold ${quote.planName === plan ? "text-primary" : "text-foreground"}`}>
-                    {plan}
-                  </span>
+                <button
+                  onClick={() => setPlanName(plan)}
+                  className={`relative w-full rounded-xl border-2 p-4 text-center transition-all ${
+                    quote.planName === plan
+                      ? "border-primary bg-primary/5 shadow-md"
+                      : "border-border bg-card/80 hover:border-muted-foreground/30"
+                  }`}
+                >
                   {plan === "PREMIUM" && (
-                    <span className="text-[10px] text-muted-foreground">+Vidros +RCF 100k</span>
+                    <Star className="absolute top-2 right-2 h-4 w-4 text-primary fill-primary" />
                   )}
-                </div>
-              </button>
+                  <div className="flex flex-col items-center gap-1">
+                    <Shield className={`h-6 w-6 ${quote.planName === plan ? "text-primary" : "text-muted-foreground"}`} />
+                    <span className={`text-sm font-bold ${quote.planName === plan ? "text-primary" : "text-foreground"}`}>
+                      {plan}
+                    </span>
+                    {plan === "PREMIUM" && (
+                      <span className="text-[10px] text-muted-foreground">+Vidros +RCF 100k</span>
+                    )}
+                  </div>
+                </button>
+              </LiquidGlass>
             ))}
           </div>
         </div>
@@ -126,26 +137,36 @@ const PlanDetails = () => {
         </div>
 
         {/* Financial Summary */}
-        <Card className="border-border">
-          <CardContent className="p-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">
-                Plano {quote.planName} — {quote.billingPeriod === "monthly" ? "Mensal" : "Anual"}
-              </span>
-              <span className="font-semibold text-foreground">R$ {total.toFixed(2).replace(".", ",")}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Taxa de ativação</span>
-              <span className="font-semibold text-foreground">R$ {quote.activationFee.toFixed(2).replace(".", ",")}</span>
-            </div>
-            <div className="flex justify-between border-t border-border pt-2">
-              <span className="font-bold text-foreground">Total</span>
-              <span className="font-bold text-primary text-lg">
-                R$ {(total + quote.activationFee).toFixed(2).replace(".", ",")}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+        <LiquidGlass
+          displacementScale={40}
+          blurAmount={0.08}
+          saturation={140}
+          aberrationIntensity={1}
+          elasticity={0.2}
+          cornerRadius={16}
+          overLight={true}
+        >
+          <Card className="border-border bg-card/80">
+            <CardContent className="p-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">
+                  Plano {quote.planName} — {quote.billingPeriod === "monthly" ? "Mensal" : "Anual"}
+                </span>
+                <span className="font-semibold text-foreground">R$ {total.toFixed(2).replace(".", ",")}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Taxa de ativação</span>
+                <span className="font-semibold text-foreground">R$ {quote.activationFee.toFixed(2).replace(".", ",")}</span>
+              </div>
+              <div className="flex justify-between border-t border-border pt-2">
+                <span className="font-bold text-foreground">Total</span>
+                <span className="font-bold text-primary text-lg">
+                  R$ {(total + quote.activationFee).toFixed(2).replace(".", ",")}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </LiquidGlass>
 
         {/* Coupon */}
         <div className="flex gap-2">
@@ -170,52 +191,62 @@ const PlanDetails = () => {
         </div>
 
         {/* CTA */}
-        <Button
-          onClick={async () => {
-            setSubmitting(true);
-            try {
-              const totalValue = getTotal();
-              const { data, error } = await supabase.functions.invoke("submit-to-crm", {
-                body: {
-                  personal: quote.personal,
-                  vehicle: quote.vehicle,
-                  address: quote.address,
-                  plan: {
-                    billingPeriod: quote.billingPeriod,
-                    planName: quote.planName,
-                    total: totalValue,
-                    activationFee: quote.activationFee,
-                    coverages: PLAN_COVERAGES[quote.planName],
-                  },
-                },
-              });
-              if (error) throw error;
-              if (data?.session_id) {
-                setSessionId(data.session_id);
-              }
-              navigate("/vistoria");
-            } catch (e) {
-              console.error("Submit error:", e);
-              toast.error("Erro ao enviar cotação. Tente novamente.");
-            } finally {
-              setSubmitting(false);
-            }
-          }}
-          disabled={submitting}
-          className="w-full h-14 rounded-xl font-bold text-base"
+        <LiquidGlass
+          displacementScale={64}
+          blurAmount={0.1}
+          saturation={130}
+          aberrationIntensity={2}
+          elasticity={0.35}
+          cornerRadius={16}
+          overLight={true}
         >
-          {submitting ? (
-            <>
-              <span className="animate-spin mr-2">⏳</span>
-              Enviando...
-            </>
-          ) : (
-            <>
-              Contratar
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </>
-          )}
-        </Button>
+          <Button
+            onClick={async () => {
+              setSubmitting(true);
+              try {
+                const totalValue = getTotal();
+                const { data, error } = await supabase.functions.invoke("submit-to-crm", {
+                  body: {
+                    personal: quote.personal,
+                    vehicle: quote.vehicle,
+                    address: quote.address,
+                    plan: {
+                      billingPeriod: quote.billingPeriod,
+                      planName: quote.planName,
+                      total: totalValue,
+                      activationFee: quote.activationFee,
+                      coverages: PLAN_COVERAGES[quote.planName],
+                    },
+                  },
+                });
+                if (error) throw error;
+                if (data?.session_id) {
+                  setSessionId(data.session_id);
+                }
+                navigate("/vistoria");
+              } catch (e) {
+                console.error("Submit error:", e);
+                toast.error("Erro ao enviar cotação. Tente novamente.");
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+            disabled={submitting}
+            className="w-full h-14 rounded-xl font-bold text-base"
+          >
+            {submitting ? (
+              <>
+                <span className="animate-spin mr-2">⏳</span>
+                Enviando...
+              </>
+            ) : (
+              <>
+                Contratar
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </>
+            )}
+          </Button>
+        </LiquidGlass>
 
         {/* Legal */}
         <p className="text-[10px] text-muted-foreground text-center leading-relaxed mt-4">
