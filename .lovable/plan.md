@@ -1,60 +1,54 @@
 
 
-# Integrar API Fipe Online para Consulta de Valores FIPE
+# Corrigir valor FIPE "R$ NaN" e adicionar suporte para motos e caminhoes
 
-## Situacao atual
+## Problema identificado
 
-A edge function `consulta-placa` gera dados simulados. A API do fipe.online (parallelum.com.br) nao possui endpoint de consulta por placa -- ela funciona por navegacao em cascata: marca, modelo, ano e preco.
+A API FIPE retorna o preco como string formatada em BRL (ex: `"R$ 28.152,00"`), mas o codigo tenta converter com `Number(data.price)`, que nao entende o formato brasileiro e retorna `NaN`.
 
-## O que sera feito
+## Correcoes e melhorias
 
-Integrar a API fipe.online no passo 2 da cotacao para que o usuario selecione marca, modelo e ano do veiculo e obtenha o valor FIPE real. O campo de placa sera mantido como dado informativo.
+### 1. Corrigir parsing do valor FIPE (`src/pages/Quote.tsx`)
 
-## Fluxo do usuario
+Na funcao `handleYearChange`, linha 105-106, o valor `data.price` ja vem formatado como `"R$ 28.152,00"`. O codigo atual faz `Number(data.price)` que gera NaN.
 
-```text
-1. Digita a placa (dado informativo, sem consulta automatica)
-2. Seleciona a marca (lista carregada da API fipe.online)
-3. Seleciona o modelo (carregado com base na marca)
-4. Seleciona o ano (carregado com base no modelo)
-5. Valor FIPE e exibido automaticamente
-```
+Correcao:
+- Usar `data.price` diretamente como `fipeFormatted` (ja vem formatado)
+- Extrair o valor numerico removendo "R$", pontos de milhar e substituindo virgula por ponto para obter o numero real
 
-## Detalhes tecnicos
+### 2. Adicionar suporte para motos e caminhoes (`supabase/functions/consulta-placa/index.ts`)
 
-### 1. Armazenar a chave da API como secret
-- Nome: `FIPE_ONLINE_TOKEN`
-- Valor: a chave JWT que voce forneceu
-- Armazenada de forma segura no backend, nunca exposta no codigo
+A API FIPE Parallelum suporta 3 tipos de veiculos com endpoints diferentes:
+- `/cars/` para carros
+- `/motorcycles/` para motos
+- `/trucks/` para caminhoes
 
-### 2. Atualizar a Edge Function `consulta-placa`
-- Remover toda a logica de dados simulados (funcao `generateVehicleData`)
-- Criar novos endpoints/acoes dentro da mesma function:
-  - `action: "brands"` -- retorna marcas via `GET https://fipe.parallelum.com.br/api/v2/cars/brands` com header `X-Subscription-Token`
-  - `action: "models"` -- retorna modelos via `GET https://fipe.parallelum.com.br/api/v2/cars/brands/{brandCode}/models`
-  - `action: "years"` -- retorna anos via `GET https://fipe.parallelum.com.br/api/v2/cars/brands/{brandCode}/models/{modelCode}/years`
-  - `action: "price"` -- retorna preco FIPE via `GET https://fipe.parallelum.com.br/api/v2/cars/brands/{brandCode}/models/{modelCode}/years/{yearCode}`
-- Todas as chamadas incluem o header `X-Subscription-Token` com o token armazenado
-- Timeout de 10 segundos por chamada
+Alteracoes:
+- Receber um parametro `vehicleType` no body da requisicao (valores: `cars`, `motorcycles`, `trucks`)
+- Usar esse parametro para construir a URL correta
+- Valor padrao: `cars` para manter compatibilidade
 
-### 3. Atualizar `QuoteContext.tsx`
-- Adicionar campos para armazenar as selecoes intermediarias: `brandCode`, `modelCode`, `yearCode`
-- Manter os campos existentes (`brand`, `model`, `year`, `fipeValue`, `fipeFormatted`)
+### 3. Atualizar o frontend (`src/pages/Quote.tsx`)
 
-### 4. Atualizar `Quote.tsx` (Passo 2)
-- Manter campo de placa como input de texto simples (sem consulta automatica)
-- Adicionar 3 selects em cascata:
-  - **Marca**: carrega lista ao montar o componente
-  - **Modelo**: carrega ao selecionar marca
-  - **Ano**: carrega ao selecionar modelo
-- Ao selecionar o ano, busca automaticamente o valor FIPE e exibe em um card
-- Loading states para cada select durante o carregamento
-- Manter selects de "Tipo do veiculo" e "Uso do veiculo" existentes
+- Mover o select "Tipo do veiculo" para ANTES dos selects de marca/modelo/ano
+- Mapear os tipos para os endpoints da API:
+  - `carro` -> `cars`
+  - `moto` -> `motorcycles`
+  - `caminhao` -> `trucks`
+- Quando o tipo mudar, resetar marca/modelo/ano e recarregar marcas do tipo correto
+- Passar o `vehicleType` em todas as chamadas FIPE
 
-### 5. Atualizar `Result.tsx`
-- Exibir o valor FIPE real retornado pela API (ja funciona com os campos existentes)
+### 4. Atualizar opcoes de tipo de veiculo
 
-## Limite de uso
-- Com a chave gratuita: ate 1.000 requisicoes por dia
-- Cada cotacao completa usa aproximadamente 4 requisicoes (marcas + modelos + anos + preco)
+Opcoes atualizadas:
+- Carro
+- Moto
+- Caminhao / Pick-up
+
+## Resumo das alteracoes
+
+| Arquivo | Alteracao |
+|---|---|
+| `supabase/functions/consulta-placa/index.ts` | Adicionar parametro `vehicleType` para construir URL dinamica |
+| `src/pages/Quote.tsx` | Corrigir parsing do preco, reordenar campos, passar tipo nas chamadas |
 
