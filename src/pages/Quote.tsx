@@ -1,21 +1,26 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ArrowLeft, AlertCircle, Check } from "lucide-react";
+import { ArrowRight, ArrowLeft, AlertCircle, Check, Loader2, Car } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/Header";
 import ProgressSteps from "@/components/ProgressSteps";
 import { useQuote } from "@/contexts/QuoteContext";
 import { maskCPF, maskPhone, maskCEP, maskPlate, validateCPF } from "@/lib/masks";
+import { supabase } from "@/integrations/supabase/client";
 
 const Quote = () => {
   const navigate = useNavigate();
   const { quote, updatePersonal, updateVehicle, updateAddress } = useQuote();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [plateLoading, setPlateLoading] = useState(false);
+  const [plateError, setPlateError] = useState("");
 
   const validateStep1 = () => {
     const e: Record<string, string> = {};
@@ -79,6 +84,47 @@ const Quote = () => {
     }
   };
 
+  const fetchPlateData = async (plate: string) => {
+    const clean = plate.replace(/[^A-Za-z0-9]/g, "");
+    if (clean.length !== 7) return;
+
+    setPlateLoading(true);
+    setPlateError("");
+
+    try {
+      const { data, error } = await supabase.functions.invoke("consulta-placa", {
+        body: { plate: clean },
+      });
+
+      if (error) throw error;
+
+      if (data && !data.error) {
+        updateVehicle({
+          brand: data.brand,
+          model: data.model,
+          year: data.year,
+          color: data.color,
+          fipeValue: data.fipeValue,
+          fipeFormatted: data.fipeFormatted,
+        });
+      } else {
+        setPlateError(data?.error || "Placa não encontrada");
+      }
+    } catch {
+      setPlateError("Erro ao consultar placa. Preencha os dados manualmente.");
+    } finally {
+      setPlateLoading(false);
+    }
+  };
+
+  const handlePlateChange = (value: string) => {
+    const masked = maskPlate(value);
+    updateVehicle({ plate: masked });
+    if (masked.length === 7) {
+      fetchPlateData(masked);
+    }
+  };
+
   const ErrorMsg = ({ field }: { field: string }) =>
     errors[field] ? (
       <p className="text-destructive text-xs mt-1 flex items-center gap-1">
@@ -97,39 +143,22 @@ const Quote = () => {
             <h2 className="text-lg font-bold text-foreground">Seus Dados</h2>
             <div>
               <Label>Nome completo</Label>
-              <Input
-                placeholder="Digite seu nome"
-                value={quote.personal.name}
-                onChange={(e) => updatePersonal({ name: e.target.value })}
-              />
+              <Input placeholder="Digite seu nome" value={quote.personal.name} onChange={(e) => updatePersonal({ name: e.target.value })} />
               <ErrorMsg field="name" />
             </div>
             <div>
               <Label>E-mail</Label>
-              <Input
-                type="email"
-                placeholder="seu@email.com"
-                value={quote.personal.email}
-                onChange={(e) => updatePersonal({ email: e.target.value })}
-              />
+              <Input type="email" placeholder="seu@email.com" value={quote.personal.email} onChange={(e) => updatePersonal({ email: e.target.value })} />
               <ErrorMsg field="email" />
             </div>
             <div>
               <Label>Telefone</Label>
-              <Input
-                placeholder="(00) 00000-0000"
-                value={quote.personal.phone}
-                onChange={(e) => updatePersonal({ phone: maskPhone(e.target.value) })}
-              />
+              <Input placeholder="(00) 00000-0000" value={quote.personal.phone} onChange={(e) => updatePersonal({ phone: maskPhone(e.target.value) })} />
               <ErrorMsg field="phone" />
             </div>
             <div>
               <Label>CPF</Label>
-              <Input
-                placeholder="000.000.000-00"
-                value={quote.personal.cpf}
-                onChange={(e) => updatePersonal({ cpf: maskCPF(e.target.value) })}
-              />
+              <Input placeholder="000.000.000-00" value={quote.personal.cpf} onChange={(e) => updatePersonal({ cpf: maskCPF(e.target.value) })} />
               <ErrorMsg field="cpf" />
             </div>
           </div>
@@ -143,16 +172,68 @@ const Quote = () => {
               <Input
                 placeholder="ABC1D23"
                 value={quote.vehicle.plate}
-                onChange={(e) => updateVehicle({ plate: maskPlate(e.target.value) })}
+                onChange={(e) => handlePlateChange(e.target.value)}
               />
               <ErrorMsg field="plate" />
             </div>
-            {quote.vehicle.model && (
-              <div className="flex items-center gap-2 rounded-lg bg-primary/10 p-3 text-sm text-primary">
-                <Check className="h-4 w-4" />
-                <span>{quote.vehicle.model}</span>
+
+            {/* Loading state */}
+            {plateLoading && (
+              <Card className="border-border">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Consultando placa...</span>
+                  </div>
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-4 w-2/3" />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Error state */}
+            {plateError && !plateLoading && (
+              <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                <span>{plateError}</span>
               </div>
             )}
+
+            {/* Vehicle data found */}
+            {quote.vehicle.brand && !plateLoading && !plateError && (
+              <Card className="border-primary/30 bg-primary/5">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-center gap-2 text-primary font-semibold text-sm">
+                    <Car className="h-4 w-4" />
+                    <span>Veículo identificado</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-muted-foreground text-xs">Marca</p>
+                      <p className="font-medium text-foreground">{quote.vehicle.brand}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Ano</p>
+                      <p className="font-medium text-foreground">{quote.vehicle.year}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground text-xs">Modelo</p>
+                      <p className="font-medium text-foreground">{quote.vehicle.model}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Cor</p>
+                      <p className="font-medium text-foreground">{quote.vehicle.color}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Valor FIPE</p>
+                      <p className="font-bold text-primary">{quote.vehicle.fipeFormatted}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <a href="#" className="text-xs text-primary underline">Algum problema com a placa?</a>
             <div>
               <Label>Tipo do veículo</Label>
@@ -210,11 +291,7 @@ const Quote = () => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Número</Label>
-                <Input
-                  value={quote.address.number}
-                  disabled={quote.address.noNumber}
-                  onChange={(e) => updateAddress({ number: e.target.value })}
-                />
+                <Input value={quote.address.number} disabled={quote.address.noNumber} onChange={(e) => updateAddress({ number: e.target.value })} />
                 <ErrorMsg field="number" />
               </div>
               <div>
@@ -223,10 +300,7 @@ const Quote = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Checkbox
-                checked={quote.address.noNumber}
-                onCheckedChange={(checked) => updateAddress({ noNumber: !!checked, number: "" })}
-              />
+              <Checkbox checked={quote.address.noNumber} onCheckedChange={(checked) => updateAddress({ noNumber: !!checked, number: "" })} />
               <Label className="text-sm text-muted-foreground cursor-pointer">Não tenho número</Label>
             </div>
             <div className="grid grid-cols-2 gap-3">

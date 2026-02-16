@@ -12,6 +12,11 @@ export interface VehicleData {
   model: string;
   type: string;
   usage: string;
+  brand: string;
+  year: string;
+  color: string;
+  fipeValue: number;
+  fipeFormatted: string;
 }
 
 export interface AddressData {
@@ -49,7 +54,7 @@ export interface QuoteData {
 
 const defaultQuote: QuoteData = {
   personal: { name: "", email: "", phone: "", cpf: "" },
-  vehicle: { plate: "", model: "", type: "", usage: "" },
+  vehicle: { plate: "", model: "", type: "", usage: "", brand: "", year: "", color: "", fipeValue: 0, fipeFormatted: "" },
   address: { cep: "", street: "", neighborhood: "", number: "", complement: "", state: "", city: "", noNumber: false },
   monthlyPrice: 189.9,
   annualPrice: 1899.0,

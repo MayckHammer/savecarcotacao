@@ -23,7 +23,9 @@ const Result = () => {
           <CardContent className="p-5 space-y-3">
             <div>
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Faixa de valor do veículo</p>
-              <p className="text-lg font-bold text-foreground">{quote.vehicleValue}</p>
+              <p className="text-lg font-bold text-foreground">
+                {quote.vehicle.fipeFormatted || quote.vehicleValue}
+              </p>
             </div>
             <div className="border-t border-border pt-3">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Proteção mensal a partir de</p>
