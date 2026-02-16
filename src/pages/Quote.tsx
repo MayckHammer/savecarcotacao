@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from "@/components/SearchableSelect";
 import { Card, CardContent } from "@/components/ui/card";
 import Header from "@/components/Header";
 import ProgressSteps from "@/components/ProgressSteps";
@@ -269,34 +270,33 @@ const Quote = () => {
             {/* Marca */}
             <div>
               <Label>Marca</Label>
-              <Select value={quote.vehicle.brandCode} onValueChange={handleBrandChange} disabled={brandsLoading}>
-                <SelectTrigger>
-                  <SelectValue placeholder={brandsLoading ? "Carregando marcas..." : "Selecione a marca"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {brands.map((b) => (
-                    <SelectItem key={b.code} value={b.code}>{b.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {brandsLoading && <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando...</p>}
+              <SearchableSelect
+                options={brands}
+                value={quote.vehicle.brandCode}
+                onValueChange={handleBrandChange}
+                placeholder="Selecione a marca"
+                searchPlaceholder="Buscar marca..."
+                emptyMessage="Nenhuma marca encontrada."
+                loading={brandsLoading}
+                loadingMessage="Carregando marcas..."
+              />
               <ErrorMsg field="brand" />
             </div>
 
             {/* Modelo */}
             <div>
               <Label>Modelo</Label>
-              <Select value={quote.vehicle.modelCode} onValueChange={handleModelChange} disabled={!quote.vehicle.brandCode || modelsLoading}>
-                <SelectTrigger>
-                  <SelectValue placeholder={modelsLoading ? "Carregando modelos..." : "Selecione o modelo"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((m) => (
-                    <SelectItem key={m.code} value={m.code}>{m.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {modelsLoading && <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando...</p>}
+              <SearchableSelect
+                options={models}
+                value={quote.vehicle.modelCode}
+                onValueChange={handleModelChange}
+                placeholder="Selecione o modelo"
+                searchPlaceholder="Buscar modelo..."
+                emptyMessage="Nenhum modelo encontrado."
+                disabled={!quote.vehicle.brandCode}
+                loading={modelsLoading}
+                loadingMessage="Carregando modelos..."
+              />
               <ErrorMsg field="model" />
             </div>
 
