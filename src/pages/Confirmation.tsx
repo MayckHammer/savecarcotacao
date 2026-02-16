@@ -4,14 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import Header from "@/components/Header";
 import { useQuote } from "@/contexts/QuoteContext";
-import LiquidGlass from "liquid-glass-react";
 
 const Confirmation = () => {
   const navigate = useNavigate();
   const { quote, resetQuote } = useQuote();
 
   return (
-    <div className="flex min-h-screen flex-col bg-savecar-gradient">
+    <div className="flex min-h-screen flex-col bg-background">
       <Header dark />
 
       <div className="flex-1 px-6 py-10 flex flex-col items-center">
@@ -26,32 +25,22 @@ const Confirmation = () => {
           Parabéns, {quote.personal.name.split(" ")[0]}! Sua proteção veicular SAVE CAR BRASIL está ativa.
         </p>
 
-        <LiquidGlass
-          displacementScale={40}
-          blurAmount={0.08}
-          saturation={140}
-          aberrationIntensity={1}
-          elasticity={0.2}
-          cornerRadius={16}
-          overLight={true}
-        >
-          <Card className="w-full border-border mb-8 bg-card/80">
-            <CardContent className="p-5 space-y-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Shield className="h-5 w-5 text-primary" />
-                <span className="text-sm font-bold text-foreground">Resumo da proteção</span>
-              </div>
-              <div className="text-sm space-y-1 text-muted-foreground">
-                <p>Veículo: {quote.vehicle.model}</p>
-                <p>Placa: {quote.vehicle.plate}</p>
-                <p>Plano: {quote.billingPeriod === "monthly" ? "Mensal" : "Anual"}</p>
-                <p className="font-semibold text-foreground">
-                  Plano: {quote.planName}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </LiquidGlass>
+        <Card className="w-full border-border mb-8">
+          <CardContent className="p-5 space-y-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Shield className="h-5 w-5 text-primary" />
+              <span className="text-sm font-bold text-foreground">Resumo da proteção</span>
+            </div>
+            <div className="text-sm space-y-1 text-muted-foreground">
+              <p>Veículo: {quote.vehicle.model}</p>
+              <p>Placa: {quote.vehicle.plate}</p>
+              <p>Plano: {quote.billingPeriod === "monthly" ? "Mensal" : "Anual"}</p>
+              <p className="font-semibold text-foreground">
+                Plano: {quote.planName}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
         <Button
           onClick={() => {

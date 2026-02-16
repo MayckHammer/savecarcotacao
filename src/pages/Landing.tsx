@@ -3,84 +3,51 @@ import { ArrowRight, HelpCircle, MessageCircle, Instagram, Facebook } from "luci
 import { Button } from "@/components/ui/button";
 import Header from "@/components/Header";
 import logo from "@/assets/logo-savecar.png";
-import LiquidGlass from "liquid-glass-react";
 
 const Landing = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="flex min-h-screen flex-col bg-savecar-gradient">
+    <div className="flex min-h-screen flex-col bg-background">
       {/* Hero Section */}
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
         <img src={logo} alt="SAVE CAR BRASIL" className="h-44 mb-8 object-contain" />
 
-        <h1 className="text-2xl font-bold text-center text-foreground mb-3">Proteção Veicular de verdade
-          <span className="text-primary"> de verdade</span>
+        <h1 className="text-2xl font-bold text-center text-foreground mb-3">Proteção Veicular de verdade
+          <span className="text-primary">de verdade</span>
         </h1>
         <p className="text-muted-foreground text-center mb-10 max-w-xs">
           Proteja seu veículo com as melhores coberturas do mercado. Simples, rápido e seguro.
         </p>
 
-        <div className="w-full max-w-xs">
-          <LiquidGlass
-            displacementScale={64}
-            blurAmount={0.1}
-            saturation={130}
-            aberrationIntensity={2}
-            elasticity={0.35}
-            cornerRadius={16}
-            overLight={true}
-          >
-            <Button
-              onClick={() => navigate("/cotacao")}
-              className="w-full h-14 text-base font-bold rounded-xl shadow-lg"
-              size="lg"
-            >
-              Cotação em menos de 30 segundos
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-          </LiquidGlass>
-        </div>
+        <Button
+          onClick={() => navigate("/cotacao")}
+          className="w-full max-w-xs h-14 text-base font-bold rounded-xl shadow-lg"
+          size="lg">
+
+          Cotação em menos de 30 segundos
+          <ArrowRight className="ml-2 h-5 w-5" />
+        </Button>
       </div>
 
       {/* Links Section */}
       <div className="px-6 pb-8 space-y-3 max-w-xs mx-auto w-full">
-        <LiquidGlass
-          displacementScale={40}
-          blurAmount={0.08}
-          saturation={140}
-          aberrationIntensity={1}
-          elasticity={0.2}
-          cornerRadius={16}
-          overLight={true}
-        >
-          <a
-            href="#"
-            className="flex items-center gap-3 rounded-xl border border-border bg-card/80 p-4 text-sm text-foreground hover:bg-muted transition-colors"
-          >
-            <HelpCircle className="h-5 w-5 text-primary" />
-            Dúvidas sobre a cotação?
-          </a>
-        </LiquidGlass>
-        <LiquidGlass
-          displacementScale={40}
-          blurAmount={0.08}
-          saturation={140}
-          aberrationIntensity={1}
-          elasticity={0.2}
-          cornerRadius={16}
-          overLight={true}
-        >
-          <a
-            href="https://wa.me/5500000000000"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 rounded-xl border border-border bg-card/80 p-4 text-sm text-foreground hover:bg-muted transition-colors"
-          >
-            <MessageCircle className="h-5 w-5 text-primary" />
-            Atendimento pelo WhatsApp
-          </a>
-        </LiquidGlass>
+        <a
+          href="#"
+          className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-sm text-foreground hover:bg-muted transition-colors">
+
+          <HelpCircle className="h-5 w-5 text-primary" />
+          Dúvidas sobre a cotação?
+        </a>
+        <a
+          href="https://wa.me/5500000000000"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-sm text-foreground hover:bg-muted transition-colors">
+
+          <MessageCircle className="h-5 w-5 text-primary" />
+          Atendimento pelo WhatsApp
+        </a>
       </div>
 
       {/* Social + Footer */}
@@ -97,8 +64,8 @@ const Landing = () => {
           © 2026 SAVE CAR BRASIL. Todos os direitos reservados.
         </p>
       </footer>
-    </div>
-  );
+    </div>);
+
 };
 
 export default Landing;

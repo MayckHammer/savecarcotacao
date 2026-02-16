@@ -11,7 +11,6 @@ import WhatsAppButton from "@/components/WhatsAppButton";
 import { useQuote } from "@/contexts/QuoteContext";
 import { maskCardNumber, maskExpiry, maskCVV } from "@/lib/masks";
 import { supabase } from "@/integrations/supabase/client";
-import LiquidGlass from "liquid-glass-react";
 
 const Payment = () => {
   const navigate = useNavigate();
@@ -65,7 +64,7 @@ const Payment = () => {
   const isFormValid = acceptTerms && (paymentMethod === "pix" || (!!cardNumber && !!expiry && !!cvv && !!cardName));
 
   return (
-    <div className="flex min-h-screen flex-col bg-savecar-gradient pb-20">
+    <div className="flex min-h-screen flex-col bg-background pb-20">
       <Header dark />
 
       <div className="flex-1 px-4 py-6 space-y-4">
@@ -93,57 +92,37 @@ const Payment = () => {
         </div>
 
         {/* Coverage Summary */}
-        <LiquidGlass
-          displacementScale={40}
-          blurAmount={0.08}
-          saturation={140}
-          aberrationIntensity={1}
-          elasticity={0.2}
-          cornerRadius={16}
-          overLight={true}
-        >
-          <Card className="border-border bg-card/80">
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Resumo da contratação</p>
-              {selectedCoverages.map((name, i) => (
-                <div key={i} className="flex items-center gap-2 py-1">
-                  <Check className="h-4 w-4 text-primary" />
-                  <span className="text-sm text-foreground">{name}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </LiquidGlass>
+        <Card className="border-border">
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Resumo da contratação</p>
+            {selectedCoverages.map((name, i) => (
+              <div key={i} className="flex items-center gap-2 py-1">
+                <Check className="h-4 w-4 text-primary" />
+                <span className="text-sm text-foreground">{name}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
         {/* Price Summary */}
-        <LiquidGlass
-          displacementScale={40}
-          blurAmount={0.08}
-          saturation={140}
-          aberrationIntensity={1}
-          elasticity={0.2}
-          cornerRadius={16}
-          overLight={true}
-        >
-          <Card className="border-border bg-card/80">
-            <CardContent className="p-4 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{quote.billingPeriod === "monthly" ? "Mensalidade" : "Anuidade"}</span>
-                <span className="font-semibold">R$ {total.toFixed(2).replace(".", ",")}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Taxa de ativação</span>
-                <span className="font-semibold">R$ {quote.activationFee.toFixed(2).replace(".", ",")}</span>
-              </div>
-              <div className="flex justify-between border-t border-border pt-2">
-                <span className="font-bold">Total</span>
-                <span className="font-bold text-primary text-lg">
-                  R$ {(total + quote.activationFee).toFixed(2).replace(".", ",")}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </LiquidGlass>
+        <Card className="border-border">
+          <CardContent className="p-4 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{quote.billingPeriod === "monthly" ? "Mensalidade" : "Anuidade"}</span>
+              <span className="font-semibold">R$ {total.toFixed(2).replace(".", ",")}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Taxa de ativação</span>
+              <span className="font-semibold">R$ {quote.activationFee.toFixed(2).replace(".", ",")}</span>
+            </div>
+            <div className="flex justify-between border-t border-border pt-2">
+              <span className="font-bold">Total</span>
+              <span className="font-bold text-primary text-lg">
+                R$ {(total + quote.activationFee).toFixed(2).replace(".", ",")}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Payment Method Tabs */}
         <div className="space-y-4">
