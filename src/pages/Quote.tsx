@@ -1,26 +1,118 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ArrowLeft, AlertCircle, Check, Loader2, Car } from "lucide-react";
+import { ArrowRight, ArrowLeft, AlertCircle, Loader2, Car } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/Header";
 import ProgressSteps from "@/components/ProgressSteps";
 import { useQuote } from "@/contexts/QuoteContext";
 import { maskCPF, maskPhone, maskCEP, maskPlate, validateCPF } from "@/lib/masks";
 import { supabase } from "@/integrations/supabase/client";
 
+interface FipeOption {
+  code: string;
+  name: string;
+}
+
 const Quote = () => {
   const navigate = useNavigate();
   const { quote, updatePersonal, updateVehicle, updateAddress } = useQuote();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [plateLoading, setPlateLoading] = useState(false);
-  const [plateError, setPlateError] = useState("");
+
+  // FIPE cascade state
+  const [brands, setBrands] = useState<FipeOption[]>([]);
+  const [models, setModels] = useState<FipeOption[]>([]);
+  const [years, setYears] = useState<FipeOption[]>([]);
+  const [brandsLoading, setBrandsLoading] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [yearsLoading, setYearsLoading] = useState(false);
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [fipeError, setFipeError] = useState("");
+
+  const callFipe = useCallback(async (action: string, params: Record<string, string> = {}) => {
+    const { data, error } = await supabase.functions.invoke("consulta-placa", {
+      body: { action, ...params },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }, []);
+
+  // Load brands on mount
+  useEffect(() => {
+    const load = async () => {
+      setBrandsLoading(true);
+      try {
+        const data = await callFipe("brands");
+        setBrands(data.map((b: any) => ({ code: String(b.code), name: b.name })));
+      } catch {
+        setFipeError("Erro ao carregar marcas.");
+      } finally {
+        setBrandsLoading(false);
+      }
+    };
+    load();
+  }, [callFipe]);
+
+  const handleBrandChange = async (brandCode: string) => {
+    const brand = brands.find(b => b.code === brandCode);
+    updateVehicle({ brandCode, brand: brand?.name || "", modelCode: "", model: "", yearCode: "", year: "", fipeValue: 0, fipeFormatted: "" });
+    setModels([]);
+    setYears([]);
+    setFipeError("");
+    setModelsLoading(true);
+    try {
+      const data = await callFipe("models", { brandCode });
+      setModels(data.map((m: any) => ({ code: String(m.code), name: m.name })));
+    } catch {
+      setFipeError("Erro ao carregar modelos.");
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
+  const handleModelChange = async (modelCode: string) => {
+    const model = models.find(m => m.code === modelCode);
+    updateVehicle({ modelCode, model: model?.name || "", yearCode: "", year: "", fipeValue: 0, fipeFormatted: "" });
+    setYears([]);
+    setFipeError("");
+    setYearsLoading(true);
+    try {
+      const data = await callFipe("years", { brandCode: quote.vehicle.brandCode, modelCode });
+      setYears(data.map((y: any) => ({ code: String(y.code), name: y.name })));
+    } catch {
+      setFipeError("Erro ao carregar anos.");
+    } finally {
+      setYearsLoading(false);
+    }
+  };
+
+  const handleYearChange = async (yearCode: string) => {
+    const year = years.find(y => y.code === yearCode);
+    updateVehicle({ yearCode, year: year?.name || "" });
+    setFipeError("");
+    setPriceLoading(true);
+    try {
+      const data = await callFipe("price", { brandCode: quote.vehicle.brandCode, modelCode: quote.vehicle.modelCode, yearCode });
+      updateVehicle({
+        yearCode,
+        year: year?.name || "",
+        fipeValue: data.price || 0,
+        fipeFormatted: data.price ? `R$ ${Number(data.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "",
+        brand: data.brand || quote.vehicle.brand,
+        model: data.model || quote.vehicle.model,
+      });
+    } catch {
+      setFipeError("Erro ao consultar valor FIPE.");
+    } finally {
+      setPriceLoading(false);
+    }
+  };
 
   const validateStep1 = () => {
     const e: Record<string, string> = {};
@@ -34,7 +126,10 @@ const Quote = () => {
 
   const validateStep2 = () => {
     const e: Record<string, string> = {};
-    if (quote.vehicle.plate.replace(/\D/g, "").length < 7 && quote.vehicle.plate.length < 7) e.plate = "Placa inválida";
+    if (quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").length < 7) e.plate = "Placa inválida";
+    if (!quote.vehicle.brandCode) e.brand = "Selecione a marca";
+    if (!quote.vehicle.modelCode) e.model = "Selecione o modelo";
+    if (!quote.vehicle.yearCode) e.year = "Selecione o ano";
     if (!quote.vehicle.type) e.type = "Selecione o tipo";
     if (!quote.vehicle.usage) e.usage = "Selecione o uso";
     setErrors(e);
@@ -55,10 +150,8 @@ const Quote = () => {
 
   const handleNext = () => {
     if (step === 1 && validateStep1()) setStep(2);
-    else if (step === 2 && validateStep2()) {
-      if (!quote.vehicle.model) updateVehicle({ model: "Modelo Identificado (placeholder)" });
-      setStep(3);
-    } else if (step === 3 && validateStep3()) navigate("/resultado");
+    else if (step === 2 && validateStep2()) setStep(3);
+    else if (step === 3 && validateStep3()) navigate("/resultado");
   };
 
   const handleBack = () => {
@@ -81,47 +174,6 @@ const Quote = () => {
           });
         }
       } catch {}
-    }
-  };
-
-  const fetchPlateData = async (plate: string) => {
-    const clean = plate.replace(/[^A-Za-z0-9]/g, "");
-    if (clean.length !== 7) return;
-
-    setPlateLoading(true);
-    setPlateError("");
-
-    try {
-      const { data, error } = await supabase.functions.invoke("consulta-placa", {
-        body: { plate: clean },
-      });
-
-      if (error) throw error;
-
-      if (data && !data.error) {
-        updateVehicle({
-          brand: data.brand,
-          model: data.model,
-          year: data.year,
-          color: data.color,
-          fipeValue: data.fipeValue,
-          fipeFormatted: data.fipeFormatted,
-        });
-      } else {
-        setPlateError(data?.error || "Placa não encontrada");
-      }
-    } catch {
-      setPlateError("Erro ao consultar placa. Preencha os dados manualmente.");
-    } finally {
-      setPlateLoading(false);
-    }
-  };
-
-  const handlePlateChange = (value: string) => {
-    const masked = maskPlate(value);
-    updateVehicle({ plate: masked });
-    if (masked.length === 7) {
-      fetchPlateData(masked);
     }
   };
 
@@ -167,46 +219,91 @@ const Quote = () => {
         {step === 2 && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-foreground">Dados do Veículo</h2>
+            
             <div>
               <Label>Placa do veículo</Label>
               <Input
                 placeholder="ABC1D23"
                 value={quote.vehicle.plate}
-                onChange={(e) => handlePlateChange(e.target.value)}
+                onChange={(e) => updateVehicle({ plate: maskPlate(e.target.value) })}
               />
               <ErrorMsg field="plate" />
             </div>
 
-            {/* Loading state */}
-            {plateLoading && (
-              <Card className="border-border">
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Consultando placa...</span>
-                  </div>
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-4 w-1/2" />
-                  <Skeleton className="h-4 w-2/3" />
-                </CardContent>
-              </Card>
-            )}
+            {/* Marca */}
+            <div>
+              <Label>Marca</Label>
+              <Select value={quote.vehicle.brandCode} onValueChange={handleBrandChange} disabled={brandsLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={brandsLoading ? "Carregando marcas..." : "Selecione a marca"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {brands.map((b) => (
+                    <SelectItem key={b.code} value={b.code}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {brandsLoading && <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando...</p>}
+              <ErrorMsg field="brand" />
+            </div>
 
-            {/* Error state */}
-            {plateError && !plateLoading && (
-              <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                <span>{plateError}</span>
+            {/* Modelo */}
+            <div>
+              <Label>Modelo</Label>
+              <Select value={quote.vehicle.modelCode} onValueChange={handleModelChange} disabled={!quote.vehicle.brandCode || modelsLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={modelsLoading ? "Carregando modelos..." : "Selecione o modelo"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {models.map((m) => (
+                    <SelectItem key={m.code} value={m.code}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {modelsLoading && <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando...</p>}
+              <ErrorMsg field="model" />
+            </div>
+
+            {/* Ano */}
+            <div>
+              <Label>Ano</Label>
+              <Select value={quote.vehicle.yearCode} onValueChange={handleYearChange} disabled={!quote.vehicle.modelCode || yearsLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={yearsLoading ? "Carregando anos..." : "Selecione o ano"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((y) => (
+                    <SelectItem key={y.code} value={y.code}>{y.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {yearsLoading && <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando...</p>}
+              <ErrorMsg field="year" />
+            </div>
+
+            {/* FIPE Price Loading */}
+            {priceLoading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground p-3">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Consultando valor FIPE...</span>
               </div>
             )}
 
-            {/* Vehicle data found */}
-            {quote.vehicle.brand && !plateLoading && !plateError && (
+            {/* FIPE Error */}
+            {fipeError && (
+              <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                <span>{fipeError}</span>
+              </div>
+            )}
+
+            {/* FIPE Value Card */}
+            {quote.vehicle.fipeFormatted && !priceLoading && !fipeError && (
               <Card className="border-primary/30 bg-primary/5">
                 <CardContent className="p-4 space-y-2">
                   <div className="flex items-center gap-2 text-primary font-semibold text-sm">
                     <Car className="h-4 w-4" />
-                    <span>Veículo identificado</span>
+                    <span>Valor FIPE</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
@@ -221,20 +318,15 @@ const Quote = () => {
                       <p className="text-muted-foreground text-xs">Modelo</p>
                       <p className="font-medium text-foreground">{quote.vehicle.model}</p>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground text-xs">Cor</p>
-                      <p className="font-medium text-foreground">{quote.vehicle.color}</p>
-                    </div>
-                    <div>
+                    <div className="col-span-2">
                       <p className="text-muted-foreground text-xs">Valor FIPE</p>
-                      <p className="font-bold text-primary">{quote.vehicle.fipeFormatted}</p>
+                      <p className="font-bold text-primary text-lg">{quote.vehicle.fipeFormatted}</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             )}
 
-            <a href="#" className="text-xs text-primary underline">Algum problema com a placa?</a>
             <div>
               <Label>Tipo do veículo</Label>
               <Select value={quote.vehicle.type} onValueChange={(v) => updateVehicle({ type: v })}>
@@ -318,7 +410,6 @@ const Quote = () => {
           </div>
         )}
 
-        {/* Navigation Buttons */}
         <div className="flex gap-3 mt-8">
           <Button variant="outline" onClick={handleBack} className="flex-1 h-12 rounded-xl">
             <ArrowLeft className="mr-2 h-4 w-4" />
