@@ -34,6 +34,14 @@ const Quote = () => {
   const [priceLoading, setPriceLoading] = useState(false);
   const [fipeError, setFipeError] = useState("");
 
+  const vehicleTypeMap: Record<string, string> = {
+    carro: 'cars',
+    moto: 'motorcycles',
+    caminhao: 'trucks',
+  };
+
+  const getApiType = () => vehicleTypeMap[quote.vehicle.type] || 'cars';
+
   const callFipe = useCallback(async (action: string, params: Record<string, string> = {}) => {
     const { data, error } = await supabase.functions.invoke("consulta-placa", {
       body: { action, ...params },
@@ -43,21 +51,32 @@ const Quote = () => {
     return data;
   }, []);
 
+  const loadBrands = useCallback(async (apiType: string) => {
+    setBrandsLoading(true);
+    setBrands([]);
+    setModels([]);
+    setYears([]);
+    setFipeError("");
+    try {
+      const data = await callFipe("brands", { vehicleType: apiType });
+      setBrands(data.map((b: any) => ({ code: String(b.code), name: b.name })));
+    } catch {
+      setFipeError("Erro ao carregar marcas.");
+    } finally {
+      setBrandsLoading(false);
+    }
+  }, [callFipe]);
+
   // Load brands on mount
   useEffect(() => {
-    const load = async () => {
-      setBrandsLoading(true);
-      try {
-        const data = await callFipe("brands");
-        setBrands(data.map((b: any) => ({ code: String(b.code), name: b.name })));
-      } catch {
-        setFipeError("Erro ao carregar marcas.");
-      } finally {
-        setBrandsLoading(false);
-      }
-    };
-    load();
-  }, [callFipe]);
+    loadBrands(getApiType());
+  }, []);
+
+  const handleTypeChange = (type: string) => {
+    updateVehicle({ type, brandCode: "", brand: "", modelCode: "", model: "", yearCode: "", year: "", fipeValue: 0, fipeFormatted: "" });
+    const apiType = vehicleTypeMap[type] || 'cars';
+    loadBrands(apiType);
+  };
 
   const handleBrandChange = async (brandCode: string) => {
     const brand = brands.find(b => b.code === brandCode);
@@ -67,7 +86,7 @@ const Quote = () => {
     setFipeError("");
     setModelsLoading(true);
     try {
-      const data = await callFipe("models", { brandCode });
+      const data = await callFipe("models", { brandCode, vehicleType: getApiType() });
       setModels(data.map((m: any) => ({ code: String(m.code), name: m.name })));
     } catch {
       setFipeError("Erro ao carregar modelos.");
@@ -83,7 +102,7 @@ const Quote = () => {
     setFipeError("");
     setYearsLoading(true);
     try {
-      const data = await callFipe("years", { brandCode: quote.vehicle.brandCode, modelCode });
+      const data = await callFipe("years", { brandCode: quote.vehicle.brandCode, modelCode, vehicleType: getApiType() });
       setYears(data.map((y: any) => ({ code: String(y.code), name: y.name })));
     } catch {
       setFipeError("Erro ao carregar anos.");
@@ -98,12 +117,15 @@ const Quote = () => {
     setFipeError("");
     setPriceLoading(true);
     try {
-      const data = await callFipe("price", { brandCode: quote.vehicle.brandCode, modelCode: quote.vehicle.modelCode, yearCode });
+      const data = await callFipe("price", { brandCode: quote.vehicle.brandCode, modelCode: quote.vehicle.modelCode, yearCode, vehicleType: getApiType() });
+      // data.price comes as formatted BRL string like "R$ 28.152,00"
+      const priceStr = String(data.price || "");
+      const numericValue = Number(priceStr.replace(/[R$\s.]/g, "").replace(",", ".")) || 0;
       updateVehicle({
         yearCode,
         year: year?.name || "",
-        fipeValue: data.price || 0,
-        fipeFormatted: data.price ? `R$ ${Number(data.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "",
+        fipeValue: numericValue,
+        fipeFormatted: priceStr || "",
         brand: data.brand || quote.vehicle.brand,
         model: data.model || quote.vehicle.model,
       });
@@ -230,6 +252,20 @@ const Quote = () => {
               <ErrorMsg field="plate" />
             </div>
 
+            {/* Tipo do veículo */}
+            <div>
+              <Label>Tipo do veículo</Label>
+              <Select value={quote.vehicle.type} onValueChange={handleTypeChange}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="carro">Carro</SelectItem>
+                  <SelectItem value="moto">Moto</SelectItem>
+                  <SelectItem value="caminhao">Caminhão / Pick-up</SelectItem>
+                </SelectContent>
+              </Select>
+              <ErrorMsg field="type" />
+            </div>
+
             {/* Marca */}
             <div>
               <Label>Marca</Label>
@@ -326,19 +362,6 @@ const Quote = () => {
                 </CardContent>
               </Card>
             )}
-
-            <div>
-              <Label>Tipo do veículo</Label>
-              <Select value={quote.vehicle.type} onValueChange={(v) => updateVehicle({ type: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="carro">Carro</SelectItem>
-                  <SelectItem value="moto">Moto</SelectItem>
-                  <SelectItem value="suv">Pick-up / Caminhonete / SUV</SelectItem>
-                </SelectContent>
-              </Select>
-              <ErrorMsg field="type" />
-            </div>
             <div>
               <Label>Uso do veículo</Label>
               <Select value={quote.vehicle.usage} onValueChange={(v) => updateVehicle({ usage: v })}>
