@@ -25,7 +25,7 @@ const Admin = () => {
   const [linkInputs, setLinkInputs] = useState<Record<string, string>>({});
   const [updating, setUpdating] = useState<string | null>(null);
 
-  const ADMIN_PASSWORD = "savecar2024";
+  const ADMIN_PASSWORD = "Save@2026";
 
   const handleLogin = () => {
     if (password === ADMIN_PASSWORD) {
