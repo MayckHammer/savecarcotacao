@@ -134,6 +134,28 @@ const Inspection = () => {
             Atualizando automaticamente...
           </div>
         )}
+
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#25D366]/10">
+            <svg viewBox="0 0 32 32" className="h-5 w-5 fill-[#25D366]">
+              <path d="M16.004 0h-.008C7.174 0 0 7.176 0 16.004c0 3.5 1.132 6.744 3.054 9.378L1.056 31.4l6.246-1.968a15.916 15.916 0 008.702 2.572C24.828 32 32 24.826 32 16.004 32 7.176 24.828 0 16.004 0zm9.318 22.614c-.39 1.098-1.936 2.01-3.152 2.276-.834.178-1.922.32-5.588-1.2-4.694-1.946-7.71-6.706-7.944-7.016-.226-.31-1.846-2.46-1.846-4.692 0-2.232 1.168-3.328 1.584-3.784.39-.426 1.036-.618 1.652-.618.198 0 .376.01.536.018.456.02.684.046.984.762.376.896 1.292 3.148 1.404 3.376.114.228.228.534.066.844-.152.318-.284.516-.512.79-.228.274-.47.484-.698.778-.206.258-.44.534-.186.996.252.456 1.122 1.85 2.41 2.996 1.66 1.476 3.058 1.936 3.492 2.148.342.166.75.14.996-.114.312-.324.7-.862 1.092-1.394.278-.378.63-.424.998-.282.376.136 2.374 1.12 2.782 1.324.408.206.678.304.778.476.098.172.098.998-.292 2.096z"/>
+            </svg>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Você receberá as informações da vistoria no WhatsApp cadastrado:{" "}
+            <span className="font-semibold text-foreground">
+              {(() => {
+                const phone = quote.personal.phone.replace(/\D/g, "");
+                if (phone.length >= 10) {
+                  const ddd = phone.slice(0, 2);
+                  const last4 = phone.slice(-4);
+                  return `(${ddd}) ${"*".repeat(phone.length - 6)}-${last4}`;
+                }
+                return phone || "—";
+              })()}
+            </span>
+          </p>
+        </div>
       </div>
 
       <WhatsAppButton />
