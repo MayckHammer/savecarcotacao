@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, Check, Tag, Lock, ChevronDown, ChevronUp, Shield, Star } from "lucide-react";
+import { ArrowRight, Check, Tag, Lock, ChevronDown, ChevronUp, Shield, Star, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
+import PaymentMethodSelector from "@/components/PaymentMethodSelector";
+import CardForm from "@/components/CardForm";
+import FinancialSummary from "@/components/FinancialSummary";
 import { useQuote, PLAN_COVERAGES, PlanName } from "@/contexts/QuoteContext";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -18,7 +20,6 @@ const PlanDetails = () => {
   const [couponInput, setCouponInput] = useState(quote.coupon);
   const [submitting, setSubmitting] = useState(false);
 
-  const total = getTotal();
   const coverages = PLAN_COVERAGES[quote.planName];
 
   return (
@@ -125,27 +126,27 @@ const PlanDetails = () => {
           </button>
         </div>
 
+        {/* Payment Method Selector */}
+        <PaymentMethodSelector />
+
+        {/* Conditional: Card Form or PIX Info */}
+        {quote.paymentMethod === "credit" ? (
+          <CardForm />
+        ) : (
+          <Card className="border-border">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">PIX / Boleto</span>
+              </div>
+              <p className="text-xs text-muted-foreground">• Adesão paga via PIX</p>
+              <p className="text-xs text-muted-foreground">• 11 boletos mensais enviados por e-mail</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Financial Summary */}
-        <Card className="border-border">
-          <CardContent className="p-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">
-                Plano {quote.planName} — {quote.billingPeriod === "monthly" ? "Mensal" : "Anual"}
-              </span>
-              <span className="font-semibold text-foreground">R$ {total.toFixed(2).replace(".", ",")}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Taxa de ativação</span>
-              <span className="font-semibold text-foreground">R$ {quote.activationFee.toFixed(2).replace(".", ",")}</span>
-            </div>
-            <div className="flex justify-between border-t border-border pt-2">
-              <span className="font-bold text-foreground">Total</span>
-              <span className="font-bold text-primary text-lg">
-                R$ {(total + quote.activationFee).toFixed(2).replace(".", ",")}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+        <FinancialSummary />
 
         {/* Coupon */}
         <div className="flex gap-2">
@@ -183,6 +184,7 @@ const PlanDetails = () => {
                   plan: {
                     billingPeriod: quote.billingPeriod,
                     planName: quote.planName,
+                    paymentMethod: quote.paymentMethod,
                     total: totalValue,
                     activationFee: quote.activationFee,
                     coverages: PLAN_COVERAGES[quote.planName],

@@ -3,19 +3,22 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, Check, CreditCard, Lock, ChevronDown, ChevronUp, QrCode, Copy, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
+import CardForm from "@/components/CardForm";
+import FinancialSummary from "@/components/FinancialSummary";
 import { useQuote } from "@/contexts/QuoteContext";
-import { maskCardNumber, maskExpiry, maskCVV } from "@/lib/masks";
 import { supabase } from "@/integrations/supabase/client";
 
 const Payment = () => {
   const navigate = useNavigate();
   const { quote, getTotal } = useQuote();
   const [showUserInfo, setShowUserInfo] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [pixCopied, setPixCopied] = useState(false);
+
+  const pixKey = "savecar@savecar.com.br";
 
   // Gate: check inspection is approved
   useEffect(() => {
@@ -36,15 +39,6 @@ const Payment = () => {
     };
     check();
   }, [navigate, quote.sessionId]);
-  const [paymentMethod, setPaymentMethod] = useState<"credit" | "pix">("credit");
-  const [cardNumber, setCardNumber] = useState("");
-  const [expiry, setExpiry] = useState("");
-  const [cvv, setCvv] = useState("");
-  const [cardName, setCardName] = useState("");
-  const [acceptTerms, setAcceptTerms] = useState(false);
-  const [pixCopied, setPixCopied] = useState(false);
-
-  const pixKey = "savecar@savecar.com.br";
 
   const handleCopyPix = () => {
     navigator.clipboard.writeText(pixKey);
@@ -53,15 +47,14 @@ const Payment = () => {
   };
 
   const total = getTotal();
-  const selectedCoverages = ["Plano " + quote.planName];
 
   const handleFinalize = () => {
     if (!acceptTerms) return;
-    if (paymentMethod === "credit" && (!cardNumber || !expiry || !cvv || !cardName)) return;
+    if (quote.paymentMethod === "credit" && (!quote.cardNumber || !quote.cardExpiry || !quote.cardCvv || !quote.cardName)) return;
     navigate("/confirmacao");
   };
 
-  const isFormValid = acceptTerms && (paymentMethod === "pix" || (!!cardNumber && !!expiry && !!cvv && !!cardName));
+  const isFormValid = acceptTerms && (quote.paymentMethod === "pix" || (!!quote.cardNumber && !!quote.cardExpiry && !!quote.cardCvv && !!quote.cardName));
 
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
@@ -95,137 +88,65 @@ const Payment = () => {
         <Card className="border-border">
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Resumo da contratação</p>
-            {selectedCoverages.map((name, i) => (
-              <div key={i} className="flex items-center gap-2 py-1">
-                <Check className="h-4 w-4 text-primary" />
-                <span className="text-sm text-foreground">{name}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Price Summary */}
-        <Card className="border-border">
-          <CardContent className="p-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">{quote.billingPeriod === "monthly" ? "Mensalidade" : "Anuidade"}</span>
-              <span className="font-semibold">R$ {total.toFixed(2).replace(".", ",")}</span>
+            <div className="flex items-center gap-2 py-1">
+              <Check className="h-4 w-4 text-primary" />
+              <span className="text-sm text-foreground">Plano {quote.planName}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Taxa de ativação</span>
-              <span className="font-semibold">R$ {quote.activationFee.toFixed(2).replace(".", ",")}</span>
-            </div>
-            <div className="flex justify-between border-t border-border pt-2">
-              <span className="font-bold">Total</span>
-              <span className="font-bold text-primary text-lg">
-                R$ {(total + quote.activationFee).toFixed(2).replace(".", ",")}
+            <div className="flex items-center gap-2 py-1">
+              <Check className="h-4 w-4 text-primary" />
+              <span className="text-sm text-foreground">
+                {quote.paymentMethod === "credit" ? "Cartão de Crédito (10% OFF)" : "PIX / Boleto (Carnê)"}
               </span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Payment Method Tabs */}
-        <div className="space-y-4">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPaymentMethod("credit")}
-              className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold border-2 transition-all ${
-                paymentMethod === "credit"
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-background text-muted-foreground"
-              }`}
-            >
-              <CreditCard className="h-4 w-4" />
-              Cartão de crédito
-            </button>
-            <button
-              onClick={() => setPaymentMethod("pix")}
-              className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold border-2 transition-all ${
-                paymentMethod === "pix"
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-background text-muted-foreground"
-              }`}
-            >
-              <QrCode className="h-4 w-4" />
-              PIX
-            </button>
-          </div>
+        {/* Financial Summary */}
+        <FinancialSummary />
 
-          {paymentMethod === "credit" ? (
-            <div className="space-y-4">
-              <div>
-                <Label>Número do cartão</Label>
-                <Input
-                  placeholder="0000 0000 0000 0000"
-                  value={cardNumber}
-                  onChange={(e) => setCardNumber(maskCardNumber(e.target.value))}
-                />
+        {/* Payment details based on method chosen in /detalhes */}
+        {quote.paymentMethod === "credit" ? (
+          <div className="space-y-2">
+            <h3 className="text-sm font-bold text-foreground">Dados do cartão</h3>
+            <CardForm />
+          </div>
+        ) : (
+          <Card className="border-border">
+            <CardContent className="p-6 space-y-4 flex flex-col items-center text-center">
+              <div className="w-48 h-48 bg-muted rounded-xl flex items-center justify-center border-2 border-dashed border-border">
+                <QrCode className="h-24 w-24 text-muted-foreground/50" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Validade</Label>
-                  <Input
-                    placeholder="MM/AA"
-                    value={expiry}
-                    onChange={(e) => setExpiry(maskExpiry(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <Label>CVV</Label>
-                  <Input
-                    placeholder="000"
-                    value={cvv}
-                    onChange={(e) => setCvv(maskCVV(e.target.value))}
-                  />
-                </div>
+              <p className="text-sm text-muted-foreground">
+                Escaneie o QR Code acima ou copie a chave PIX abaixo
+              </p>
+              <div className="w-full bg-muted rounded-lg p-3 flex items-center justify-between gap-2">
+                <span className="text-xs text-foreground font-mono truncate">{pixKey}</span>
+                <button
+                  onClick={handleCopyPix}
+                  className="shrink-0 flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+                >
+                  {pixCopied ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      Copiado!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4" />
+                      Copiar
+                    </>
+                  )}
+                </button>
               </div>
-              <div>
-                <Label>Nome do titular</Label>
-                <Input
-                  placeholder="Nome como está no cartão"
-                  value={cardName}
-                  onChange={(e) => setCardName(e.target.value.toUpperCase())}
-                />
-              </div>
-            </div>
-          ) : (
-            <Card className="border-border">
-              <CardContent className="p-6 space-y-4 flex flex-col items-center text-center">
-                <div className="w-48 h-48 bg-muted rounded-xl flex items-center justify-center border-2 border-dashed border-border">
-                  <QrCode className="h-24 w-24 text-muted-foreground/50" />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Escaneie o QR Code acima ou copie a chave PIX abaixo
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Valor da adesão via PIX</p>
+                <p className="text-2xl font-bold text-primary">
+                  R$ {quote.activationFee.toFixed(2).replace(".", ",")}
                 </p>
-                <div className="w-full bg-muted rounded-lg p-3 flex items-center justify-between gap-2">
-                  <span className="text-xs text-foreground font-mono truncate">{pixKey}</span>
-                  <button
-                    onClick={handleCopyPix}
-                    className="shrink-0 flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
-                  >
-                    {pixCopied ? (
-                      <>
-                        <CheckCircle2 className="h-4 w-4" />
-                        Copiado!
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-4 w-4" />
-                        Copiar
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Valor total a pagar</p>
-                  <p className="text-2xl font-bold text-primary">
-                    R$ {(total + quote.activationFee).toFixed(2).replace(".", ",")}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Terms */}
         <div className="flex items-start gap-3">

@@ -91,6 +91,11 @@ export interface QuoteData {
   vehicleValue: string;
   billingPeriod: "monthly" | "annual";
   planName: PlanName;
+  paymentMethod: "credit" | "pix";
+  cardNumber: string;
+  cardExpiry: string;
+  cardCvv: string;
+  cardName: string;
   coupon: string;
   sessionId: string;
 }
@@ -105,6 +110,11 @@ const defaultQuote: QuoteData = {
   vehicleValue: "R$ 50.000 — R$ 70.000",
   billingPeriod: "monthly",
   planName: "COMPLETO",
+  paymentMethod: "credit",
+  cardNumber: "",
+  cardExpiry: "",
+  cardCvv: "",
+  cardName: "",
   sessionId: localStorage.getItem("savecar_session_id") || "",
   coupon: "",
 };
@@ -116,10 +126,13 @@ interface QuoteContextType {
   updateAddress: (data: Partial<AddressData>) => void;
   setBillingPeriod: (period: "monthly" | "annual") => void;
   setPlanName: (plan: PlanName) => void;
+  setPaymentMethod: (method: "credit" | "pix") => void;
+  updateCard: (data: Partial<Pick<QuoteData, "cardNumber" | "cardExpiry" | "cardCvv" | "cardName">>) => void;
   setCoupon: (coupon: string) => void;
   setSessionId: (id: string) => void;
   resetQuote: () => void;
   getTotal: () => number;
+  getSubtotalWithoutDiscount: () => number;
 }
 
 const QuoteContext = createContext<QuoteContextType | undefined>(undefined);
@@ -142,6 +155,12 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
   const setPlanName = (planName: PlanName) =>
     setQuote((prev) => ({ ...prev, planName }));
 
+  const setPaymentMethod = (paymentMethod: "credit" | "pix") =>
+    setQuote((prev) => ({ ...prev, paymentMethod }));
+
+  const updateCard = (data: Partial<Pick<QuoteData, "cardNumber" | "cardExpiry" | "cardCvv" | "cardName">>) =>
+    setQuote((prev) => ({ ...prev, ...data }));
+
   const setCoupon = (coupon: string) => setQuote((prev) => ({ ...prev, coupon }));
 
   const setSessionId = (id: string) => {
@@ -151,16 +170,21 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
 
   const resetQuote = () => setQuote(defaultQuote);
 
-  const getTotal = () => {
+  const getSubtotalWithoutDiscount = () => {
     const base = quote.billingPeriod === "monthly" ? quote.monthlyPrice : quote.annualPrice;
-    // PREMIUM adds a surcharge
     const planMultiplier = quote.planName === "PREMIUM" ? 1.35 : 1;
     return base * planMultiplier;
   };
 
+  const getTotal = () => {
+    const subtotal = getSubtotalWithoutDiscount();
+    const discount = quote.paymentMethod === "credit" ? 0.9 : 1;
+    return subtotal * discount;
+  };
+
   return (
     <QuoteContext.Provider
-      value={{ quote, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setCoupon, setSessionId, resetQuote, getTotal }}
+      value={{ quote, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setPaymentMethod, updateCard, setCoupon, setSessionId, resetQuote, getTotal, getSubtotalWithoutDiscount }}
     >
       {children}
     </QuoteContext.Provider>
