@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
 
     // Phone: digits only
     const phone = (personal.phone || "").replace(/\D/g, "");
+    const cpfDigits = (personal.cpf || "").replace(/\D/g, "");
 
     // Build CRM payload
     const crmPayload: Record<string, unknown> = {
@@ -110,6 +111,8 @@ Deno.serve(async (req) => {
       funnelStage: "6834bcae-ecd3-4387-8bc2-dfd03dbaea0c",
       pwrClntNm: personal.name || "",
       pwrCltPhn: phone,
+      pwrClntCpf: cpfDigits,
+      pwrClntEml: personal.email || "",
       pwrVhclPlt: vehicle.plate || "",
       pwrVhclTyp: VEHICLE_TYPE_MAP[vehicle.type?.toLowerCase()] || 1,
       pwrVhclSWrk: vehicle.usage === "aplicativo",
