@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Check, CreditCard, Lock, ChevronDown, ChevronUp, QrCode, Copy, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Check, CreditCard, Lock, ChevronDown, ChevronUp, QrCode, Copy, CheckCircle2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
-import CardForm from "@/components/CardForm";
 import FinancialSummary from "@/components/FinancialSummary";
 import { useQuote } from "@/contexts/QuoteContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,11 +49,8 @@ const Payment = () => {
 
   const handleFinalize = () => {
     if (!acceptTerms) return;
-    if (quote.paymentMethod === "credit" && (!quote.cardNumber || !quote.cardExpiry || !quote.cardCvv || !quote.cardName)) return;
     navigate("/confirmacao");
   };
-
-  const isFormValid = acceptTerms && (quote.paymentMethod === "pix" || (!!quote.cardNumber && !!quote.cardExpiry && !!quote.cardCvv && !!quote.cardName));
 
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
@@ -104,49 +100,50 @@ const Payment = () => {
         {/* Financial Summary */}
         <FinancialSummary />
 
-        {/* Payment details based on method chosen in /detalhes */}
-        {quote.paymentMethod === "credit" ? (
-          <div className="space-y-2">
-            <h3 className="text-sm font-bold text-foreground">Dados do cartão</h3>
-            <CardForm />
-          </div>
-        ) : (
-          <Card className="border-border">
-            <CardContent className="p-6 space-y-4 flex flex-col items-center text-center">
-              <div className="w-48 h-48 bg-muted rounded-xl flex items-center justify-center border-2 border-dashed border-border">
-                <QrCode className="h-24 w-24 text-muted-foreground/50" />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Escaneie o QR Code acima ou copie a chave PIX abaixo
+        {/* Payment info based on selected method */}
+        <Card className="border-border">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              {quote.paymentMethod === "credit" ? (
+                <CreditCard className="h-4 w-4 text-primary" />
+              ) : (
+                <FileText className="h-4 w-4 text-primary" />
+              )}
+              <span className="text-sm font-semibold text-foreground">
+                {quote.paymentMethod === "credit" ? "Cartão de Crédito" : "PIX / Boleto"}
+              </span>
+            </div>
+            {quote.paymentMethod === "credit" ? (
+              <p className="text-xs text-muted-foreground">
+                Os dados do cartão serão solicitados pela nossa equipe após a aprovação da vistoria. Você receberá as instruções via WhatsApp.
               </p>
-              <div className="w-full bg-muted rounded-lg p-3 flex items-center justify-between gap-2">
-                <span className="text-xs text-foreground font-mono truncate">{pixKey}</span>
-                <button
-                  onClick={handleCopyPix}
-                  className="shrink-0 flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
-                >
-                  {pixCopied ? (
-                    <>
-                      <CheckCircle2 className="h-4 w-4" />
-                      Copiado!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-4 w-4" />
-                      Copiar
-                    </>
-                  )}
-                </button>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">Valor da adesão via PIX</p>
-                <p className="text-2xl font-bold text-primary">
-                  R$ {quote.activationFee.toFixed(2).replace(".", ",")}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">• Adesão: R$ {quote.activationFee.toFixed(2).replace(".", ",")} via PIX</p>
+                <p className="text-xs text-muted-foreground">• 11 boletos mensais enviados por e-mail</p>
+                <div className="mt-3 w-full bg-muted rounded-lg p-3 flex items-center justify-between gap-2">
+                  <span className="text-xs text-foreground font-mono truncate">{pixKey}</span>
+                  <button
+                    onClick={handleCopyPix}
+                    className="shrink-0 flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+                  >
+                    {pixCopied ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" />
+                        Copiado!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" />
+                        Copiar
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Terms */}
         <div className="flex items-start gap-3">
@@ -172,7 +169,7 @@ const Payment = () => {
         {/* CTA */}
         <Button
           onClick={handleFinalize}
-          disabled={!isFormValid}
+          disabled={!acceptTerms}
           className="w-full h-14 rounded-xl font-bold text-base"
         >
           Finalizar

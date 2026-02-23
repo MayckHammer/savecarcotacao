@@ -21,9 +21,10 @@ interface FipeOption {
 
 const Quote = () => {
   const navigate = useNavigate();
-  const { quote, updatePersonal, updateVehicle, updateAddress } = useQuote();
+  const { quote, updatePersonal, updateVehicle, updateAddress, setSessionId } = useQuote();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   // FIPE cascade state
   const [brands, setBrands] = useState<FipeOption[]>([]);
@@ -171,10 +172,33 @@ const Quote = () => {
     return Object.keys(e).length === 0;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step === 1 && validateStep1()) setStep(2);
     else if (step === 2 && validateStep2()) setStep(3);
-    else if (step === 3 && validateStep3()) navigate("/resultado");
+    else if (step === 3 && validateStep3()) {
+      setSubmitting(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("submit-to-crm", {
+          body: {
+            personal: quote.personal,
+            vehicle: quote.vehicle,
+            address: quote.address,
+            plan: {},
+          },
+        });
+        if (error) throw error;
+        if (data?.session_id) {
+          setSessionId(data.session_id);
+        }
+        navigate("/resultado");
+      } catch (e) {
+        console.error("Submit error:", e);
+        // Navigate anyway — CRM failure shouldn't block user
+        navigate("/resultado");
+      } finally {
+        setSubmitting(false);
+      }
+    }
   };
 
   const handleBack = () => {
@@ -438,9 +462,18 @@ const Quote = () => {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Voltar
           </Button>
-          <Button onClick={handleNext} className="flex-1 h-12 rounded-xl font-bold">
-            Avançar
-            <ArrowRight className="ml-2 h-4 w-4" />
+          <Button onClick={handleNext} disabled={submitting} className="flex-1 h-12 rounded-xl font-bold">
+            {submitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Enviando...
+              </>
+            ) : (
+              <>
+                Avançar
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </>
+            )}
           </Button>
         </div>
       </div>
