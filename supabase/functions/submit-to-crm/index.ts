@@ -117,12 +117,8 @@ Deno.serve(async (req) => {
       console.error("Error fetching state/city codes:", e);
     }
 
-    // Build CRM payload
+    // Build CRM payload (API REST oficial — sem companyHash/formCode)
     const crmPayload: Record<string, unknown> = {
-      companyHash: "Sav3c4r1Czwe3",
-      formCode: "3QgRKwOx",
-      pipelineColumn: "1",
-      funnelStage: "6834bcae-ecd3-4387-8bc2-dfd03dbaea0c",
       pwrClntNm: personal.name || "",
       pwrCltPhn: phone,
       pwrClntCpf: cpfDigits,
@@ -140,15 +136,19 @@ Deno.serve(async (req) => {
     // Log full payload for debugging
     console.log("CRM payload:", JSON.stringify(crmPayload, null, 2));
 
-    // Submit to Power CRM
+    // Submit to Power CRM (API REST oficial)
+    const token = Deno.env.get("POWERCRM_API_TOKEN");
     let crmSuccess = false;
     let crmQuotationCode: string | null = null;
     let crmError: string | null = null;
 
     try {
-      const crmRes = await fetch("https://app.powercrm.com.br/svQttnDynmcFrm", {
+      const crmRes = await fetch("https://api.powercrm.com.br/api/quotation/add", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
         body: JSON.stringify(crmPayload),
       });
 
