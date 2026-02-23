@@ -139,7 +139,49 @@ Deno.serve(async (req) => {
     if (skipCrm) {
       crmQuotationCode = existingQuotationCode || null;
       crmNegotiationCode = existingNegotiationCode || null;
-      console.log("Skipping CRM submission, using existing codes:", crmQuotationCode, crmNegotiationCode);
+      console.log("Using existing CRM codes, will update quotation:", crmQuotationCode, crmNegotiationCode);
+
+      // UPDATE the existing quotation with full data so CRM can calculate plans
+      if (crmQuotationCode && token) {
+        try {
+          const updatePayload: Record<string, unknown> = {
+            code: crmQuotationCode,
+            name: personal.name,
+            phone,
+            email: personal.email,
+            registration: cpfDigits,
+            phoneMobile1: phone,
+            plates: vehicle.plate,
+            workVehicle: vehicle.usage === "aplicativo",
+            addressZipcode: address.cep?.replace(/\D/g, ""),
+            addressAddress: address.street,
+            addressNumber: address.number || "S/N",
+            addressComplement: address.complement || "",
+            addressNeighborhood: address.neighborhood,
+            protectedValue: vehicle.fipeValue || 0,
+            observation,
+          };
+          if (cityCode) updatePayload.city = cityCode;
+
+          console.log("Updating CRM quotation with full data:", JSON.stringify(updatePayload, null, 2));
+
+          const updateRes = await fetch("https://api.powercrm.com.br/api/quotation/update", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`,
+            },
+            body: JSON.stringify(updatePayload),
+          });
+
+          const updateText = await updateRes.text();
+          console.log("CRM update response:", updateRes.status, updateText.substring(0, 500));
+        } catch (updateErr) {
+          console.error("Error updating CRM quotation:", updateErr);
+        }
+      }
+
+      crmSuccess = true;
     } else {
       try {
       const crmRes = await fetch("https://api.powercrm.com.br/api/quotation/add", {
