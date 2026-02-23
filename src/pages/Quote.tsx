@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ArrowLeft, AlertCircle, Loader2, Car } from "lucide-react";
+import { ArrowRight, ArrowLeft, AlertCircle, Loader2, Car, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import Header from "@/components/Header";
 import ProgressSteps from "@/components/ProgressSteps";
 import { useQuote } from "@/contexts/QuoteContext";
+import { toast } from "sonner";
 import { maskCPF, maskPhone, maskCEP, maskPlate, validateCPF } from "@/lib/masks";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -21,10 +22,12 @@ interface FipeOption {
 
 const Quote = () => {
   const navigate = useNavigate();
-  const { quote, updatePersonal, updateVehicle, updateAddress, setSessionId } = useQuote();
+  const { quote, updatePersonal, updateVehicle, updateAddress, setSessionId, setCrmQuotationCode, setCrmNegotiationCode } = useQuote();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [plateLoading, setPlateLoading] = useState(false);
+  const [plateConsulted, setPlateConsulted] = useState(false);
 
   // FIPE cascade state
   const [brands, setBrands] = useState<FipeOption[]>([]);
@@ -138,6 +141,48 @@ const Quote = () => {
     }
   };
 
+  const handleConsultaPlaca = async () => {
+    const plateClean = quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "");
+    if (plateClean.length < 7) {
+      setErrors({ plate: "Placa inválida" });
+      return;
+    }
+    setPlateLoading(true);
+    setFipeError("");
+    try {
+      const { data, error } = await supabase.functions.invoke("consulta-placa-crm", {
+        body: { personal: quote.personal, plate: quote.vehicle.plate },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      if (data?.quotationCode) {
+        setCrmQuotationCode(data.quotationCode);
+        if (data.negotiationCode) setCrmNegotiationCode(data.negotiationCode);
+      }
+
+      if (data?.vehicle) {
+        const v = data.vehicle;
+        updateVehicle({
+          brand: v.brand || "",
+          model: v.model || "",
+          year: v.year || "",
+          color: v.color || "",
+          type: v.type || "carro",
+        });
+        setPlateConsulted(true);
+        toast.success("Veículo identificado com sucesso!");
+      } else {
+        toast.info("Veículo não identificado. Preencha manualmente.");
+      }
+    } catch (e: any) {
+      console.error("Consulta placa error:", e);
+      toast.error("Erro ao consultar placa. Preencha manualmente.");
+    } finally {
+      setPlateLoading(false);
+    }
+  };
+
   const validateStep1 = () => {
     const e: Record<string, string> = {};
     if (!quote.personal.name.trim()) e.name = "Nome é obrigatório";
@@ -151,9 +196,14 @@ const Quote = () => {
   const validateStep2 = () => {
     const e: Record<string, string> = {};
     if (quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").length < 7) e.plate = "Placa inválida";
-    if (!quote.vehicle.brandCode) e.brand = "Selecione a marca";
-    if (!quote.vehicle.modelCode) e.model = "Selecione o modelo";
-    if (!quote.vehicle.yearCode) e.year = "Selecione o ano";
+    if (!plateConsulted) {
+      if (!quote.vehicle.brandCode) e.brand = "Selecione a marca";
+      if (!quote.vehicle.modelCode) e.model = "Selecione o modelo";
+      if (!quote.vehicle.yearCode) e.year = "Selecione o ano";
+    } else {
+      if (!quote.vehicle.brand) e.brand = "Marca não identificada";
+      if (!quote.vehicle.model) e.model = "Modelo não identificado";
+    }
     if (!quote.vehicle.type) e.type = "Selecione o tipo";
     if (!quote.vehicle.usage) e.usage = "Selecione o uso";
     setErrors(e);
@@ -178,22 +228,33 @@ const Quote = () => {
     else if (step === 3 && validateStep3()) {
       setSubmitting(true);
       try {
-        const { data, error } = await supabase.functions.invoke("submit-to-crm", {
-          body: {
-            personal: quote.personal,
-            vehicle: quote.vehicle,
-            address: quote.address,
-            plan: {},
-          },
-        });
-        if (error) throw error;
-        if (data?.session_id) {
-          setSessionId(data.session_id);
+        if (quote.crmQuotationCode) {
+          // CRM quotation already created via plate lookup — just save locally
+          const { data } = await supabase.functions.invoke("submit-to-crm", {
+            body: {
+              personal: quote.personal,
+              vehicle: quote.vehicle,
+              address: quote.address,
+              plan: {},
+              skipCrm: true,
+            },
+          });
+          if (data?.session_id) setSessionId(data.session_id);
+        } else {
+          const { data, error } = await supabase.functions.invoke("submit-to-crm", {
+            body: {
+              personal: quote.personal,
+              vehicle: quote.vehicle,
+              address: quote.address,
+              plan: {},
+            },
+          });
+          if (error) throw error;
+          if (data?.session_id) setSessionId(data.session_id);
         }
         navigate("/resultado");
       } catch (e) {
         console.error("Submit error:", e);
-        // Navigate anyway — CRM failure shouldn't block user
         navigate("/resultado");
       } finally {
         setSubmitting(false);
@@ -269,101 +330,50 @@ const Quote = () => {
             
             <div>
               <Label>Placa do veículo</Label>
-              <Input
-                placeholder="ABC1D23"
-                value={quote.vehicle.plate}
-                onChange={(e) => updateVehicle({ plate: maskPlate(e.target.value) })}
-              />
+              <div className="flex gap-2">
+                <Input
+                  placeholder="ABC1D23"
+                  value={quote.vehicle.plate}
+                  onChange={(e) => {
+                    updateVehicle({ plate: maskPlate(e.target.value) });
+                    setPlateConsulted(false);
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  onClick={handleConsultaPlaca}
+                  disabled={plateLoading || quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").length < 7}
+                  className="shrink-0"
+                >
+                  {plateLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Search className="h-4 w-4 mr-1" />
+                      Consultar
+                    </>
+                  )}
+                </Button>
+              </div>
               <ErrorMsg field="plate" />
             </div>
 
-            {/* Tipo do veículo */}
-            <div>
-              <Label>Tipo do veículo</Label>
-              <Select value={quote.vehicle.type} onValueChange={handleTypeChange}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="carro">Carro</SelectItem>
-                  <SelectItem value="moto">Moto</SelectItem>
-                  <SelectItem value="caminhao">Caminhão / Pick-up</SelectItem>
-                </SelectContent>
-              </Select>
-              <ErrorMsg field="type" />
-            </div>
-
-            {/* Marca */}
-            <div>
-              <Label>Marca</Label>
-              <SearchableSelect
-                options={brands}
-                value={quote.vehicle.brandCode}
-                onValueChange={handleBrandChange}
-                placeholder="Selecione a marca"
-                searchPlaceholder="Buscar marca..."
-                emptyMessage="Nenhuma marca encontrada."
-                loading={brandsLoading}
-                loadingMessage="Carregando marcas..."
-              />
-              <ErrorMsg field="brand" />
-            </div>
-
-            {/* Modelo */}
-            <div>
-              <Label>Modelo</Label>
-              <SearchableSelect
-                options={models}
-                value={quote.vehicle.modelCode}
-                onValueChange={handleModelChange}
-                placeholder="Selecione o modelo"
-                searchPlaceholder="Buscar modelo..."
-                emptyMessage="Nenhum modelo encontrado."
-                disabled={!quote.vehicle.brandCode}
-                loading={modelsLoading}
-                loadingMessage="Carregando modelos..."
-              />
-              <ErrorMsg field="model" />
-            </div>
-
-            {/* Ano */}
-            <div>
-              <Label>Ano</Label>
-              <Select value={quote.vehicle.yearCode} onValueChange={handleYearChange} disabled={!quote.vehicle.modelCode || yearsLoading}>
-                <SelectTrigger>
-                  <SelectValue placeholder={yearsLoading ? "Carregando anos..." : "Selecione o ano"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map((y) => (
-                    <SelectItem key={y.code} value={y.code}>{y.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {yearsLoading && <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando...</p>}
-              <ErrorMsg field="year" />
-            </div>
-
-            {/* FIPE Price Loading */}
-            {priceLoading && (
+            {/* Loading state for plate consultation */}
+            {plateLoading && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground p-3">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Consultando valor FIPE...</span>
+                <span>Consultando veículo no CRM...</span>
               </div>
             )}
 
-            {/* FIPE Error */}
-            {fipeError && (
-              <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                <span>{fipeError}</span>
-              </div>
-            )}
-
-            {/* FIPE Value Card */}
-            {quote.vehicle.fipeFormatted && !priceLoading && !fipeError && (
+            {/* Vehicle identified via CRM */}
+            {plateConsulted && quote.vehicle.brand && (
               <Card className="border-primary/30 bg-primary/5">
                 <CardContent className="p-4 space-y-2">
                   <div className="flex items-center gap-2 text-primary font-semibold text-sm">
                     <Car className="h-4 w-4" />
-                    <span>Valor FIPE</span>
+                    <span>Veículo Identificado</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
@@ -378,14 +388,152 @@ const Quote = () => {
                       <p className="text-muted-foreground text-xs">Modelo</p>
                       <p className="font-medium text-foreground">{quote.vehicle.model}</p>
                     </div>
-                    <div className="col-span-2">
-                      <p className="text-muted-foreground text-xs">Valor FIPE</p>
-                      <p className="font-bold text-primary text-lg">{quote.vehicle.fipeFormatted}</p>
+                    {quote.vehicle.color && (
+                      <div>
+                        <p className="text-muted-foreground text-xs">Cor</p>
+                        <p className="font-medium text-foreground">{quote.vehicle.color}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-muted-foreground text-xs">Tipo</p>
+                      <p className="font-medium text-foreground capitalize">{quote.vehicle.type}</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             )}
+
+            {/* Manual FIPE selection — show only if NOT consulted via CRM */}
+            {!plateConsulted && (
+              <>
+                {/* Tipo do veículo */}
+                <div>
+                  <Label>Tipo do veículo</Label>
+                  <Select value={quote.vehicle.type} onValueChange={handleTypeChange}>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="carro">Carro</SelectItem>
+                      <SelectItem value="moto">Moto</SelectItem>
+                      <SelectItem value="caminhao">Caminhão / Pick-up</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <ErrorMsg field="type" />
+                </div>
+
+                {/* Marca */}
+                <div>
+                  <Label>Marca</Label>
+                  <SearchableSelect
+                    options={brands}
+                    value={quote.vehicle.brandCode}
+                    onValueChange={handleBrandChange}
+                    placeholder="Selecione a marca"
+                    searchPlaceholder="Buscar marca..."
+                    emptyMessage="Nenhuma marca encontrada."
+                    loading={brandsLoading}
+                    loadingMessage="Carregando marcas..."
+                  />
+                  <ErrorMsg field="brand" />
+                </div>
+
+                {/* Modelo */}
+                <div>
+                  <Label>Modelo</Label>
+                  <SearchableSelect
+                    options={models}
+                    value={quote.vehicle.modelCode}
+                    onValueChange={handleModelChange}
+                    placeholder="Selecione o modelo"
+                    searchPlaceholder="Buscar modelo..."
+                    emptyMessage="Nenhum modelo encontrado."
+                    disabled={!quote.vehicle.brandCode}
+                    loading={modelsLoading}
+                    loadingMessage="Carregando modelos..."
+                  />
+                  <ErrorMsg field="model" />
+                </div>
+
+                {/* Ano */}
+                <div>
+                  <Label>Ano</Label>
+                  <Select value={quote.vehicle.yearCode} onValueChange={handleYearChange} disabled={!quote.vehicle.modelCode || yearsLoading}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={yearsLoading ? "Carregando anos..." : "Selecione o ano"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {years.map((y) => (
+                        <SelectItem key={y.code} value={y.code}>{y.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {yearsLoading && <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando...</p>}
+                  <ErrorMsg field="year" />
+                </div>
+
+                {/* FIPE Price Loading */}
+                {priceLoading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground p-3">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Consultando valor FIPE...</span>
+                  </div>
+                )}
+
+                {/* FIPE Error */}
+                {fipeError && (
+                  <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{fipeError}</span>
+                  </div>
+                )}
+
+                {/* FIPE Value Card */}
+                {quote.vehicle.fipeFormatted && !priceLoading && !fipeError && (
+                  <Card className="border-primary/30 bg-primary/5">
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex items-center gap-2 text-primary font-semibold text-sm">
+                        <Car className="h-4 w-4" />
+                        <span>Valor FIPE</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground text-xs">Marca</p>
+                          <p className="font-medium text-foreground">{quote.vehicle.brand}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs">Ano</p>
+                          <p className="font-medium text-foreground">{quote.vehicle.year}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <p className="text-muted-foreground text-xs">Modelo</p>
+                          <p className="font-medium text-foreground">{quote.vehicle.model}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <p className="text-muted-foreground text-xs">Valor FIPE</p>
+                          <p className="font-bold text-primary text-lg">{quote.vehicle.fipeFormatted}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+
+            {/* Tipo — show when plate consulted but type needs selection */}
+            {plateConsulted && (
+              <div>
+                <Label>Tipo do veículo</Label>
+                <Select value={quote.vehicle.type} onValueChange={(v) => updateVehicle({ type: v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="carro">Carro</SelectItem>
+                    <SelectItem value="moto">Moto</SelectItem>
+                    <SelectItem value="caminhao">Caminhão / Pick-up</SelectItem>
+                  </SelectContent>
+                </Select>
+                <ErrorMsg field="type" />
+              </div>
+            )}
+
             <div>
               <Label>Uso do veículo</Label>
               <Select value={quote.vehicle.usage} onValueChange={(v) => updateVehicle({ usage: v })}>

@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { personal, vehicle, address, plan } = await req.json();
+    const { personal, vehicle, address, plan, skipCrm } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -129,14 +129,17 @@ Deno.serve(async (req) => {
 
     console.log("CRM payload:", JSON.stringify(crmPayload, null, 2));
 
-    // Submit to Power CRM
+    // Submit to Power CRM (skip if already created via consulta-placa-crm)
     const token = Deno.env.get("POWERCRM_API_TOKEN");
-    let crmSuccess = false;
+    let crmSuccess = !!skipCrm;
     let crmQuotationCode: string | null = null;
     let crmNegotiationCode: string | null = null;
     let crmError: string | null = null;
 
-    try {
+    if (skipCrm) {
+      console.log("Skipping CRM submission — quotation already created via plate lookup");
+    } else {
+      try {
       const crmRes = await fetch("https://api.powercrm.com.br/api/quotation/add", {
         method: "POST",
         headers: {
@@ -149,10 +152,10 @@ Deno.serve(async (req) => {
       const crmData = await crmRes.json();
       console.log("CRM response:", JSON.stringify(crmData, null, 2));
 
-      if (crmData.success) {
+      if (crmData.quotationCode) {
         crmSuccess = true;
-        crmQuotationCode = crmData.qttnCd || null;
-        crmNegotiationCode = crmData.ngttnCd || null;
+        crmQuotationCode = crmData.quotationCode || null;
+        crmNegotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
 
         // Try to add tag "30 seg" via dedicated endpoint
         if (crmQuotationCode) {
@@ -216,12 +219,13 @@ Deno.serve(async (req) => {
           }
         }
       } else {
-        crmError = crmData.message || "CRM submission failed";
+        crmError = crmData.message || crmData.error || "CRM submission failed";
       }
-    } catch (e) {
-      crmError = `CRM request error: ${e.message}`;
-      console.error("CRM submission error:", e);
-    }
+      } catch (e) {
+        crmError = `CRM request error: ${e.message}`;
+        console.error("CRM submission error:", e);
+      }
+    } // end else (skipCrm)
 
     // Update quote with CRM result
     await supabase.from("quotes").update({
