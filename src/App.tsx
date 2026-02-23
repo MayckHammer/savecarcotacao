@@ -13,6 +13,7 @@ import Inspection from "./pages/Inspection";
 import Admin from "./pages/Admin";
 import Confirmation from "./pages/Confirmation";
 import NotFound from "./pages/NotFound";
+import Codebase from "./pages/Codebase";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/vistoria" element={<Inspection />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/confirmacao" element={<Confirmation />} />
+            <Route path="/codebase" element={<Codebase />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
