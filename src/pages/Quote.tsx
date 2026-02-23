@@ -278,9 +278,11 @@ const Quote = () => {
     const clean = cep.replace(/\D/g, "");
     if (clean.length === 8) {
       try {
-        const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
-        const data = await res.json();
-        if (!data.erro) {
+        const { data, error } = await supabase.functions.invoke("consulta-cep", {
+          body: { cep: clean },
+        });
+        if (error) throw error;
+        if (data && !data.erro) {
           updateAddress({
             street: data.logradouro || "",
             neighborhood: data.bairro || "",
@@ -288,7 +290,9 @@ const Quote = () => {
             state: data.uf || "",
           });
         }
-      } catch {}
+      } catch (e) {
+        console.error("Erro ao consultar CEP:", e);
+      }
     }
   };
 
