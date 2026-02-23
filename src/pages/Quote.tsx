@@ -244,6 +244,8 @@ const Quote = () => {
               address: quote.address,
               plan: {},
               skipCrm: true,
+              crmQuotationCode: quote.crmQuotationCode,
+              crmNegotiationCode: quote.crmNegotiationCode,
             },
           });
           if (data?.session_id) setSessionId(data.session_id);

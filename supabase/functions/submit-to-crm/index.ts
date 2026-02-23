@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { personal, vehicle, address, plan, skipCrm } = await req.json();
+    const { personal, vehicle, address, plan, skipCrm, crmQuotationCode: existingQuotationCode, crmNegotiationCode: existingNegotiationCode } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -137,7 +137,9 @@ Deno.serve(async (req) => {
     let crmError: string | null = null;
 
     if (skipCrm) {
-      console.log("Skipping CRM submission — quotation already created via plate lookup");
+      crmQuotationCode = existingQuotationCode || null;
+      crmNegotiationCode = existingNegotiationCode || null;
+      console.log("Skipping CRM submission, using existing codes:", crmQuotationCode, crmNegotiationCode);
     } else {
       try {
       const crmRes = await fetch("https://api.powercrm.com.br/api/quotation/add", {
