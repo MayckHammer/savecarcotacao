@@ -35,6 +35,14 @@ export interface AddressData {
 
 export type PlanName = "COMPLETO" | "PREMIUM";
 
+export interface CrmPlan {
+  id: string | null;
+  name: string;
+  monthlyPrice: number;
+  annualPrice: number;
+  coverages: string[];
+}
+
 export const PLAN_COVERAGES: Record<PlanName, string[]> = {
   COMPLETO: [
     "Colisão (Até 100% FIPE)",
@@ -121,6 +129,8 @@ const defaultQuote: QuoteData = {
 
 interface QuoteContextType {
   quote: QuoteData;
+  crmPlans: CrmPlan[];
+  setCrmPlans: (plans: CrmPlan[]) => void;
   updatePersonal: (data: Partial<PersonalData>) => void;
   updateVehicle: (data: Partial<VehicleData>) => void;
   updateAddress: (data: Partial<AddressData>) => void;
@@ -139,6 +149,7 @@ const QuoteContext = createContext<QuoteContextType | undefined>(undefined);
 
 export const QuoteProvider = ({ children }: { children: ReactNode }) => {
   const [quote, setQuote] = useState<QuoteData>(defaultQuote);
+  const [crmPlans, setCrmPlans] = useState<CrmPlan[]>([]);
 
   const updatePersonal = (data: Partial<PersonalData>) =>
     setQuote((prev) => ({ ...prev, personal: { ...prev.personal, ...data } }));
@@ -168,9 +179,23 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
     setQuote((prev) => ({ ...prev, sessionId: id }));
   };
 
-  const resetQuote = () => setQuote(defaultQuote);
+  const resetQuote = () => {
+    setQuote(defaultQuote);
+    setCrmPlans([]);
+  };
+
+  const getCrmPlanForCurrent = (): CrmPlan | undefined => {
+    return crmPlans.find((p) =>
+      p.name?.toUpperCase().includes(quote.planName)
+    );
+  };
 
   const getSubtotalWithoutDiscount = () => {
+    const crmPlan = getCrmPlanForCurrent();
+    if (crmPlan) {
+      return quote.billingPeriod === "monthly" ? crmPlan.monthlyPrice : crmPlan.annualPrice;
+    }
+    // Fallback to hardcoded values
     const base = quote.billingPeriod === "monthly" ? quote.monthlyPrice : quote.annualPrice;
     const planMultiplier = quote.planName === "PREMIUM" ? 1.35 : 1;
     return base * planMultiplier;
@@ -184,7 +209,7 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <QuoteContext.Provider
-      value={{ quote, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setPaymentMethod, updateCard, setCoupon, setSessionId, resetQuote, getTotal, getSubtotalWithoutDiscount }}
+      value={{ quote, crmPlans, setCrmPlans, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setPaymentMethod, updateCard, setCoupon, setSessionId, resetQuote, getTotal, getSubtotalWithoutDiscount }}
     >
       {children}
     </QuoteContext.Provider>
