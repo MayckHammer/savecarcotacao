@@ -130,42 +130,55 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 6. Attempt 2: quotationFipeApi (FIPE vehicle data)
+    // 6. Attempt 2: quotationFipeApi (FIPE vehicle data) with retry
     if (!vehicle) {
-      try {
-        const fipeRes = await fetch(
-          `https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
-          { headers: { "Authorization": `Bearer ${token}` } }
-        );
-        const fipeText = await fipeRes.text();
-        console.log("quotationFipeApi status:", fipeRes.status, "body:", fipeText);
-        if (fipeRes.ok) {
-          const fipeData = JSON.parse(fipeText);
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries && !vehicle; attempt++) {
+        try {
+          console.log(`quotationFipeApi attempt ${attempt}/${maxRetries}`);
+          const fipeRes = await fetch(
+            `https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
+            { headers: { "Authorization": `Bearer ${token}` } }
+          );
+          const fipeText = await fipeRes.text();
+          console.log("quotationFipeApi status:", fipeRes.status, "body:", fipeText);
 
-          // Try to extract vehicle info from FIPE response
-          const items = Array.isArray(fipeData) ? fipeData : fipeData?.data ? (Array.isArray(fipeData.data) ? fipeData.data : [fipeData.data]) : [fipeData];
-          for (const item of items) {
-            const brand = item?.brand || item?.marca || item?.brandName || "";
-            const model = item?.model || item?.modelo || item?.modelName || item?.name || "";
-            const year = item?.year || item?.ano || item?.modelYear || "";
-            const color = item?.color || item?.cor || "";
-            const fipeCode = item?.fipeCode || item?.cdFp || item?.code || "";
+          if (fipeRes.status >= 500 && attempt < maxRetries) {
+            console.log(`Server error ${fipeRes.status}, retrying in ${attempt * 3}s...`);
+            await new Promise((r) => setTimeout(r, attempt * 3000));
+            continue;
+          }
 
-            if (brand || model || year) {
-              let type = "carro";
-              const modelLower = (model + " " + brand).toLowerCase();
-              if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) {
-                type = "moto";
-              } else if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) {
-                type = "caminhao";
+          if (fipeRes.ok) {
+            const fipeData = JSON.parse(fipeText);
+            const items = Array.isArray(fipeData) ? fipeData : fipeData?.data ? (Array.isArray(fipeData.data) ? fipeData.data : [fipeData.data]) : [fipeData];
+            for (const item of items) {
+              const brand = item?.brand || item?.marca || item?.brandName || "";
+              const model = item?.model || item?.modelo || item?.modelName || item?.name || "";
+              const year = item?.year || item?.ano || item?.modelYear || "";
+              const color = item?.color || item?.cor || "";
+              const fipeCode = item?.fipeCode || item?.cdFp || item?.code || "";
+
+              if (brand || model || year) {
+                let type = "carro";
+                const modelLower = (model + " " + brand).toLowerCase();
+                if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) {
+                  type = "moto";
+                } else if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) {
+                  type = "caminhao";
+                }
+                vehicle = { brand, model, year: String(year), color, type, city: "", fipeCode };
+                break;
               }
-              vehicle = { brand, model, year: String(year), color, type, city: "", fipeCode };
-              break;
             }
           }
+          break; // Success or non-5xx error, stop retrying
+        } catch (e) {
+          console.error(`Error fetching quotationFipeApi (attempt ${attempt}):`, e);
+          if (attempt < maxRetries) {
+            await new Promise((r) => setTimeout(r, attempt * 3000));
+          }
         }
-      } catch (e) {
-        console.error("Error fetching quotationFipeApi:", e);
       }
     }
 
