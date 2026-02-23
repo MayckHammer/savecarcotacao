@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     const quotationCode = crmData.quotationCode;
     const negotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
 
-    // 2. Add tag 23323 ("30 seg")
+    // 2. Add tag 23323 ("30 seg") — response is plain text
     try {
       const tagRes = await fetch("https://api.powercrm.com.br/api/quotation/add-tag", {
         method: "POST",
@@ -67,13 +67,13 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({ quotationCode, tagId: 23323 }),
       });
-      const tagData = await tagRes.json();
-      console.log("Tag response:", JSON.stringify(tagData));
+      const tagText = await tagRes.text();
+      console.log("Tag response:", tagText);
     } catch (e) {
       console.error("Error adding tag:", e);
     }
 
-    // 3. Open inspection
+    // 3. Open inspection — response is plain text
     try {
       const inspRes = await fetch("https://api.powercrm.com.br/api/quotation/open-inspection", {
         method: "POST",
@@ -83,51 +83,87 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({ quotationCode }),
       });
-      const inspData = await inspRes.json();
-      console.log("Open inspection response:", JSON.stringify(inspData));
+      const inspText = await inspRes.text();
+      console.log("Open inspection response:", inspText);
     } catch (e) {
       console.error("Error opening inspection:", e);
     }
 
-    // 4. GET quotation details to extract vehicle data
+    // 4. Wait 3 seconds for DENATRAN async processing
+    await new Promise((r) => setTimeout(r, 3000));
+
+    // 5. Try negotiation endpoint first (has vehicle data after DENATRAN lookup)
     let vehicle = null;
-    try {
-      const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
-        headers: { "Authorization": `Bearer ${token}` },
-      });
 
-      if (qttnRes.ok) {
-        const qttnData = await qttnRes.json();
-        console.log("Quotation details:", JSON.stringify(qttnData));
+    if (negotiationCode) {
+      try {
+        const negRes = await fetch(
+          `https://api.powercrm.com.br/api/negotiation/${negotiationCode}`,
+          { headers: { "Authorization": `Bearer ${token}` } }
+        );
+        if (negRes.ok) {
+          const negData = await negRes.json();
+          console.log("Negotiation details:", JSON.stringify(negData));
 
-        // Extract vehicle data from quotation response
-        const v = qttnData?.vehicle || qttnData?.data?.vehicle || {};
-        const negotiation = qttnData?.negotiation || qttnData?.data?.negotiation || {};
+          const v = negData?.vehicle || negData?.data?.vehicle || {};
+          const brand = v?.brand || v?.brandName || v?.marca || negData?.carModel || "";
+          const model = v?.model || v?.modelName || v?.modelo || negData?.carModel || "";
+          const year = v?.year || v?.ano || v?.modelYear || negData?.carModelYear || "";
+          const color = v?.color || v?.cor || negData?.color || "";
+          const fipeCode = v?.fipeCode || v?.cdFp || "";
+          const city = v?.city || v?.cidade || "";
 
-        // Try multiple possible field paths, including root-level CRM fields
-        const brand = v?.brand || v?.brandName || v?.marca || negotiation?.brand || qttnData?.carModel || "";
-        const model = v?.model || v?.modelName || v?.modelo || negotiation?.model || qttnData?.carModel || "";
-        const year = v?.year || v?.ano || v?.modelYear || negotiation?.year || qttnData?.carModelYear || "";
-        const color = v?.color || v?.cor || negotiation?.color || qttnData?.color || "";
-        const fipeCode = v?.fipeCode || v?.cdFp || "";
-        const city = v?.city || v?.cidade || "";
+          let type = "carro";
+          const modelLower = (model + " " + brand).toLowerCase();
+          if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) {
+            type = "moto";
+          } else if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) {
+            type = "caminhao";
+          }
 
-        // Determine vehicle type from model/brand hints
-        let type = "carro";
-        const modelLower = (model + " " + brand).toLowerCase();
-        if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) {
-          type = "moto";
-        } else if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) {
-          type = "caminhao";
+          if (brand || model || year) {
+            vehicle = { brand, model, year: String(year), color, type, city, fipeCode };
+          }
         }
-
-        // Only return vehicle if we have meaningful data
-        if (brand || model || year) {
-          vehicle = { brand, model, year: String(year), color, type, city, fipeCode };
-        }
+      } catch (e) {
+        console.error("Error fetching negotiation details:", e);
       }
-    } catch (e) {
-      console.error("Error fetching quotation details:", e);
+    }
+
+    // 6. Fallback: quotation endpoint
+    if (!vehicle) {
+      try {
+        const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+
+        if (qttnRes.ok) {
+          const qttnData = await qttnRes.json();
+          console.log("Quotation details (fallback):", JSON.stringify(qttnData));
+
+          const v = qttnData?.vehicle || qttnData?.data?.vehicle || {};
+          const brand = v?.brand || v?.brandName || v?.marca || qttnData?.carModel || "";
+          const model = v?.model || v?.modelName || v?.modelo || qttnData?.carModel || "";
+          const year = v?.year || v?.ano || v?.modelYear || qttnData?.carModelYear || "";
+          const color = v?.color || v?.cor || qttnData?.color || "";
+          const fipeCode = v?.fipeCode || v?.cdFp || "";
+          const city = v?.city || v?.cidade || "";
+
+          let type = "carro";
+          const modelLower = (model + " " + brand).toLowerCase();
+          if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) {
+            type = "moto";
+          } else if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) {
+            type = "caminhao";
+          }
+
+          if (brand || model || year) {
+            vehicle = { brand, model, year: String(year), color, type, city, fipeCode };
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching quotation details:", e);
+      }
     }
 
     return new Response(JSON.stringify({
