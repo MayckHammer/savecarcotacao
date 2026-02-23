@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
               },
               body: JSON.stringify({
                 quotationCode: crmQuotationCode,
-                tag: "30 seg",
+                tagId: 23323,
               }),
             });
             const tagData = await tagRes.json();
