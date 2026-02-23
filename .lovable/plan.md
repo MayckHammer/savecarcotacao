@@ -1,87 +1,47 @@
 
 
-# Reimplantar edge function + adicionar quotationFipeApi
+## Correção: CEP não retorna endereço (erro CORS)
 
-## Problema confirmado
+### Problema
+A chamada direta do frontend para `https://viacep.com.br/ws/{cep}/json/` está falhando com "Failed to fetch" devido a restrições de CORS do navegador. Os logs de rede confirmam esse comportamento.
 
-Os logs mostram que o codigo antigo ainda esta rodando no servidor:
-- Erro na linha 73: `.json()` no tag (codigo novo usa `.text()` na mesma linha)
-- Erro na linha 90: `.json()` na inspecao
-- Nenhum log "Negotiation details:" aparece
-- Apenas "Quotation details:" com `carModel: null`
+### Solução
+Criar uma função backend que faz a consulta ao ViaCEP e retorna os dados para o frontend, eliminando o problema de CORS.
 
-O codigo no repositorio ja esta correto, mas nunca foi implantado com sucesso.
+---
 
-## Solucao
+### Etapas
 
-### 1. Adicionar endpoint `quotationFipeApi`
+**1. Criar a edge function `consulta-cep`**
+- Nova função em `supabase/functions/consulta-cep/index.ts`
+- Recebe o CEP no body da requisição
+- Faz a chamada para `https://viacep.com.br/ws/{cep}/json/` no servidor (sem CORS)
+- Retorna os dados de endereço (logradouro, bairro, cidade, estado)
+- Inclui headers CORS para permitir chamadas do frontend
 
-Baseado no print da documentacao do Power CRM, existe o endpoint:
+**2. Atualizar `src/pages/Quote.tsx`**
+- Alterar a função `fetchCEP` para chamar a edge function via Supabase client em vez de chamar o ViaCEP diretamente
+- Usar `supabase.functions.invoke('consulta-cep', { body: { cep } })` 
+- Manter a mesma lógica de preenchimento dos campos de endereço
 
-```
-GET https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=xxx
-```
+---
 
-Este endpoint retorna dados FIPE do veiculo apos o processamento assincrono. Sera adicionado como segunda tentativa de busca, entre negociacao e o fallback de cotacao.
+### Detalhes Técnicos
 
-### 2. Aumentar delay para 5 segundos
-
-3 segundos nao esta sendo suficiente para o DENATRAN processar. Aumentar para 5s.
-
-### 3. Forcar reimplantacao
-
-Garantir que o codigo atualizado seja implantado com sucesso.
-
-## Fluxo de busca atualizado
+A edge function terá a seguinte estrutura:
 
 ```text
-1. POST /api/quotation/add (criar cotacao)
-2. POST /api/quotation/add-tag (usar .text())
-3. POST /api/quotation/open-inspection (usar .text())
-4. Aguardar 5 segundos
-5. GET /api/negotiation/{negotiationCode} (tentativa 1)
-6. GET /api/quotation/quotationFipeApi?quotationCode=xxx (tentativa 2)
-7. GET /api/quotation/{quotationCode} (fallback final)
-8. Retornar vehicle data
+POST /consulta-cep
+Body: { "cep": "38400739" }
+Response: { "logradouro": "...", "bairro": "...", "localidade": "...", "uf": "..." }
 ```
 
-## Mudancas tecnicas
-
-### Arquivo: `supabase/functions/consulta-placa-crm/index.ts`
-
-- Alterar delay de 3s para 5s (linha 93)
-- Adicionar bloco entre os passos 5 e 6 para chamar `quotationFipeApi`:
-
-```typescript
-// Tentativa 2: quotationFipeApi (dados FIPE do veiculo)
-if (!vehicle) {
-  try {
-    const fipeRes = await fetch(
-      `https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
-      { headers: { "Authorization": `Bearer ${token}` } }
-    );
-    if (fipeRes.ok) {
-      const fipeData = await fipeRes.json();
-      console.log("quotationFipeApi response:", JSON.stringify(fipeData));
-      // Extrair brand, model, year, color dos dados FIPE
-    }
-  } catch (e) {
-    console.error("Error fetching quotationFipeApi:", e);
-  }
-}
+No frontend, a chamada mudará de:
+```text
+fetch("https://viacep.com.br/ws/{cep}/json/")
+```
+Para:
+```text
+supabase.functions.invoke("consulta-cep", { body: { cep: clean } })
 ```
 
-- Forcar reimplantacao da edge function
-
-## Arquivos modificados
-
-| Arquivo | Mudanca |
-|---------|---------|
-| `supabase/functions/consulta-placa-crm/index.ts` | Aumentar delay para 5s + adicionar quotationFipeApi |
-
-## Resultado esperado
-
-- Funcao reimplantada com codigo correto (sem erros de parsing)
-- Negociacao consultada corretamente (log "Negotiation details:" aparecera)
-- quotationFipeApi como fonte adicional de dados FIPE
-- Placa TEV3H48 retornara: SHINERAY, XY 150-8, 2025, PRETA, moto
