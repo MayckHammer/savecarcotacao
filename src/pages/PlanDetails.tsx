@@ -1,24 +1,20 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
-import { ArrowRight, Check, Tag, Lock, ChevronDown, ChevronUp, Shield, Star, FileText } from "lucide-react";
+import { ArrowRight, Check, Tag, Lock, ChevronDown, ChevronUp, Shield, Star, FileText, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import PaymentMethodSelector from "@/components/PaymentMethodSelector";
-import CardForm from "@/components/CardForm";
 import FinancialSummary from "@/components/FinancialSummary";
 import { useQuote, PLAN_COVERAGES, PlanName } from "@/contexts/QuoteContext";
-import { supabase } from "@/integrations/supabase/client";
 
 const PlanDetails = () => {
   const navigate = useNavigate();
-  const { quote, setBillingPeriod, setPlanName, setCoupon, setSessionId, getTotal } = useQuote();
+  const { quote, setBillingPeriod, setPlanName, setCoupon } = useQuote();
   const [showUserInfo, setShowUserInfo] = useState(false);
   const [couponInput, setCouponInput] = useState(quote.coupon);
-  const [submitting, setSubmitting] = useState(false);
 
   const coverages = PLAN_COVERAGES[quote.planName];
 
@@ -129,21 +125,32 @@ const PlanDetails = () => {
         {/* Payment Method Selector */}
         <PaymentMethodSelector />
 
-        {/* Conditional: Card Form or PIX Info */}
-        {quote.paymentMethod === "credit" ? (
-          <CardForm />
-        ) : (
-          <Card className="border-border">
-            <CardContent className="p-4 space-y-2">
-              <div className="flex items-center gap-2">
+        {/* Payment intent info (no card data collection) */}
+        <Card className="border-border">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              {quote.paymentMethod === "credit" ? (
+                <CreditCard className="h-4 w-4 text-primary" />
+              ) : (
                 <FileText className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold text-foreground">PIX / Boleto</span>
-              </div>
-              <p className="text-xs text-muted-foreground">• Adesão paga via PIX</p>
-              <p className="text-xs text-muted-foreground">• 11 boletos mensais enviados por e-mail</p>
-            </CardContent>
-          </Card>
-        )}
+              )}
+              <span className="text-sm font-semibold text-foreground">
+                {quote.paymentMethod === "credit" ? "Cartão de Crédito" : "PIX / Boleto"}
+              </span>
+            </div>
+            {quote.paymentMethod === "credit" ? (
+              <>
+                <p className="text-xs text-muted-foreground">• 10% de desconto na mensalidade</p>
+                <p className="text-xs text-muted-foreground">• Os dados do cartão serão coletados após aprovação da vistoria</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">• Adesão paga via PIX</p>
+                <p className="text-xs text-muted-foreground">• 11 boletos mensais enviados por e-mail</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Financial Summary */}
         <FinancialSummary />
@@ -170,53 +177,13 @@ const PlanDetails = () => {
           Compra segura
         </div>
 
-        {/* CTA */}
+        {/* CTA — navigates directly to inspection */}
         <Button
-          onClick={async () => {
-            setSubmitting(true);
-            try {
-              const totalValue = getTotal();
-              const { data, error } = await supabase.functions.invoke("submit-to-crm", {
-                body: {
-                  personal: quote.personal,
-                  vehicle: quote.vehicle,
-                  address: quote.address,
-                  plan: {
-                    billingPeriod: quote.billingPeriod,
-                    planName: quote.planName,
-                    paymentMethod: quote.paymentMethod,
-                    total: totalValue,
-                    activationFee: quote.activationFee,
-                    coverages: PLAN_COVERAGES[quote.planName],
-                  },
-                },
-              });
-              if (error) throw error;
-              if (data?.session_id) {
-                setSessionId(data.session_id);
-              }
-              navigate("/vistoria");
-            } catch (e) {
-              console.error("Submit error:", e);
-              toast.error("Erro ao enviar cotação. Tente novamente.");
-            } finally {
-              setSubmitting(false);
-            }
-          }}
-          disabled={submitting}
+          onClick={() => navigate("/vistoria")}
           className="w-full h-14 rounded-xl font-bold text-base"
         >
-          {submitting ? (
-            <>
-              <span className="animate-spin mr-2">⏳</span>
-              Enviando...
-            </>
-          ) : (
-            <>
-              Contratar
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </>
-          )}
+          Contratar
+          <ArrowRight className="ml-2 h-5 w-5" />
         </Button>
 
         {/* Legal */}

@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.update-inspection]
 verify_jwt = false
+
+[functions.get-inspection-link]
+verify_jwt = false

@@ -26,6 +26,7 @@ const Inspection = () => {
     }
 
     const fetchStatus = async () => {
+      // First check DB for current status
       const { data } = await supabase
         .from("quotes")
         .select("inspection_status, inspection_link")
@@ -36,6 +37,22 @@ const Inspection = () => {
         setStatus(data.inspection_status as InspectionStatus);
         setInspectionLink(data.inspection_link);
       }
+
+      // If no link yet, try to fetch from CRM
+      if (!data?.inspection_link && data?.inspection_status === "pending") {
+        try {
+          const { data: linkData } = await supabase.functions.invoke("get-inspection-link", {
+            body: { session_id: sessionId },
+          });
+          if (linkData?.inspection_link) {
+            setInspectionLink(linkData.inspection_link);
+            setStatus("released");
+          }
+        } catch (e) {
+          console.error("Error fetching inspection link:", e);
+        }
+      }
+
       setLoading(false);
     };
 
