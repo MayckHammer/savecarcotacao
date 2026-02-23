@@ -89,8 +89,8 @@ Deno.serve(async (req) => {
       console.error("Error opening inspection:", e);
     }
 
-    // 4. Wait 3 seconds for DENATRAN async processing
-    await new Promise((r) => setTimeout(r, 3000));
+    // 4. Wait 5 seconds for DENATRAN async processing
+    await new Promise((r) => setTimeout(r, 5000));
 
     // 5. Try negotiation endpoint first (has vehicle data after DENATRAN lookup)
     let vehicle = null;
@@ -130,7 +130,45 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 6. Fallback: quotation endpoint
+    // 6. Attempt 2: quotationFipeApi (FIPE vehicle data)
+    if (!vehicle) {
+      try {
+        const fipeRes = await fetch(
+          `https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
+          { headers: { "Authorization": `Bearer ${token}` } }
+        );
+        if (fipeRes.ok) {
+          const fipeData = await fipeRes.json();
+          console.log("quotationFipeApi response:", JSON.stringify(fipeData));
+
+          // Try to extract vehicle info from FIPE response
+          const items = Array.isArray(fipeData) ? fipeData : fipeData?.data ? (Array.isArray(fipeData.data) ? fipeData.data : [fipeData.data]) : [fipeData];
+          for (const item of items) {
+            const brand = item?.brand || item?.marca || item?.brandName || "";
+            const model = item?.model || item?.modelo || item?.modelName || item?.name || "";
+            const year = item?.year || item?.ano || item?.modelYear || "";
+            const color = item?.color || item?.cor || "";
+            const fipeCode = item?.fipeCode || item?.cdFp || item?.code || "";
+
+            if (brand || model || year) {
+              let type = "carro";
+              const modelLower = (model + " " + brand).toLowerCase();
+              if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) {
+                type = "moto";
+              } else if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) {
+                type = "caminhao";
+              }
+              vehicle = { brand, model, year: String(year), color, type, city: "", fipeCode };
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching quotationFipeApi:", e);
+      }
+    }
+
+    // 7. Fallback: quotation endpoint
     if (!vehicle) {
       try {
         const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
