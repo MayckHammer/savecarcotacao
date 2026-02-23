@@ -1,60 +1,89 @@
 
+## Correcao: Cotacao no CRM sem dados suficientes para gerar planos
 
-## Correção: `crm_quotation_code` salvo como NULL no banco
+### Problema Raiz
 
-### Problema Identificado
-
-Existem **dois problemas** no fluxo:
-
-1. **Frontend nao envia o `crmQuotationCode` existente**: Quando o `skipCrm` e `true` (cotacao ja criada via consulta de placa), o frontend envia `skipCrm: true` mas **nao envia** o `crmQuotationCode` nem o `crmNegotiationCode` que foram obtidos anteriormente.
-
-2. **Edge function ignora o codigo quando `skipCrm` e true**: Na funcao `submit-to-crm`, quando `skipCrm` e `true`, as variaveis `crmQuotationCode` e `crmNegotiationCode` permanecem `null` (linhas 135-136). O update final no banco (linha 231-235) grava `null` no campo `crm_quotation_code`.
+O CRM retorna "Nenhum plano disponivel" porque a cotacao foi criada com dados **minimos** (nome, telefone, email, CPF, placa) pela `consulta-placa-crm`. Quando o `submit-to-crm` roda com `skipCrm=true`, ele **nao atualiza** a cotacao no CRM com os dados completos (endereco, valor FIPE, modelo, etc.). Sem esses dados, o CRM nao consegue calcular os planos e precos.
 
 ### Solucao
 
-**1. Frontend (`src/pages/Quote.tsx`)**
-- Passar `crmQuotationCode` e `crmNegotiationCode` no body da requisicao quando `skipCrm` e `true`.
-
-**2. Edge Function (`supabase/functions/submit-to-crm/index.ts`)**
-- Quando `skipCrm` e `true`, ler o `crmQuotationCode` e `crmNegotiationCode` do body da requisicao e usa-los no update do banco.
+Quando `skipCrm=true` (cotacao ja existe), em vez de pular o CRM completamente, **atualizar** a cotacao existente usando `POST /api/quotation/update` com todos os dados coletados.
 
 ---
 
 ### Detalhes Tecnicos
 
-**Alteracao no frontend (Quote.tsx, linhas 238-248):**
-Adicionar os campos `crmQuotationCode` e `crmNegotiationCode` ao body:
+**1. Alteracao em `supabase/functions/submit-to-crm/index.ts`**
 
-```text
-body: {
-  personal: quote.personal,
-  vehicle: quote.vehicle,
-  address: quote.address,
-  plan: {},
-  skipCrm: true,
-  crmQuotationCode: quote.crmQuotationCode,
-  crmNegotiationCode: quote.crmNegotiationCode,
-}
-```
-
-**Alteracao na edge function (submit-to-crm/index.ts):**
-Na linha 25, extrair tambem `crmQuotationCode` e `crmNegotiationCode` do body:
-
-```text
-const { personal, vehicle, address, plan, skipCrm, 
-        crmQuotationCode: existingQuotationCode, 
-        crmNegotiationCode: existingNegotiationCode } = await req.json();
-```
-
-No bloco `skipCrm` (linhas 139-140), atribuir os valores:
+No bloco `if (skipCrm)`, adicionar chamada ao endpoint de update do CRM:
 
 ```text
 if (skipCrm) {
   crmQuotationCode = existingQuotationCode || null;
   crmNegotiationCode = existingNegotiationCode || null;
-  console.log("Skipping CRM submission, using existing codes:", crmQuotationCode, crmNegotiationCode);
+
+  // UPDATE the existing quotation with full data
+  if (crmQuotationCode && token) {
+    const updatePayload = {
+      code: crmQuotationCode,
+      name: personal.name,
+      phone,
+      email: personal.email,
+      registration: cpfDigits,
+      phoneMobile1: phone,
+      plates: vehicle.plate,
+      workVehicle: vehicle.usage === "aplicativo",
+      addressZipcode: address.cep?.replace(/\D/g, ""),
+      addressAddress: address.street,
+      addressNumber: address.number || "S/N",
+      addressComplement: address.complement,
+      addressNeighborhood: address.neighborhood,
+      protectedValue: vehicle.fipeValue || 0,
+      observation,
+    };
+    if (cityCode) updatePayload.city = cityCode;
+
+    await fetch("https://api.powercrm.com.br/api/quotation/update", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(updatePayload),
+    });
+  }
+  crmSuccess = true;
 }
 ```
 
-Isso garante que o `crm_quotation_code` obtido na consulta de placa seja persistido no banco e esteja disponivel para a pagina de Resultado buscar os planos do CRM.
+Isso envia para o CRM: endereco completo, valor FIPE (`protectedValue`), cidade, dados pessoais, observacao com detalhes do plano — tudo que o CRM precisa para calcular os planos.
 
+**2. Alteracao em `supabase/functions/get-crm-plans/index.ts`**
+
+Aumentar os tempos de retry para dar mais tempo ao CRM processar o update:
+- Attempt 1: espera 5s (em vez de 3s)
+- Attempt 2: espera 8s (em vez de 6s)  
+- Attempt 3: espera 10s (em vez de 9s)
+- Aumentar para 4 tentativas
+
+**3. Alteracao em `src/pages/Result.tsx`**
+
+Adicionar um pequeno delay antes de buscar os planos (3s) para dar tempo ao CRM processar o update feito pelo `submit-to-crm`.
+
+---
+
+### Fluxo Corrigido
+
+```text
+1. Passo 1: Usuario preenche dados pessoais
+2. Passo 2: Consulta placa -> consulta-placa-crm cria cotacao minima no CRM
+3. Passo 3: Usuario preenche endereco
+4. Submit: submit-to-crm ATUALIZA a cotacao existente com dados completos
+5. Resultado: get-crm-plans busca planos com precos reais do CRM
+6. Detalhes: Exibe precos vindos do CRM
+```
+
+### Resumo das alteracoes
+- `supabase/functions/submit-to-crm/index.ts` — Adicionar update da cotacao no CRM quando skipCrm=true
+- `supabase/functions/get-crm-plans/index.ts` — Aumentar tempos de retry
+- `src/pages/Result.tsx` — Adicionar delay antes de buscar planos
