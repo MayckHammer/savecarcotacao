@@ -12,56 +12,10 @@ import { useQuote, PLAN_COVERAGES, PlanName } from "@/contexts/QuoteContext";
 
 const PlanDetails = () => {
   const navigate = useNavigate();
-  const { quote, setBillingPeriod, setPlanName, setCoupon } = useQuote();
+  const { quote, setBillingPeriod, setPlanName, setCoupon, getSubtotalWithoutDiscount } = useQuote();
   const [showUserInfo, setShowUserInfo] = useState(false);
   const [couponInput, setCouponInput] = useState(quote.coupon);
-  const [expandedCoverage, setExpandedCoverage] = useState<number | null>(null);
-
   const coverages = PLAN_COVERAGES[quote.planName];
-
-  // Group coverages into categories for accordion display
-  const coverageGroups = [
-    {
-      title: "Furto e Roubo",
-      included: true,
-      items: coverages.filter(c => c.toLowerCase().includes("roubo") || c.toLowerCase().includes("furto")),
-    },
-    {
-      title: "Assistência 24h + Carro reserva",
-      included: true,
-      items: coverages.filter(c =>
-        c.toLowerCase().includes("assistência") ||
-        c.toLowerCase().includes("reboque") ||
-        c.toLowerCase().includes("chaveiro") ||
-        c.toLowerCase().includes("pneu") ||
-        c.toLowerCase().includes("combustível") ||
-        c.toLowerCase().includes("táxi") ||
-        c.toLowerCase().includes("domicílio") ||
-        c.toLowerCase().includes("hospedagem")
-      ),
-    },
-    {
-      title: "Colisão + Terceiros + APP",
-      included: false,
-      price: "R$ 58,00",
-      items: coverages.filter(c =>
-        c.toLowerCase().includes("colisão") ||
-        c.toLowerCase().includes("incêndio") ||
-        c.toLowerCase().includes("acidentes") ||
-        c.toLowerCase().includes("natureza") ||
-        c.toLowerCase().includes("rcf") ||
-        c.toLowerCase().includes("leilão") ||
-        c.toLowerCase().includes("fenômenos")
-      ),
-    },
-    {
-      title: "Vidros Completo",
-      included: quote.planName === "PREMIUM",
-      price: quote.planName === "PREMIUM" ? undefined : "R$ 35,00",
-      items: coverages.filter(c => c.toLowerCase().includes("vidro")),
-    },
-  ];
-
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
       <Header dark />
@@ -151,45 +105,40 @@ const PlanDetails = () => {
           ))}
         </div>
 
-        {/* Coverage Accordion Items */}
-        <div className="space-y-3">
-          {coverageGroups.map((group, i) => (
-            <Card key={i} className={`border-border ${group.included ? "bg-primary/5" : ""}`}>
-              <button
-                onClick={() => setExpandedCoverage(expandedCoverage === i ? null : i)}
-                className="w-full p-4 flex items-center gap-3"
-              >
-                <div className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${
-                  group.included
-                    ? "bg-primary text-primary-foreground"
-                    : "border-2 border-border bg-card"
-                }`}>
-                  {group.included && <Check className="h-4 w-4" />}
-                </div>
-                <div className="flex-1 text-left">
-                  <span className="text-sm font-bold text-foreground">{group.title}</span>
-                  {group.price && !group.included && (
-                    <p className="text-xs text-muted-foreground">+ {group.price} Mês</p>
+        {/* Plan Coverages */}
+        <Card className="border-border overflow-hidden">
+          <div className="bg-primary/10 px-4 py-3 flex items-center justify-between">
+            <span className="text-sm font-bold text-foreground">
+              {quote.planName}
+            </span>
+            <span className="text-sm font-bold text-primary">
+              R$ {getSubtotalWithoutDiscount().toFixed(2).replace(".", ",")}
+            </span>
+          </div>
+          <CardContent className="p-0">
+            {coverages.map((item, i) => {
+              const isClubeCerto = item.toLowerCase().includes("clube de descontos");
+              const isZelo = item.toLowerCase().includes("zelo");
+              const label = isClubeCerto ? "CLUBE CERTO" : isZelo ? "ZELO" : null;
+
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center justify-between px-4 py-2.5 text-sm text-foreground ${
+                    i < coverages.length - 1 ? "border-b border-border/50" : ""
+                  }`}
+                >
+                  <span className="flex-1">{item}</span>
+                  {label && (
+                    <span className="ml-2 shrink-0 rounded bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                      {label}
+                    </span>
                   )}
                 </div>
-                {expandedCoverage === i ? (
-                  <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                )}
-              </button>
-              {expandedCoverage === i && group.items.length > 0 && (
-                <CardContent className="pt-0 pb-4 px-4 border-t border-border">
-                  <div className="space-y-1.5 mt-2">
-                    {group.items.map((item, j) => (
-                      <p key={j} className="text-xs text-muted-foreground">• {item}</p>
-                    ))}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          ))}
-        </div>
+              );
+            })}
+          </CardContent>
+        </Card>
 
         {/* Payment Method Selector */}
         <PaymentMethodSelector />
