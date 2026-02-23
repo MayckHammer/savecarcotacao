@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.consulta-placa-crm]
 verify_jwt = false
+
+[functions.consulta-cep]
+verify_jwt = false
