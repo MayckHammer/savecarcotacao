@@ -1,52 +1,56 @@
 
-# Migrar integracao Power CRM para API REST oficial
 
-## Resumo
-Substituir o endpoint de formulario publico (`app.powercrm.com.br/svQttnDynmcFrm`) pela API REST oficial (`api.powercrm.com.br/api/quotation/add`) com autenticacao Bearer Token.
+# Corrigir campos da API REST do Power CRM
 
-## Etapas
+## Problema
+A edge function `submit-to-crm` estava enviando campos com prefixo `pwr*` (do formulario publico antigo), mas a API REST oficial usa nomes completamente diferentes. Por isso o erro "O email ou telefone tem que ser preenchido" -- o campo `phone` nao estava sendo reconhecido.
 
-### 1. Armazenar o Bearer Token como secret
-Salvar o token `POWERCRM_API_TOKEN` de forma segura no backend, acessivel apenas pela edge function.
+## Mapeamento correto dos campos
 
-### 2. Atualizar a edge function `submit-to-crm`
-Alterar o arquivo `supabase/functions/submit-to-crm/index.ts`:
+Campos que vamos enviar (baseado na documentacao oficial):
 
-**O que muda:**
-- Endpoint: de `https://app.powercrm.com.br/svQttnDynmcFrm` para `https://api.powercrm.com.br/api/quotation/add`
-- Headers: adicionar `Authorization: Bearer {token}` lido do secret
-- Remover campos exclusivos do formulario publico (`companyHash`, `formCode`, `pipelineColumn`, `funnelStage`)
-- Manter todos os campos de dados (`pwrClntNm`, `pwrCltPhn`, `pwrClntCpf`, `pwrClntEml`, `pwrVhclPlt`, `pwrVhclTyp`, `pwrVhclSWrk`, `pwrQttnVl`, `pwrStt`, `pwrCt`, `observation`)
-- Manter a resolucao de codigos de estado/cidade via utilities API
-- Manter o salvamento no banco de dados local
+| Campo API | Valor |
+|-----------|-------|
+| `name` (obrigatorio) | Nome do cliente |
+| `phone` | Telefone (digitos) |
+| `email` | Email |
+| `registration` | CPF (digitos) |
+| `plts` | Placa do veiculo |
+| `city` | Codigo da cidade (int64, ja resolvido via utilities API) |
+| `workVehicle` | true se uso = "aplicativo" |
 
-**O que NAO muda:**
-- Frontend (nenhuma alteracao)
-- Banco de dados (mesma tabela `quotes`)
-- Logica de observacao detalhada
-- Fluxo de fallback para erros
+Campos que NAO temos e serao omitidos: `chassi`, `mdl`, `mdlYr`, `coop`, `affiliateId`, `leadSource`, `originId`, `salesId`, `salesNwId`, `pwrlink`, `discount`.
 
-### Resumo tecnico da alteracao na edge function
+Os detalhes completos (valor FIPE, coberturas, endereco, marca/modelo/ano) continuam sendo enviados no campo `observation` como texto formatado.
 
-```
-// Antes (formulario publico)
-fetch("https://app.powercrm.com.br/svQttnDynmcFrm", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ companyHash: "...", formCode: "...", ...campos })
-})
+## Alteracao tecnica
 
-// Depois (API REST oficial)
-const token = Deno.env.get("POWERCRM_API_TOKEN");
-fetch("https://api.powercrm.com.br/api/quotation/add", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${token}`
-  },
-  body: JSON.stringify({ ...campos }) // sem companyHash/formCode
-})
+Arquivo: `supabase/functions/submit-to-crm/index.ts`
+
+Substituir o payload atual (campos `pwr*`) por:
+
+```typescript
+const crmPayload: Record<string, unknown> = {
+  name: personal.name || "",
+  phone: phone,               // digitos
+  email: personal.email || "",
+  registration: cpfDigits,     // CPF sem formatacao
+  plts: vehicle.plate || "",
+  workVehicle: vehicle.usage === "aplicativo",
+};
+
+if (cityCode) crmPayload.city = cityCode;
 ```
 
-### 3. Testar a integracao
-Verificar nos logs da edge function se a API retorna sucesso e o card eh criado no Power CRM.
+O campo `observation` nao aparece na documentacao visivel, mas sera mantido no payload caso a API o aceite (campos extras costumam ser ignorados). Se causar erro, sera removido.
+
+Tambem remover o campo `stateCode` do payload (a API so aceita `city`, nao `state` separado).
+
+## O que NAO muda
+- Frontend
+- Banco de dados
+- Logica de resolucao de cidade via utilities API
+- Texto de observacao (continua sendo gerado para registro local)
+
+## Teste
+Apos o deploy, refazer o fluxo completo de cotacao para confirmar que a API retorna sucesso e o card aparece no Power CRM.
