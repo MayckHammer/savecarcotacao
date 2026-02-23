@@ -101,14 +101,14 @@ Deno.serve(async (req) => {
         console.log("Quotation details:", JSON.stringify(qttnData));
 
         // Extract vehicle data from quotation response
-        const v = qttnData?.vehicle || qttnData?.data?.vehicle || qttnData;
+        const v = qttnData?.vehicle || qttnData?.data?.vehicle || {};
         const negotiation = qttnData?.negotiation || qttnData?.data?.negotiation || {};
 
-        // Try multiple possible field paths
-        const brand = v?.brand || v?.brandName || v?.marca || negotiation?.brand || "";
-        const model = v?.model || v?.modelName || v?.modelo || negotiation?.model || "";
-        const year = v?.year || v?.ano || v?.modelYear || negotiation?.year || "";
-        const color = v?.color || v?.cor || negotiation?.color || "";
+        // Try multiple possible field paths, including root-level CRM fields
+        const brand = v?.brand || v?.brandName || v?.marca || negotiation?.brand || qttnData?.carModel || "";
+        const model = v?.model || v?.modelName || v?.modelo || negotiation?.model || qttnData?.carModel || "";
+        const year = v?.year || v?.ano || v?.modelYear || negotiation?.year || qttnData?.carModelYear || "";
+        const color = v?.color || v?.cor || negotiation?.color || qttnData?.color || "";
         const fipeCode = v?.fipeCode || v?.cdFp || "";
         const city = v?.city || v?.cidade || "";
 
@@ -121,7 +121,10 @@ Deno.serve(async (req) => {
           type = "caminhao";
         }
 
-        vehicle = { brand, model, year: String(year), color, type, city, fipeCode };
+        // Only return vehicle if we have meaningful data
+        if (brand || model || year) {
+          vehicle = { brand, model, year: String(year), color, type, city, fipeCode };
+        }
       }
     } catch (e) {
       console.error("Error fetching quotation details:", e);
