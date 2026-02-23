@@ -137,9 +137,10 @@ Deno.serve(async (req) => {
           `https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
           { headers: { "Authorization": `Bearer ${token}` } }
         );
+        const fipeText = await fipeRes.text();
+        console.log("quotationFipeApi status:", fipeRes.status, "body:", fipeText);
         if (fipeRes.ok) {
-          const fipeData = await fipeRes.json();
-          console.log("quotationFipeApi response:", JSON.stringify(fipeData));
+          const fipeData = JSON.parse(fipeText);
 
           // Try to extract vehicle info from FIPE response
           const items = Array.isArray(fipeData) ? fipeData : fipeData?.data ? (Array.isArray(fipeData.data) ? fipeData.data : [fipeData.data]) : [fipeData];
