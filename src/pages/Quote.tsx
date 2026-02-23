@@ -170,9 +170,16 @@ const Quote = () => {
           color: v.color || "",
           type: v.type || "carro",
         });
-        setPlateConsulted(true);
-        toast.success("Veículo identificado com sucesso!");
+        // Only mark as consulted if CRM actually identified the vehicle
+        if (v.brand && v.model) {
+          setPlateConsulted(true);
+          toast.success("Veículo identificado com sucesso!");
+        } else {
+          setPlateConsulted(false);
+          toast.info("Veículo não identificado pelo CRM. Preencha manualmente.");
+        }
       } else {
+        setPlateConsulted(false);
         toast.info("Veículo não identificado. Preencha manualmente.");
       }
     } catch (e: any) {
