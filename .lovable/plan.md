@@ -1,126 +1,160 @@
 
 
-# Reestruturar Fluxo de Cotacao com Integracao Completa ao Power CRM
+# Integrar 3 Endpoints do Power CRM
 
 ## Resumo
 
-Reestruturar a aplicacao para que o CRM seja o centro do fluxo: criar a cotacao no CRM logo no inicio (com tag "30 seg"), buscar os planos do CRM, capturar apenas a preferencia de pagamento (sem dados de cartao), e obter o link de vistoria diretamente do CRM.
+Integrar os endpoints `open-inspection`, `GET /quotation/{code}` e `GET /quotation/plansQuotation` (V2) para: (1) abrir vistoria automaticamente apos criar cotacao, (2) buscar link de vistoria do CRM, (3) mostrar planos com precos reais do CRM.
 
 ---
 
-## 1. Enviar dados ao CRM imediatamente apos o preenchimento da cotacao
+## 1. Abrir inspecao automaticamente (POST /api/quotation/open-inspection)
 
-**Situacao atual:** Os dados so sao enviados ao CRM quando o usuario clica "Contratar" na pagina de detalhes do plano (PlanDetails.tsx).
-
-**Mudanca:** Mover o envio ao CRM para o final do passo 3 (Endereco) na pagina Quote.tsx. Quando o usuario clicar "Continuar" apos preencher o endereco, os dados ja sao enviados ao CRM e o `session_id` e `crm_quotation_code` ficam disponiveis para os proximos passos.
-
-**Tag "30 seg":** Adicionar o campo de tag no payload do CRM. Investigar se a API aceita um campo `tag` ou similar no `QuotationAddRequest`. Caso nao aceite como campo estruturado, incluir "TAG: 30 seg" no campo `observation`.
+Apos criar a cotacao com sucesso no CRM e receber o `quotationCode`, chamar imediatamente o endpoint de abertura de inspecao.
 
 ### Arquivo: `supabase/functions/submit-to-crm/index.ts`
-- Adicionar "TAG: 30 seg" no texto de `observation`
-- Manter o mesmo payload ja corrigido
 
-### Arquivo: `src/pages/Quote.tsx`
-- No `handleNext` do step 3, apos validar o endereco, chamar `submit-to-crm` antes de navegar para `/resultado`
-- Mostrar loading enquanto envia
-- Salvar o `session_id` no contexto
+Adicionar, logo apos o bloco de tag (linha ~176), uma chamada ao endpoint:
+
+```typescript
+// Open inspection automatically
+if (crmQuotationCode) {
+  try {
+    const inspRes = await fetch("https://api.powercrm.com.br/api/quotation/open-inspection", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({ quotationCode: crmQuotationCode }),
+    });
+    const inspData = await inspRes.json();
+    console.log("Open inspection response:", JSON.stringify(inspData, null, 2));
+  } catch (inspErr) {
+    console.error("Error opening inspection:", inspErr);
+  }
+}
+```
+
+Isso garante que a vistoria e liberada automaticamente no CRM sem intervencao manual.
+
+---
+
+## 2. Buscar link de vistoria (GET /api/quotation/{quotationCode})
+
+Atualizar a edge function `get-inspection-link` para usar o endpoint correto de pesquisa de cotacao, que retorna os dados completos incluindo o link de vistoria.
+
+### Arquivo: `supabase/functions/get-inspection-link/index.ts`
+
+Substituir a chamada atual (que usa `/api/negotiation/`) por:
+
+```typescript
+const qttnRes = await fetch(
+  `https://api.powercrm.com.br/api/quotation/${quote.crm_quotation_code}`,
+  { headers: { "Authorization": `Bearer ${token}` } }
+);
+```
+
+Analisar a resposta para extrair o link de vistoria -- possiveis campos: `inspectionLink`, `inspection`, `data.inspectionLink`, ou dentro de um objeto `negotiation`.
+
+Tambem atualizar o mesmo trecho no `submit-to-crm` (linhas 178-198) para usar `/api/quotation/{code}` em vez de `/api/negotiation/{code}`.
+
+---
+
+## 3. Buscar planos reais do CRM (GET /api/quotation/plansQuotation V2)
+
+Criar uma nova edge function que consulta os planos disponiveis para uma cotacao especifica, retornando precos reais calculados pelo CRM com base no veiculo.
+
+### Nova edge function: `supabase/functions/get-crm-plans/index.ts`
+
+```typescript
+// Recebe quotationCode
+// Chama GET /api/quotation/plansQuotation?quotationCode={code}
+// (ou variante V2 se houver parametro de versao)
+// Retorna array de planos com nome, preco, coberturas
+```
+
+### Arquivo: `supabase/config.toml`
+
+Adicionar:
+```toml
+[functions.get-crm-plans]
+verify_jwt = false
+```
+
+### Arquivo: `src/pages/Result.tsx`
+
+Apos o CRM ter criado a cotacao, chamar `get-crm-plans` com o `quotationCode` salvo no contexto. Exibir os planos retornados pelo CRM com precos reais em vez dos valores fixos atuais (R$ 189,90 / R$ 1.899,00).
 
 ### Arquivo: `src/pages/PlanDetails.tsx`
-- Remover a chamada ao `submit-to-crm` do botao "Contratar" (ja foi feita no step anterior)
-- O botao "Contratar" agora apenas navega para `/vistoria`
 
----
-
-## 2. Consulta de placa com retorno FIPE
-
-**Situacao atual:** Ja funciona -- a selecao em cascata (tipo > marca > modelo > ano) consulta a API FIPE via edge function `consulta-placa` e retorna o valor FIPE formatado.
-
-**Mudanca:** Nenhuma. Ja esta implementado corretamente.
-
----
-
-## 3. Planos COMPLETO e PREMIUM
-
-**Situacao atual:** Ja existem os dois planos (COMPLETO e PREMIUM) com coberturas definidas no `QuoteContext.tsx`.
-
-**Mudanca:** Nenhuma estrutural. Os planos ja correspondem ao que o CRM oferece.
-
----
-
-## 4. Pagamento: apenas preferencia, sem dados de cartao
-
-**Situacao atual:** A pagina PlanDetails mostra o `CardForm` quando o metodo e "credit", coletando numero, validade, CVV e nome do titular. A pagina Payment tambem tem `CardForm`.
-
-**Mudancas:**
-
-### Arquivo: `src/pages/PlanDetails.tsx`
-- Remover o componente `CardForm` da renderizacao
-- Manter o `PaymentMethodSelector` para capturar apenas a **preferencia** (cartao ou PIX/boleto)
-- Quando "cartao" for selecionado, mostrar apenas texto informativo ("O pagamento sera processado apos aprovacao da vistoria") em vez de campos de cartao
-
-### Arquivo: `src/pages/Payment.tsx`
-- Remover a coleta de dados de cartao
-- Transformar em pagina de confirmacao de preferencia/resumo
-- Remover validacao de campos de cartao do `isFormValid`
+Receber os planos do CRM (via contexto ou estado) e exibir precos dinamicos. Se o CRM retornar valores diferentes dos atuais, usar os do CRM.
 
 ### Arquivo: `src/contexts/QuoteContext.tsx`
-- Manter os campos de cartao na interface por compatibilidade, mas nao serao mais obrigatorios
+
+Adicionar estado para armazenar planos do CRM:
+
+```typescript
+// Novo estado
+crmPlans: CrmPlan[] // { name, monthlyPrice, annualPrice, coverages[] }
+setCrmPlans: (plans: CrmPlan[]) => void
+```
+
+Atualizar `getSubtotalWithoutDiscount()` e `getTotal()` para usar precos do CRM quando disponiveis, caindo nos valores fixos como fallback.
 
 ---
 
-## 5. Link de vistoria do CRM
+## 4. Corrigir tag "30 seg" (tagId numerico)
 
-**Situacao atual:** O link de vistoria e inserido manualmente pelo admin no painel (`/admin`). A pagina `/vistoria` faz polling na tabela `quotes` para verificar o status e exibir o link.
+A API `add-tag` requer `tagId` (int64), nao uma string. Precisamos do ID numerico da tag "30 seg" cadastrada no Power CRM.
 
-**Mudanca:** Apos criar a cotacao no CRM, consultar a API do CRM para obter o link de vistoria automaticamente. Isso requer:
+### Acao necessaria do usuario:
+Informar o `tagId` numerico da tag "30 seg". Pode ser encontrado no painel do Power CRM em Configuracoes > Tags, ou testando o endpoint `GET /api/quotation/tags` (se existir).
 
-### Nova edge function: `supabase/functions/get-inspection-link/index.ts`
-- Recebe o `crm_quotation_code`
-- Consulta a API do Power CRM para buscar o link de vistoria da cotacao
-- Retorna o link para o frontend
-- Se a API do CRM tiver um endpoint para isso (ex: `GET /api/quotation/{code}`), usar diretamente
-- Caso contrario, manter o fluxo manual via admin como fallback
+### Arquivo: `supabase/functions/submit-to-crm/index.ts` (linha 167-168)
 
-### Arquivo: `src/pages/Inspection.tsx`
-- Apos montar a pagina, tentar buscar o link de vistoria automaticamente via a nova edge function
-- Se encontrar, exibir direto sem precisar do admin
-- Manter o polling como fallback
-
-### Arquivo: `supabase/functions/submit-to-crm/index.ts`
-- Salvar o `crm_quotation_code` no banco (ja faz isso)
-- Apos criar a cotacao, tentar buscar o link de vistoria imediatamente e salvar no campo `inspection_link` da tabela `quotes`
-
----
-
-## Fluxo revisado
-
-```text
-Landing (/) 
-  -> Cotacao (/cotacao) [3 steps: dados pessoais, veiculo+FIPE, endereco]
-     -> Ao concluir step 3: ENVIA AO CRM com tag "30 seg"
-  -> Resultado (/resultado) [mostra valor FIPE]
-  -> Detalhes (/detalhes) [plano + preferencia pagamento, SEM dados cartao]
-     -> Clique "Contratar" -> navega direto para /vistoria
-  -> Vistoria (/vistoria) [busca link do CRM automaticamente]
-     -> Aprovada -> Pagamento (/pagamento) [resumo, sem coleta de cartao]
+Substituir:
+```typescript
+body: JSON.stringify({ quotationCode: crmQuotationCode, tag: "30 seg" })
+```
+Por:
+```typescript
+body: JSON.stringify({ quotationCode: crmQuotationCode, tagId: TAG_ID_NUMERICO })
 ```
 
 ---
 
-## Detalhes tecnicos
+## Fluxo completo revisado
 
-### Arquivos modificados:
-1. `supabase/functions/submit-to-crm/index.ts` -- adicionar tag "30 seg" na observation + tentar buscar link de vistoria
-2. `src/pages/Quote.tsx` -- chamar submit-to-crm no final do step 3
-3. `src/pages/PlanDetails.tsx` -- remover CardForm e submit-to-crm, manter apenas preferencia
-4. `src/pages/Payment.tsx` -- remover CardForm, simplificar para resumo
-5. `src/pages/Inspection.tsx` -- buscar link automaticamente
-6. `src/components/FinancialSummary.tsx` -- sem mudancas
-7. `src/contexts/QuoteContext.tsx` -- sem mudancas estruturais
+```text
+1. Usuario preenche cotacao (3 steps)
+2. submit-to-crm:
+   a. Cria cotacao no CRM (POST /quotation/add)
+   b. Adiciona tag "30 seg" (POST /quotation/add-tag) com tagId numerico
+   c. Abre inspecao (POST /quotation/open-inspection) -- NOVO
+   d. Busca dados da cotacao (GET /quotation/{code}) para link de vistoria -- CORRIGIDO
+3. Result: Busca planos do CRM (GET /quotation/plansQuotation) -- NOVO
+4. PlanDetails: Exibe planos com precos reais do CRM
+5. Inspection: Polling busca link de vistoria via GET /quotation/{code}
+```
 
-### Possivel nova edge function:
-- `supabase/functions/get-inspection-link/index.ts` -- buscar link de vistoria do CRM (se a API suportar)
+---
 
-### Dependencia critica:
-- Precisamos verificar se a API do Power CRM tem endpoint para consultar dados da cotacao (link de vistoria). Se nao tiver, o link continuara sendo inserido manualmente pelo admin, mas a cotacao ja sera criada automaticamente no CRM com a tag.
+## Arquivos modificados
+
+| Arquivo | Mudanca |
+|---------|---------|
+| `supabase/functions/submit-to-crm/index.ts` | Adicionar open-inspection + corrigir tagId + usar GET /quotation/{code} |
+| `supabase/functions/get-inspection-link/index.ts` | Trocar endpoint de negotiation para quotation |
+| `supabase/functions/get-crm-plans/index.ts` | **NOVO** -- buscar planos V2 |
+| `supabase/config.toml` | Adicionar get-crm-plans |
+| `src/contexts/QuoteContext.tsx` | Adicionar estado crmPlans + precos dinamicos |
+| `src/pages/Result.tsx` | Chamar get-crm-plans e salvar no contexto |
+| `src/pages/PlanDetails.tsx` | Usar precos do CRM |
+
+---
+
+## Dependencia do usuario
+
+Preciso do **tagId numerico** da tag "30 seg" para corrigir o endpoint add-tag. Sem ele, a tag continuara sendo enviada como texto na observation (fallback funcional).
 
