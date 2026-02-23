@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
     // Build CRM payload (API REST oficial — sem companyHash/formCode)
     const crmPayload: Record<string, unknown> = {
       pwrClntNm: personal.name || "",
-      pwrCltPhn: phone,
+      pwrClntPhn: phone,
       pwrClntCpf: cpfDigits,
       pwrClntEml: personal.email || "",
       pwrVhclPlt: vehicle.plate || "",
