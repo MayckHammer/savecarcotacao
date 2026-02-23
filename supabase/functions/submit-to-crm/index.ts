@@ -119,19 +119,16 @@ Deno.serve(async (req) => {
 
     // Build CRM payload (API REST oficial — sem companyHash/formCode)
     const crmPayload: Record<string, unknown> = {
-      pwrClntNm: personal.name || "",
-      pwrClntPhn: phone,
-      pwrClntCpf: cpfDigits,
-      pwrClntEml: personal.email || "",
-      pwrVhclPlt: vehicle.plate || "",
-      pwrVhclTyp: VEHICLE_TYPE_MAP[vehicle.type?.toLowerCase()] || 1,
-      pwrVhclSWrk: vehicle.usage === "aplicativo",
-      pwrQttnVl: totalValue,
+      name: personal.name || "",
+      phone: phone,
+      email: personal.email || "",
+      registration: cpfDigits,
+      plts: vehicle.plate || "",
+      workVehicle: vehicle.usage === "aplicativo",
       observation,
     };
 
-    if (stateCode) crmPayload.pwrStt = stateCode;
-    if (cityCode) crmPayload.pwrCt = cityCode;
+    if (cityCode) crmPayload.city = cityCode;
 
     // Log full payload for debugging
     console.log("CRM payload:", JSON.stringify(crmPayload, null, 2));
