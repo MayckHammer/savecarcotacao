@@ -18,6 +18,9 @@ const Result = () => {
       if (!quote.sessionId) return;
 
       try {
+        // Wait for CRM to process the quotation update before fetching plans
+        await new Promise(r => setTimeout(r, 3000));
+
         const { data } = await supabase
           .from("quotes")
           .select("crm_quotation_code")

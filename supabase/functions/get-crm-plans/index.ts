@@ -4,7 +4,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function fetchPlansWithRetry(quotationCode: string, token: string, maxAttempts = 3): Promise<{ plans: unknown[]; error?: string }> {
+async function fetchPlansWithRetry(quotationCode: string, token: string, maxAttempts = 4): Promise<{ plans: unknown[]; error?: string }> {
+  const delays = [5000, 8000, 10000, 12000]; // progressive delays in ms
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     console.log(`Fetching plans attempt ${attempt}/${maxAttempts} for ${quotationCode}`);
     
@@ -26,7 +27,8 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
       } catch {
         console.error(`Non-JSON response (attempt ${attempt}):`, text.substring(0, 200));
         if (attempt < maxAttempts) {
-          await new Promise(r => setTimeout(r, 3000 * attempt));
+          const delay = delays[attempt - 1] || 10000;
+          await new Promise(r => setTimeout(r, delay));
           continue;
         }
         return { plans: [], error: "CRM returned invalid response" };
@@ -39,8 +41,9 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
       const errors = dataObj?.errors as string[] | undefined;
       if (errors?.length && errors.some((e: string) => e.includes("Nenhum plano"))) {
         if (attempt < maxAttempts) {
-          console.log(`No plans yet, retrying in ${3 * attempt}s...`);
-          await new Promise(r => setTimeout(r, 3000 * attempt));
+          const delay = delays[attempt - 1] || 10000;
+          console.log(`No plans yet, retrying in ${delay / 1000}s...`);
+          await new Promise(r => setTimeout(r, delay));
           continue;
         }
         return { plans: [], error: "Nenhum plano disponível para esta cotação" };
@@ -48,7 +51,8 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
 
       if (!res.ok) {
         if (attempt < maxAttempts) {
-          await new Promise(r => setTimeout(r, 3000 * attempt));
+          const delay = delays[attempt - 1] || 10000;
+          await new Promise(r => setTimeout(r, delay));
           continue;
         }
         return { plans: [], error: `CRM error: ${res.status}` };
@@ -92,7 +96,7 @@ Deno.serve(async (req) => {
     }
 
     const token = Deno.env.get("POWERCRM_API_TOKEN");
-    const result = await fetchPlansWithRetry(quotationCode, token!, 3);
+    const result = await fetchPlansWithRetry(quotationCode, token!, 4);
 
     // Always return 200 — frontend will use fallback prices if plans is empty
     return new Response(JSON.stringify({ plans: result.plans, warning: result.error || null }), {
