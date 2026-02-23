@@ -1,68 +1,114 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { useQuote } from "@/contexts/QuoteContext";
+import { CreditCard, Sparkles } from "lucide-react";
 
-const fmt = (v: number) => v.toFixed(2).replace(".", ",");
+interface FinancialSummaryProps {
+  showToggle?: boolean;
+}
 
-const FinancialSummary = () => {
-  const { quote, getTotal, getSubtotalWithoutDiscount } = useQuote();
+const fmt = (v: number) =>
+  v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const FinancialSummary = ({ showToggle = true }: FinancialSummaryProps) => {
+  const { quote, getTotal, getSubtotalWithoutDiscount, setBillingPeriod } = useQuote();
 
   const subtotal = getSubtotalWithoutDiscount();
   const total = getTotal();
   const isCredit = quote.paymentMethod === "credit";
-  const discount = isCredit ? subtotal * 0.1 : 0;
-  const periodLabel = quote.billingPeriod === "monthly" ? "Mensal" : "Anual";
-  const grandTotal = total + quote.activationFee;
+  const isMonthly = quote.billingPeriod === "monthly";
+  const periodLabel = isMonthly ? "Mês" : "Ano";
 
   return (
-    <Card className="border-border">
-      <CardContent className="p-4 space-y-2 text-sm">
-        {/* Plan line */}
-        <div className="flex justify-between items-center">
-          <span className="text-muted-foreground">
-            Plano {quote.planName} — {periodLabel}
-          </span>
-          {isCredit ? (
-            <div className="flex items-center gap-2">
-              <span className="line-through text-muted-foreground text-xs">R$ {fmt(subtotal)}</span>
-              <span className="font-semibold text-foreground">R$ {fmt(total)}</span>
-            </div>
-          ) : (
-            <span className="font-semibold text-foreground">R$ {fmt(subtotal)}</span>
-          )}
-        </div>
+    <div className="space-y-4">
+      {showToggle && (
+      <div className="flex rounded-2xl overflow-hidden border border-border bg-muted p-1 gap-1">
+        <button
+          onClick={() => setBillingPeriod("monthly")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${
+            isMonthly
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground"
+          }`}
+        >
+          <CreditCard className="h-4 w-4" />
+          Mensal
+        </button>
+        <button
+          onClick={() => setBillingPeriod("monthly")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${
+            !isMonthly
+              ? "bg-card text-primary shadow-sm"
+              : "text-muted-foreground"
+          }`}
+        >
+          <Sparkles className="h-4 w-4" />
+          Anual
+        </button>
+      </div>
+      )}
 
-        {/* Discount line */}
-        {isCredit && (
-          <div className="flex justify-between">
-            <span className="text-green-600 text-xs">Desconto cartão (10%)</span>
-            <span className="text-green-600 font-semibold text-xs">-R$ {fmt(discount)}</span>
-          </div>
-        )}
-
-        {/* Activation fee */}
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">
-            Taxa de ativação{isCredit ? "" : " (PIX)"}
-          </span>
-          <span className="font-semibold text-foreground">R$ {fmt(quote.activationFee)}</span>
-        </div>
-
-        {/* Total */}
-        <div className="flex justify-between border-t border-border pt-2">
+      {/* Price Hero */}
+      <Card className="border-border">
+        <CardContent className="p-5 space-y-4">
+          {/* Large price */}
           <div>
-            <span className="font-bold text-foreground">Total</span>
-            <p className="text-[10px] text-muted-foreground">
-              {isCredit
-                ? `Adesão R$ ${fmt(quote.activationFee)} + 11x R$ ${fmt(total)}`
-                : `Adesão R$ ${fmt(quote.activationFee)} + 11 boletos de R$ ${fmt(subtotal)}`}
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-extrabold text-foreground">
+                R$ {fmt(isCredit ? total : subtotal)}
+              </span>
+              <span className="text-base text-muted-foreground font-medium">/{periodLabel}</span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Taxa única de ativação: R$ {fmt(quote.activationFee)}
             </p>
+            {isCredit && (
+              <p className="text-xs text-primary font-semibold mt-1">
+                10% de desconto no cartão de crédito
+              </p>
+            )}
           </div>
-          <span className="font-bold text-primary text-lg">
-            R$ {fmt(grandTotal)}
-          </span>
-        </div>
-      </CardContent>
-    </Card>
+
+          {/* Primeiro pagamento breakdown */}
+          <div>
+            <h4 className="text-sm font-bold text-foreground mb-3">Primeiro pagamento</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">
+                  {isMonthly ? "Mensalidade" : "Anuidade"}
+                </span>
+                <span className="text-sm font-semibold text-foreground">
+                  R$ {fmt(isCredit ? total : subtotal)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Taxa única de ativação</span>
+                <span className="text-sm font-semibold text-foreground">
+                  R$ {fmt(quote.activationFee)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Subtotal</span>
+                <span className="text-sm font-semibold text-foreground">
+                  R$ {fmt((isCredit ? total : subtotal) + quote.activationFee)}
+                </span>
+              </div>
+            </div>
+
+            {/* Dashed separator */}
+            <div className="border-t border-dashed border-border my-3" />
+
+            <div className="flex justify-between items-center">
+              <span className="text-base font-bold text-foreground">Total:</span>
+              <span className="text-base font-bold text-foreground">
+                R$ {fmt((isCredit ? total : subtotal) + quote.activationFee)}
+              </span>
+            </div>
+
+            <div className="border-t border-dashed border-border my-3" />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
