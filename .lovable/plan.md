@@ -1,47 +1,60 @@
 
 
-## Correção: CEP não retorna endereço (erro CORS)
+## Correção: `crm_quotation_code` salvo como NULL no banco
 
-### Problema
-A chamada direta do frontend para `https://viacep.com.br/ws/{cep}/json/` está falhando com "Failed to fetch" devido a restrições de CORS do navegador. Os logs de rede confirmam esse comportamento.
+### Problema Identificado
 
-### Solução
-Criar uma função backend que faz a consulta ao ViaCEP e retorna os dados para o frontend, eliminando o problema de CORS.
+Existem **dois problemas** no fluxo:
 
----
+1. **Frontend nao envia o `crmQuotationCode` existente**: Quando o `skipCrm` e `true` (cotacao ja criada via consulta de placa), o frontend envia `skipCrm: true` mas **nao envia** o `crmQuotationCode` nem o `crmNegotiationCode` que foram obtidos anteriormente.
 
-### Etapas
+2. **Edge function ignora o codigo quando `skipCrm` e true**: Na funcao `submit-to-crm`, quando `skipCrm` e `true`, as variaveis `crmQuotationCode` e `crmNegotiationCode` permanecem `null` (linhas 135-136). O update final no banco (linha 231-235) grava `null` no campo `crm_quotation_code`.
 
-**1. Criar a edge function `consulta-cep`**
-- Nova função em `supabase/functions/consulta-cep/index.ts`
-- Recebe o CEP no body da requisição
-- Faz a chamada para `https://viacep.com.br/ws/{cep}/json/` no servidor (sem CORS)
-- Retorna os dados de endereço (logradouro, bairro, cidade, estado)
-- Inclui headers CORS para permitir chamadas do frontend
+### Solucao
 
-**2. Atualizar `src/pages/Quote.tsx`**
-- Alterar a função `fetchCEP` para chamar a edge function via Supabase client em vez de chamar o ViaCEP diretamente
-- Usar `supabase.functions.invoke('consulta-cep', { body: { cep } })` 
-- Manter a mesma lógica de preenchimento dos campos de endereço
+**1. Frontend (`src/pages/Quote.tsx`)**
+- Passar `crmQuotationCode` e `crmNegotiationCode` no body da requisicao quando `skipCrm` e `true`.
+
+**2. Edge Function (`supabase/functions/submit-to-crm/index.ts`)**
+- Quando `skipCrm` e `true`, ler o `crmQuotationCode` e `crmNegotiationCode` do body da requisicao e usa-los no update do banco.
 
 ---
 
-### Detalhes Técnicos
+### Detalhes Tecnicos
 
-A edge function terá a seguinte estrutura:
+**Alteracao no frontend (Quote.tsx, linhas 238-248):**
+Adicionar os campos `crmQuotationCode` e `crmNegotiationCode` ao body:
 
 ```text
-POST /consulta-cep
-Body: { "cep": "38400739" }
-Response: { "logradouro": "...", "bairro": "...", "localidade": "...", "uf": "..." }
+body: {
+  personal: quote.personal,
+  vehicle: quote.vehicle,
+  address: quote.address,
+  plan: {},
+  skipCrm: true,
+  crmQuotationCode: quote.crmQuotationCode,
+  crmNegotiationCode: quote.crmNegotiationCode,
+}
 ```
 
-No frontend, a chamada mudará de:
+**Alteracao na edge function (submit-to-crm/index.ts):**
+Na linha 25, extrair tambem `crmQuotationCode` e `crmNegotiationCode` do body:
+
 ```text
-fetch("https://viacep.com.br/ws/{cep}/json/")
+const { personal, vehicle, address, plan, skipCrm, 
+        crmQuotationCode: existingQuotationCode, 
+        crmNegotiationCode: existingNegotiationCode } = await req.json();
 ```
-Para:
+
+No bloco `skipCrm` (linhas 139-140), atribuir os valores:
+
 ```text
-supabase.functions.invoke("consulta-cep", { body: { cep: clean } })
+if (skipCrm) {
+  crmQuotationCode = existingQuotationCode || null;
+  crmNegotiationCode = existingNegotiationCode || null;
+  console.log("Skipping CRM submission, using existing codes:", crmQuotationCode, crmNegotiationCode);
+}
 ```
+
+Isso garante que o `crm_quotation_code` obtido na consulta de placa seja persistido no banco e esteja disponivel para a pagina de Resultado buscar os planos do CRM.
 
