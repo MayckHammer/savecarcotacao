@@ -1,176 +1,67 @@
 
+# Corrigir bloqueio no Step 2 apos consultar placa
 
-# Corrigir Bugs Criticos + Auto-Preencher Veiculo pela Placa via CRM
+## Problema
 
-## Resumo
+Quando o CRM nao retorna dados do veiculo (marca, modelo, ano sao null), o sistema:
+1. Define `plateConsulted = true` (escondendo os campos manuais da FIPE)
+2. Nao mostra o card "Veiculo Identificado" (porque marca esta vazia)
+3. A validacao falha em "Marca nao identificada" / "Modelo nao identificado"
+4. O usuario fica preso -- sem campos visiveis e sem poder avancar
 
-Dois problemas a resolver:
-1. **Bug critico**: `submit-to-crm` nao detecta sucesso da criacao de cotacao (campos errados no response)
-2. **Auto-preenchimento**: Usar o proprio CRM para identificar o veiculo pela placa, eliminando a selecao manual de marca/modelo/ano
+Isso acontece porque o CRM retorna `carModel: null` e `carModelYear: null` na resposta da cotacao.
 
----
+## Solucao
 
-## 1. Corrigir bugs no submit-to-crm (URGENTE)
+Duas mudancas:
 
-### Problema encontrado nos logs
+### 1. Frontend: `src/pages/Quote.tsx`
 
-A resposta do CRM retorna:
-```text
-{
-  "quotationCode": "E05VX6Wq",
-  "negotiationCode": "JE8OORJ12z",
-  ...
-}
-```
-
-Mas o codigo verifica:
-- `crmData.success` (nao existe na resposta - sempre undefined/falsy)
-- `crmData.qttnCd` (nao existe - campo real e `quotationCode`)
-- `crmData.ngttnCd` (nao existe - campo real e `negotiationCode`)
-
-### Correcao: `supabase/functions/submit-to-crm/index.ts`
-
-Linha 152 - trocar:
-```typescript
-if (crmData.success) {
-```
-Por:
-```typescript
-if (crmData.quotationCode) {
-```
-
-Linhas 154-155 - trocar:
-```typescript
-crmQuotationCode = crmData.qttnCd || null;
-crmNegotiationCode = crmData.ngttnCd || null;
-```
-Por:
-```typescript
-crmQuotationCode = crmData.quotationCode || null;
-crmNegotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
-```
-
-Linha 219 - trocar:
-```typescript
-crmError = crmData.message || "CRM submission failed";
-```
-Por:
-```typescript
-crmError = crmData.message || crmData.error || "CRM submission failed";
-```
-
-Isso corrige: tag "30 Seg", abertura de inspecao, busca de link de vistoria -- tudo passara a funcionar.
-
----
-
-## 2. Auto-preencher veiculo pela placa (via CRM)
-
-### Estrategia
-
-Reestruturar o fluxo para que a criacao da cotacao no CRM aconteca no Step 2 (quando o usuario digita a placa), em vez de esperar o Step 3 (endereco). Assim:
-
-1. Usuario preenche dados pessoais (Step 1)
-2. Usuario digita a placa e clica "Consultar" (Step 2)
-3. Sistema cria a cotacao no CRM com dados pessoais + placa
-4. Sistema busca GET /quotation/{code} para obter dados do veiculo identificado pelo DENATRAN
-5. Auto-preenche marca, modelo, ano, cor, tipo
-6. Usuario so precisa confirmar e selecionar "uso do veiculo"
-7. Step 3 (endereco) apenas salva no banco local -- cotacao CRM ja existe
-
-### Nova edge function: `supabase/functions/consulta-placa-crm/index.ts`
-
-Recebe: `personal` (name, phone, email, cpf) + `plate`
-
-Faz:
-1. POST `/api/quotation/add` com dados minimos (name, phone, email, registration, plts)
-2. Se sucesso, GET `/api/quotation/{quotationCode}` para obter dados do veiculo
-3. Adiciona tag 23323
-4. Abre inspecao
-5. Retorna: quotationCode, vehicleData (brand, model, year, color, type, fipeCode)
+Na funcao `handleConsultaPlaca`, so definir `plateConsulted = true` se o CRM realmente retornou dados do veiculo (brand e model nao vazios). Caso contrario, manter os campos manuais visiveis:
 
 ```typescript
-// Retorno esperado:
-{
-  quotationCode: "ABC123",
-  negotiationCode: "XYZ789",
-  vehicle: {
-    brand: "SHINERAY",
-    model: "XY 150-8 JEF S",
-    year: "2025",
-    color: "PRETA",
-    type: "moto",
-    city: "UBERLANDIA/MG",
-    fipeCode: "850046-0" // se disponivel
+if (data?.vehicle) {
+  const v = data.vehicle;
+  updateVehicle({
+    brand: v.brand || "",
+    model: v.model || "",
+    year: v.year || "",
+    color: v.color || "",
+    type: v.type || "carro",
+  });
+  // So marcar como consultado se o CRM realmente identificou o veiculo
+  if (v.brand && v.model) {
+    setPlateConsulted(true);
+    toast.success("Veiculo identificado com sucesso!");
+  } else {
+    setPlateConsulted(false);
+    toast.info("Veiculo nao identificado pelo CRM. Preencha manualmente.");
   }
 }
 ```
 
-### Arquivo: `supabase/config.toml`
+### 2. Edge Function: `supabase/functions/consulta-placa-crm/index.ts`
 
-Adicionar:
-```toml
-[functions.consulta-placa-crm]
-verify_jwt = false
+Melhorar a extracao de dados do veiculo. Os logs mostram que a resposta do CRM tem campos como `plate`, `carModel`, `carModelYear` no nivel raiz. Atualizar os caminhos de leitura:
+
+```typescript
+const brand = v?.brand || v?.brandName || v?.marca || qttnData?.carModel || "";
+const model = v?.model || v?.modelName || v?.modelo || qttnData?.carModel || "";
+const year = v?.year || v?.ano || v?.modelYear || qttnData?.carModelYear || "";
 ```
 
-### Arquivo: `src/pages/Quote.tsx` -- Step 2
-
-Adicionar botao "Consultar" ao lado do campo de placa:
-- Quando clicado, chama `consulta-placa-crm` com dados pessoais + placa
-- Exibe loading enquanto consulta
-- Auto-preenche campos de veiculo com dados retornados
-- Mostra card com dados identificados (marca, modelo, ano, cor)
-- Selecao manual via FIPE continua disponivel como fallback
-- Salva o `quotationCode` no contexto para nao criar duplicata
-
-### Arquivo: `src/pages/Quote.tsx` -- Step 3
-
-Alterar a submissao final:
-- Se ja existe `quotationCode` (placa consultada via CRM), NAO chamar `submit-to-crm` novamente
-- Apenas salvar dados do endereco no banco local (quotes table)
-- Se NAO existe `quotationCode` (usuario preencheu manualmente), manter fluxo atual
-
-### Arquivo: `src/contexts/QuoteContext.tsx`
-
-Adicionar campo `crmQuotationCode` ao QuoteData para rastrear se a cotacao ja foi criada no CRM.
-
----
-
-## Fluxo revisado
-
-```text
-Step 1: Dados pessoais (nome, email, telefone, CPF)
-                    |
-Step 2: Placa --> [Consultar] --> CRM cria cotacao + identifica veiculo
-                    |                      |
-                    |              Auto-preenche marca/modelo/ano/cor
-                    |              + Abre inspecao
-                    |              + Adiciona tag 30 Seg
-                    |
-         Usuario confirma dados + seleciona uso do veiculo
-                    |
-Step 3: Endereco --> Salva no banco local
-                    |
-         Resultado --> Busca planos CRM
-```
-
----
+Tambem retornar `vehicle: null` quando todos os campos estiverem vazios, para que o frontend trate corretamente.
 
 ## Arquivos modificados
 
 | Arquivo | Mudanca |
 |---------|---------|
-| `supabase/functions/submit-to-crm/index.ts` | Corrigir deteccao de sucesso e nomes de campos |
-| `supabase/functions/consulta-placa-crm/index.ts` | **NOVO** - consulta placa via CRM |
-| `supabase/config.toml` | Adicionar consulta-placa-crm |
-| `src/pages/Quote.tsx` | Botao "Consultar", auto-preenchimento, logica de submissao |
-| `src/contexts/QuoteContext.tsx` | Adicionar crmQuotationCode ao estado |
+| `src/pages/Quote.tsx` | So definir `plateConsulted=true` quando brand+model existirem |
+| `supabase/functions/consulta-placa-crm/index.ts` | Melhorar extracao de campos + retornar null se vazio |
 
----
+## Resultado esperado
 
-## Impacto
-
-- Cotacoes passarao a ser criadas corretamente no CRM (bug fix)
-- Tag, inspecao e link de vistoria funcionarao automaticamente
-- Usuario nao precisara selecionar marca/modelo/ano manualmente
-- Selecao manual FIPE permanece como fallback caso o CRM nao identifique o veiculo
+- Se CRM identificar o veiculo: mostra card com dados, usuario so confirma tipo e uso
+- Se CRM NAO identificar: mostra campos manuais FIPE normalmente, usuario preenche
+- Em ambos os casos, a cotacao ja foi criada no CRM (tag + inspecao feitas)
+- Botao "Avancar" funciona em ambos os cenarios
