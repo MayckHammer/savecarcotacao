@@ -175,17 +175,35 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Try to fetch inspection link from negotiation
-        if (crmNegotiationCode) {
+        // Open inspection automatically
+        if (crmQuotationCode) {
           try {
-            const negRes = await fetch(`https://api.powercrm.com.br/api/negotiation/${crmNegotiationCode}`, {
+            const inspRes = await fetch("https://api.powercrm.com.br/api/quotation/open-inspection", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`,
+              },
+              body: JSON.stringify({ quotationCode: crmQuotationCode }),
+            });
+            const inspData = await inspRes.json();
+            console.log("Open inspection response:", JSON.stringify(inspData, null, 2));
+          } catch (inspErr) {
+            console.error("Error opening inspection:", inspErr);
+          }
+        }
+
+        // Try to fetch inspection link from quotation
+        if (crmQuotationCode) {
+          try {
+            const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${crmQuotationCode}`, {
               headers: { "Authorization": `Bearer ${token}` },
             });
-            if (negRes.ok) {
-              const negData = await negRes.json();
-              console.log("Negotiation data:", JSON.stringify(negData, null, 2));
-              // Look for inspection link in the negotiation response
-              const inspLink = negData?.inspectionLink || negData?.inspection_link || negData?.data?.inspectionLink || null;
+            if (qttnRes.ok) {
+              const qttnData = await qttnRes.json();
+              console.log("Quotation data:", JSON.stringify(qttnData, null, 2));
+              const inspLink = qttnData?.inspectionLink || qttnData?.inspection_link
+                || qttnData?.data?.inspectionLink || qttnData?.negotiation?.inspectionLink || null;
               if (inspLink) {
                 await supabase.from("quotes").update({
                   inspection_link: inspLink,
@@ -193,8 +211,8 @@ Deno.serve(async (req) => {
                 }).eq("session_id", sessionId);
               }
             }
-          } catch (negErr) {
-            console.error("Error fetching negotiation:", negErr);
+          } catch (qttnErr) {
+            console.error("Error fetching quotation:", qttnErr);
           }
         }
       } else {

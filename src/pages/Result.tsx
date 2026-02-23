@@ -1,13 +1,49 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, RotateCcw } from "lucide-react";
+import { ArrowRight, RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import Header from "@/components/Header";
 import { useQuote } from "@/contexts/QuoteContext";
+import { supabase } from "@/integrations/supabase/client";
 
 const Result = () => {
   const navigate = useNavigate();
-  const { quote, resetQuote } = useQuote();
+  const { quote, resetQuote, setCrmPlans } = useQuote();
+  const [loadingPlans, setLoadingPlans] = useState(false);
+
+  useEffect(() => {
+    const fetchCrmPlans = async () => {
+      // Get quotationCode from DB using sessionId
+      if (!quote.sessionId) return;
+
+      try {
+        const { data } = await supabase
+          .from("quotes")
+          .select("crm_quotation_code")
+          .eq("session_id", quote.sessionId)
+          .single();
+
+        if (!data?.crm_quotation_code) return;
+
+        setLoadingPlans(true);
+        const { data: plansData, error } = await supabase.functions.invoke("get-crm-plans", {
+          body: { quotationCode: data.crm_quotation_code },
+        });
+
+        if (!error && plansData?.plans?.length > 0) {
+          setCrmPlans(plansData.plans);
+          console.log("CRM plans loaded:", plansData.plans);
+        }
+      } catch (err) {
+        console.error("Error fetching CRM plans:", err);
+      } finally {
+        setLoadingPlans(false);
+      }
+    };
+
+    fetchCrmPlans();
+  }, [quote.sessionId, setCrmPlans]);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -31,9 +67,22 @@ const Result = () => {
         </Card>
 
         <div className="space-y-3 mt-6">
-          <Button onClick={() => navigate("/detalhes")} className="w-full h-13 rounded-xl font-bold text-base">
-            Continuar
-            <ArrowRight className="ml-2 h-5 w-5" />
+          <Button
+            onClick={() => navigate("/detalhes")}
+            className="w-full h-13 rounded-xl font-bold text-base"
+            disabled={loadingPlans}
+          >
+            {loadingPlans ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Carregando planos...
+              </>
+            ) : (
+              <>
+                Continuar
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </>
+            )}
           </Button>
           <Button
             variant="outline"

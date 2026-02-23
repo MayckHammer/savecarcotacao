@@ -55,16 +55,16 @@ Deno.serve(async (req) => {
       try {
         // Try fetching negotiation info to find inspection link
         // The CRM quotation response included a negotiation code, check if there's data
-        const negRes = await fetch(`https://api.powercrm.com.br/api/negotiation/${quote.crm_quotation_code}`, {
+        const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quote.crm_quotation_code}`, {
           headers: { "Authorization": `Bearer ${token}` },
         });
         
-        if (negRes.ok) {
-          const negData = await negRes.json();
-          console.log("Negotiation poll data:", JSON.stringify(negData, null, 2));
+        if (qttnRes.ok) {
+          const qttnData = await qttnRes.json();
+          console.log("Quotation poll data:", JSON.stringify(qttnData, null, 2));
           
-          const inspLink = negData?.inspectionLink || negData?.inspection_link 
-            || negData?.data?.inspectionLink || negData?.data?.inspection_link || null;
+          const inspLink = qttnData?.inspectionLink || qttnData?.inspection_link 
+            || qttnData?.data?.inspectionLink || qttnData?.negotiation?.inspectionLink || null;
           
           if (inspLink) {
             await supabase.from("quotes").update({
@@ -80,8 +80,8 @@ Deno.serve(async (req) => {
             });
           }
         } else {
-          const errText = await negRes.text();
-          console.log("Negotiation fetch failed:", negRes.status, errText);
+          const errText = await qttnRes.text();
+          console.log("Quotation fetch failed:", qttnRes.status, errText);
         }
       } catch (e) {
         console.error("Error polling CRM for inspection link:", e);

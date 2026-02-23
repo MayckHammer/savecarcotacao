@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.get-inspection-link]
 verify_jwt = false
+
+[functions.get-crm-plans]
+verify_jwt = false
