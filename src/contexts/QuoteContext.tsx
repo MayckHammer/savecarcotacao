@@ -106,6 +106,8 @@ export interface QuoteData {
   cardName: string;
   coupon: string;
   sessionId: string;
+  crmQuotationCode: string;
+  crmNegotiationCode: string;
 }
 
 const defaultQuote: QuoteData = {
@@ -125,6 +127,8 @@ const defaultQuote: QuoteData = {
   cardName: "",
   sessionId: localStorage.getItem("savecar_session_id") || "",
   coupon: "",
+  crmQuotationCode: "",
+  crmNegotiationCode: "",
 };
 
 interface QuoteContextType {
@@ -139,6 +143,8 @@ interface QuoteContextType {
   setPaymentMethod: (method: "credit" | "pix") => void;
   updateCard: (data: Partial<Pick<QuoteData, "cardNumber" | "cardExpiry" | "cardCvv" | "cardName">>) => void;
   setCoupon: (coupon: string) => void;
+  setCrmQuotationCode: (code: string) => void;
+  setCrmNegotiationCode: (code: string) => void;
   setSessionId: (id: string) => void;
   resetQuote: () => void;
   getTotal: () => number;
@@ -173,6 +179,12 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
     setQuote((prev) => ({ ...prev, ...data }));
 
   const setCoupon = (coupon: string) => setQuote((prev) => ({ ...prev, coupon }));
+
+  const setCrmQuotationCode = (crmQuotationCode: string) =>
+    setQuote((prev) => ({ ...prev, crmQuotationCode }));
+
+  const setCrmNegotiationCode = (crmNegotiationCode: string) =>
+    setQuote((prev) => ({ ...prev, crmNegotiationCode }));
 
   const setSessionId = (id: string) => {
     localStorage.setItem("savecar_session_id", id);
@@ -209,7 +221,7 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <QuoteContext.Provider
-      value={{ quote, crmPlans, setCrmPlans, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setPaymentMethod, updateCard, setCoupon, setSessionId, resetQuote, getTotal, getSubtotalWithoutDiscount }}
+      value={{ quote, crmPlans, setCrmPlans, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setPaymentMethod, updateCard, setCoupon, setCrmQuotationCode, setCrmNegotiationCode, setSessionId, resetQuote, getTotal, getSubtotalWithoutDiscount }}
     >
       {children}
     </QuoteContext.Provider>
