@@ -58,6 +58,9 @@ const Result = () => {
         if (!error && plansData?.plans?.length > 0) {
           setCrmPlans(plansData.plans);
           console.log("CRM plans loaded:", plansData.plans);
+          if (quote.vehicle.fipeFormatted) {
+            toast.success(`Plano calculado com FIPE oficial: ${quote.vehicle.fipeFormatted}`);
+          }
         } else if (plansData?.warning) {
           setPlanWarning(plansData.warning);
           console.warn("CRM plans warning:", plansData.warning);
