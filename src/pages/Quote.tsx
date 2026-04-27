@@ -179,6 +179,16 @@ const Quote = () => {
       });
       if (error || data?.error) throw error || new Error(data.error);
 
+      // Atualiza FIPE com o valor recalculado para o modelo+ano efetivamente escolhido
+      if (data?.recomputed) {
+        const { fipeCode, fipeValue, fipeFormatted } = data.recomputed;
+        updateVehicle({
+          ...(fipeCode ? { fipeCode } : {}),
+          ...(fipeValue ? { fipeValue } : {}),
+          ...(fipeFormatted ? { fipeFormatted } : {}),
+        });
+      }
+
       const check = data?.fipeCheck;
       if (check && !check.match) {
         const detail = Array.isArray(check.mismatches) && check.mismatches.length > 0
