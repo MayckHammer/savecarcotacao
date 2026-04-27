@@ -143,28 +143,27 @@ Deno.serve(async (req) => {
 
       // UPDATE the existing quotation with full data so CRM can calculate plans
       if (crmQuotationCode && token) {
-        try {
-          const updatePayload: Record<string, unknown> = {
-            code: crmQuotationCode,
-            name: personal.name,
-            phone,
-            email: personal.email,
-            registration: cpfDigits,
-            phoneMobile1: phone,
-            plates: vehicle.plate,
-            workVehicle: vehicle.usage === "aplicativo",
-            addressZipcode: address.cep?.replace(/\D/g, ""),
-            addressAddress: address.street,
-            addressNumber: address.number || "S/N",
-            addressComplement: address.complement || "",
-            addressNeighborhood: address.neighborhood,
-            protectedValue: vehicle.fipeValue || 0,
-            observation,
-          };
-          if (cityCode) updatePayload.city = cityCode;
+        const updatePayload: Record<string, unknown> = {
+          code: crmQuotationCode,
+          name: personal.name,
+          phone,
+          email: personal.email,
+          registration: cpfDigits,
+          phoneMobile1: phone,
+          plates: vehicle.plate,
+          workVehicle: vehicle.usage === "aplicativo",
+          addressZipcode: address.cep?.replace(/\D/g, ""),
+          addressAddress: address.street,
+          addressNumber: address.number || "S/N",
+          addressComplement: address.complement || "",
+          addressNeighborhood: address.neighborhood,
+          protectedValue: vehicle.fipeValue || 0,
+          observation,
+        };
+        if (cityCode) updatePayload.city = cityCode;
 
-          console.log("Updating CRM quotation with full data:", JSON.stringify(updatePayload, null, 2));
-
+        const sendUpdate = async () => {
+          console.log("Updating CRM quotation:", JSON.stringify(updatePayload, null, 2));
           const updateRes = await fetch("https://api.powercrm.com.br/api/quotation/update", {
             method: "POST",
             headers: {
@@ -173,9 +172,40 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify(updatePayload),
           });
-
           const updateText = await updateRes.text();
           console.log("CRM update response:", updateRes.status, updateText.substring(0, 500));
+          return updateRes.ok;
+        };
+
+        const verifyUpdate = async (): Promise<{ ok: boolean; protectedValue: number; hasAddress: boolean }> => {
+          try {
+            const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${crmQuotationCode}`, {
+              headers: { "Authorization": `Bearer ${token}` },
+            });
+            if (!qttnRes.ok) return { ok: false, protectedValue: 0, hasAddress: false };
+            const qttnData = await qttnRes.json();
+            const pv = Number(qttnData?.protectedValue ?? qttnData?.data?.protectedValue ?? 0);
+            const addr = qttnData?.addressZipcode || qttnData?.data?.addressZipcode || qttnData?.addressAddress;
+            console.log("Post-update verify — protectedValue:", pv, "hasAddress:", !!addr);
+            return { ok: true, protectedValue: pv, hasAddress: !!addr };
+          } catch (e) {
+            console.error("verify error:", e);
+            return { ok: false, protectedValue: 0, hasAddress: false };
+          }
+        };
+
+        try {
+          await sendUpdate();
+          // Wait briefly for CRM to persist
+          await new Promise((r) => setTimeout(r, 1500));
+          const v1 = await verifyUpdate();
+          // Retry once if protectedValue did not stick and we have a fipeValue to send
+          if ((updatePayload.protectedValue as number) > 0 && v1.protectedValue === 0) {
+            console.log("protectedValue not persisted, retrying update once...");
+            await sendUpdate();
+            await new Promise((r) => setTimeout(r, 1500));
+            await verifyUpdate();
+          }
         } catch (updateErr) {
           console.error("Error updating CRM quotation:", updateErr);
         }

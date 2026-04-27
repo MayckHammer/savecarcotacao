@@ -89,132 +89,131 @@ Deno.serve(async (req) => {
       console.error("Error opening inspection:", e);
     }
 
-    // 4. Wait 5 seconds for DENATRAN async processing
-    await new Promise((r) => setTimeout(r, 5000));
+    // Helpers
+    const detectType = (brand: string, model: string): string => {
+      const modelLower = (model + " " + brand).toLowerCase();
+      if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) return "moto";
+      if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) return "caminhao";
+      return "carro";
+    };
 
-    // 5. Try negotiation endpoint first (has vehicle data after DENATRAN lookup)
-    let vehicle = null;
+    const parseFipeValue = (raw: unknown): number => {
+      if (raw == null) return 0;
+      if (typeof raw === "number") return raw;
+      if (typeof raw === "string") {
+        // "R$ 45.000,00" or "45000.00"
+        const cleaned = raw.replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
+        const n = parseFloat(cleaned);
+        return isNaN(n) ? 0 : n;
+      }
+      return 0;
+    };
 
-    if (negotiationCode) {
+    const tryNegotiation = async () => {
+      if (!negotiationCode) return null;
       try {
         const negRes = await fetch(
           `https://api.powercrm.com.br/api/negotiation/${negotiationCode}`,
           { headers: { "Authorization": `Bearer ${token}` } }
         );
-        if (negRes.ok) {
-          const negData = await negRes.json();
-          console.log("Negotiation details:", JSON.stringify(negData));
-
-          const v = negData?.vehicle || negData?.data?.vehicle || {};
-          const brand = v?.brand || v?.brandName || v?.marca || negData?.carModel || "";
-          const model = v?.model || v?.modelName || v?.modelo || negData?.carModel || "";
-          const year = v?.year || v?.ano || v?.modelYear || negData?.carModelYear || "";
-          const color = v?.color || v?.cor || negData?.color || "";
-          const fipeCode = v?.fipeCode || v?.cdFp || "";
-          const city = v?.city || v?.cidade || "";
-
-          let type = "carro";
-          const modelLower = (model + " " + brand).toLowerCase();
-          if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) {
-            type = "moto";
-          } else if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) {
-            type = "caminhao";
-          }
-
-          if (brand || model || year) {
-            vehicle = { brand, model, year: String(year), color, type, city, fipeCode };
-          }
+        if (!negRes.ok) return null;
+        const negData = await negRes.json();
+        const v = negData?.vehicle || negData?.data?.vehicle || {};
+        const brand = v?.brand || v?.brandName || v?.marca || negData?.carModel || "";
+        const model = v?.model || v?.modelName || v?.modelo || negData?.carModel || "";
+        const year = v?.year || v?.ano || v?.modelYear || negData?.carModelYear || "";
+        const color = v?.color || v?.cor || negData?.color || "";
+        const fipeCode = v?.fipeCode || v?.cdFp || "";
+        const fipeValue = parseFipeValue(v?.fipeValue ?? v?.vlFipe ?? v?.valorFipe ?? negData?.fipeValue ?? negData?.vlFipe);
+        const city = v?.city || v?.cidade || "";
+        if (brand || model || year) {
+          return { brand, model, year: String(year), color, type: detectType(brand, model), city, fipeCode, fipeValue };
         }
+        return null;
       } catch (e) {
-        console.error("Error fetching negotiation details:", e);
+        console.error("negotiation error:", e);
+        return null;
       }
-    }
+    };
 
-    // 6. Attempt 2: quotationFipeApi (FIPE vehicle data) with retry
-    if (!vehicle) {
-      const maxRetries = 3;
-      for (let attempt = 1; attempt <= maxRetries && !vehicle; attempt++) {
-        try {
-          console.log(`quotationFipeApi attempt ${attempt}/${maxRetries}`);
-          const fipeRes = await fetch(
-            `https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
-            { headers: { "Authorization": `Bearer ${token}` } }
-          );
-          const fipeText = await fipeRes.text();
-          console.log("quotationFipeApi status:", fipeRes.status, "body:", fipeText);
-
-          if (fipeRes.status >= 500 && attempt < maxRetries) {
-            console.log(`Server error ${fipeRes.status}, retrying in ${attempt * 3}s...`);
-            await new Promise((r) => setTimeout(r, attempt * 3000));
-            continue;
-          }
-
-          if (fipeRes.ok) {
-            const fipeData = JSON.parse(fipeText);
-            const items = Array.isArray(fipeData) ? fipeData : fipeData?.data ? (Array.isArray(fipeData.data) ? fipeData.data : [fipeData.data]) : [fipeData];
-            for (const item of items) {
-              const brand = item?.brand || item?.marca || item?.brandName || "";
-              const model = item?.model || item?.modelo || item?.modelName || item?.name || "";
-              const year = item?.year || item?.ano || item?.modelYear || "";
-              const color = item?.color || item?.cor || "";
-              const fipeCode = item?.fipeCode || item?.cdFp || item?.code || "";
-
-              if (brand || model || year) {
-                let type = "carro";
-                const modelLower = (model + " " + brand).toLowerCase();
-                if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) {
-                  type = "moto";
-                } else if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) {
-                  type = "caminhao";
-                }
-                vehicle = { brand, model, year: String(year), color, type, city: "", fipeCode };
-                break;
-              }
-            }
-          }
-          break; // Success or non-5xx error, stop retrying
-        } catch (e) {
-          console.error(`Error fetching quotationFipeApi (attempt ${attempt}):`, e);
-          if (attempt < maxRetries) {
-            await new Promise((r) => setTimeout(r, attempt * 3000));
+    const tryFipeApi = async () => {
+      try {
+        const fipeRes = await fetch(
+          `https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
+          { headers: { "Authorization": `Bearer ${token}` } }
+        );
+        if (!fipeRes.ok) return null;
+        const fipeText = await fipeRes.text();
+        let fipeData: unknown;
+        try { fipeData = JSON.parse(fipeText); } catch { return null; }
+        const items = Array.isArray(fipeData)
+          ? fipeData
+          : (fipeData as Record<string, unknown>)?.data
+            ? (Array.isArray((fipeData as Record<string, unknown>).data)
+                ? (fipeData as { data: unknown[] }).data
+                : [(fipeData as { data: unknown }).data])
+            : [fipeData];
+        for (const item of items as Record<string, unknown>[]) {
+          const brand = (item?.brand || item?.marca || item?.brandName || "") as string;
+          const model = (item?.model || item?.modelo || item?.modelName || item?.name || "") as string;
+          const year = (item?.year || item?.ano || item?.modelYear || "") as string | number;
+          const color = (item?.color || item?.cor || "") as string;
+          const fipeCode = (item?.fipeCode || item?.cdFp || item?.code || "") as string;
+          const fipeValue = parseFipeValue(item?.fipeValue ?? item?.vlFipe ?? item?.valorFipe ?? item?.value);
+          if (brand || model || year) {
+            return { brand, model, year: String(year), color, type: detectType(brand, model), city: "", fipeCode, fipeValue };
           }
         }
+        return null;
+      } catch (e) {
+        console.error("quotationFipeApi error:", e);
+        return null;
       }
-    }
+    };
 
-    // 7. Fallback: quotation endpoint
-    if (!vehicle) {
+    const tryQuotation = async () => {
       try {
         const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
           headers: { "Authorization": `Bearer ${token}` },
         });
-
-        if (qttnRes.ok) {
-          const qttnData = await qttnRes.json();
-          console.log("Quotation details (fallback):", JSON.stringify(qttnData));
-
-          const v = qttnData?.vehicle || qttnData?.data?.vehicle || {};
-          const brand = v?.brand || v?.brandName || v?.marca || qttnData?.carModel || "";
-          const model = v?.model || v?.modelName || v?.modelo || qttnData?.carModel || "";
-          const year = v?.year || v?.ano || v?.modelYear || qttnData?.carModelYear || "";
-          const color = v?.color || v?.cor || qttnData?.color || "";
-          const fipeCode = v?.fipeCode || v?.cdFp || "";
-          const city = v?.city || v?.cidade || "";
-
-          let type = "carro";
-          const modelLower = (model + " " + brand).toLowerCase();
-          if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) {
-            type = "moto";
-          } else if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) {
-            type = "caminhao";
-          }
-
-          if (brand || model || year) {
-            vehicle = { brand, model, year: String(year), color, type, city, fipeCode };
-          }
+        if (!qttnRes.ok) return null;
+        const qttnData = await qttnRes.json();
+        const v = qttnData?.vehicle || qttnData?.data?.vehicle || {};
+        const brand = v?.brand || v?.brandName || v?.marca || qttnData?.carModel || "";
+        const model = v?.model || v?.modelName || v?.modelo || qttnData?.carModel || "";
+        const year = v?.year || v?.ano || v?.modelYear || qttnData?.carModelYear || "";
+        const color = v?.color || v?.cor || qttnData?.color || "";
+        const fipeCode = v?.fipeCode || v?.cdFp || "";
+        const fipeValue = parseFipeValue(v?.fipeValue ?? v?.vlFipe ?? v?.valorFipe ?? qttnData?.protectedValue);
+        const city = v?.city || v?.cidade || "";
+        if (brand || model || year) {
+          return { brand, model, year: String(year), color, type: detectType(brand, model), city, fipeCode, fipeValue };
         }
+        return null;
       } catch (e) {
-        console.error("Error fetching quotation details:", e);
+        console.error("quotation error:", e);
+        return null;
+      }
+    };
+
+    // Adaptive polling: try every 2s up to 15s total. Returns as soon as we have data.
+    let vehicle: Record<string, unknown> | null = null;
+    const pollDeadline = Date.now() + 15000;
+    let pollAttempt = 0;
+
+    // Initial small wait to let DENATRAN start
+    await new Promise((r) => setTimeout(r, 1500));
+
+    while (!vehicle && Date.now() < pollDeadline) {
+      pollAttempt++;
+      console.log(`Polling vehicle data attempt ${pollAttempt}`);
+      vehicle = (await tryNegotiation()) || (await tryFipeApi()) || (await tryQuotation());
+      if (vehicle) {
+        console.log("Vehicle resolved on attempt", pollAttempt, JSON.stringify(vehicle));
+        break;
+      }
+      if (Date.now() < pollDeadline) {
+        await new Promise((r) => setTimeout(r, 2000));
       }
     }
 

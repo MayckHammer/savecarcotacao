@@ -46,7 +46,30 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
-        return { plans: [], error: "Nenhum plano disponível para esta cotação" };
+        // Final attempt failed — diagnose quotation state
+        let diagnostic = "Nenhum plano disponível para esta cotação";
+        try {
+          const qRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
+            headers: { "Authorization": `Bearer ${token}` },
+          });
+          if (qRes.ok) {
+            const qData = await qRes.json() as Record<string, unknown>;
+            const pv = Number(qData?.protectedValue ?? 0);
+            const hasAddr = !!(qData?.addressZipcode || qData?.addressAddress);
+            const hasCity = !!qData?.city;
+            const missing: string[] = [];
+            if (pv === 0) missing.push("valor FIPE");
+            if (!hasAddr) missing.push("endereço");
+            if (!hasCity) missing.push("cidade");
+            console.log("Quotation diagnostic — protectedValue:", pv, "hasAddress:", hasAddr, "hasCity:", hasCity);
+            if (missing.length) {
+              diagnostic = `Cotação incompleta no CRM (faltando: ${missing.join(", ")})`;
+            }
+          }
+        } catch (diagErr) {
+          console.error("Diagnostic fetch error:", diagErr);
+        }
+        return { plans: [], error: diagnostic };
       }
 
       if (!res.ok) {
