@@ -17,9 +17,9 @@ const BodySchema = z.object({
   vehicleType: z.enum(["carro", "moto", "caminhao"]).optional().default("carro"),
 });
 
+const CRM_BASE = "https://api.powercrm.com.br/api";
+
 // ===== Vehicle type → CRM mapping =====
-// IDs and names from CRM's GET /api/quotation/vehicleTypes ("Zapier" schema).
-// We cache the full list once per worker boot and resolve by fuzzy name match.
 type CrmVehicleType = { id: number | string; name?: string; nm?: string; label?: string; description?: string; ds?: string };
 let vehicleTypesCache: CrmVehicleType[] | null = null;
 
@@ -32,13 +32,10 @@ const TYPE_KEYWORDS: Record<string, string[]> = {
 async function loadVehicleTypes(token: string): Promise<CrmVehicleType[]> {
   if (vehicleTypesCache) return vehicleTypesCache;
   try {
-    const res = await fetch("https://api.powercrm.com.br/api/quotation/vehicleTypes", {
+    const res = await fetch(`${CRM_BASE}/quotation/vehicleTypes`, {
       headers: { "Authorization": `Bearer ${token}` },
     });
-    if (!res.ok) {
-      console.error("vehicleTypes fetch failed:", res.status);
-      return [];
-    }
+    if (!res.ok) return [];
     const data = await res.json();
     vehicleTypesCache = Array.isArray(data) ? data : (data?.data || []);
     console.log("Loaded vehicleTypes:", JSON.stringify(vehicleTypesCache));
@@ -54,50 +51,112 @@ function resolveVehicleTypeId(types: CrmVehicleType[], userType: string): number
   for (const t of types) {
     const label = ((t.label || t.name || t.nm || t.description || t.ds || "") + "").toLowerCase();
     if (!label) continue;
-    if (keywords.some((kw) => label.includes(kw))) {
-      return t.id;
-    }
+    if (keywords.some((kw) => label.includes(kw))) return t.id;
   }
   return null;
 }
 
-async function setVehicleTypeOnQuotation(
-  token: string,
-  quotationCode: string,
-  userType: string,
-): Promise<{ ok: boolean; vehicleTypeId: number | string | null }> {
-  const types = await loadVehicleTypes(token);
-  const vehicleTypeId = resolveVehicleTypeId(types, userType);
-  if (!vehicleTypeId) {
-    console.log("Could not resolve vehicleTypeId for", userType, "from", types.length, "types");
-    return { ok: false, vehicleTypeId: null };
+// Fetch full quotation as JSON (used for verifying which key the CRM accepted)
+async function getQuotation(token: string, code: string): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await fetch(`${CRM_BASE}/quotation/${code}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
   }
+}
 
-  const workVehicle = userType === "caminhao";
-  // Try multiple field shapes — CRM versions accept different keys
-  const payloads = [
-    { code: quotationCode, vehicleType: vehicleTypeId, workVehicle },
-    { code: quotationCode, vehicleTypeId, workVehicle },
-    { code: quotationCode, type: vehicleTypeId, workVehicle },
+// Try multiple key names on /quotation/update and verify by GET which one persists.
+async function setVehicleTypeWithVerify(
+  token: string,
+  code: string,
+  vehicleTypeId: number | string,
+  workVehicle: boolean,
+): Promise<{ ok: boolean; keyUsed: string | null }> {
+  const candidateKeys = [
+    "vehicleType",
+    "vehicleTypeId",
+    "vehicle_type",
+    "vehicleTypeCode",
+    "tpVc",
+    "cdTpVc",
+    "vehicleCategory",
+    "vehicleCategoryId",
   ];
 
-  for (const payload of payloads) {
+  for (const key of candidateKeys) {
+    const payload: Record<string, unknown> = { code, workVehicle, [key]: vehicleTypeId };
     try {
-      const res = await fetch("https://api.powercrm.com.br/api/quotation/update", {
+      const res = await fetch(`${CRM_BASE}/quotation/update`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
       const text = await res.text();
-      console.log("setVehicleType payload:", JSON.stringify(payload), "→", res.status, text.substring(0, 200));
-      if (res.ok) {
-        return { ok: true, vehicleTypeId };
+      console.log(`update key=${key} status=${res.status} resp=${text.substring(0, 250)}`);
+
+      if (!res.ok) continue;
+
+      // Verify by GET
+      const got = await getQuotation(token, code);
+      if (!got) continue;
+      // Look for any field whose value matches the vehicleTypeId we sent
+      const target = String(vehicleTypeId);
+      const persisted = Object.entries(got).some(([k, v]) => {
+        if (v == null) return false;
+        if (k === "workVehicle") return false;
+        return String(v) === target;
+      });
+      if (persisted) {
+        console.log(`✅ Vehicle type persisted via key="${key}"`);
+        return { ok: true, keyUsed: key };
       }
     } catch (e) {
-      console.error("setVehicleType attempt error:", e);
+      console.error(`update key=${key} error:`, e);
     }
   }
-  return { ok: false, vehicleTypeId };
+  return { ok: false, keyUsed: null };
+}
+
+// Try several known/guessed endpoints that the CRM may use to trigger DENATRAN
+async function triggerDenatranLookup(
+  token: string,
+  quotationCode: string,
+  plate: string,
+): Promise<string | null> {
+  const attempts: Array<{ method: string; path: string; body?: unknown; query?: string }> = [
+    { method: "POST", path: "/quotation/searchPlate",     body: { quotationCode, plate } },
+    { method: "POST", path: "/quotation/searchVehicle",   body: { quotationCode, plate } },
+    { method: "POST", path: "/quotation/denatran",        body: { quotationCode } },
+    { method: "POST", path: "/quotation/refreshVehicle",  body: { quotationCode } },
+    { method: "POST", path: "/quotation/consultPlate",    body: { quotationCode, plate } },
+    { method: "GET",  path: "/quotation/quotationFipeApi", query: `quotationCode=${quotationCode}&force=true` },
+  ];
+
+  for (const a of attempts) {
+    try {
+      const url = `${CRM_BASE}${a.path}${a.query ? `?${a.query}` : ""}`;
+      const res = await fetch(url, {
+        method: a.method,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: a.body ? JSON.stringify(a.body) : undefined,
+      });
+      const text = await res.text();
+      console.log(`denatran trigger ${a.method} ${a.path} → ${res.status} ${text.substring(0, 200)}`);
+      if (res.ok && !/not.?found|error|invalid/i.test(text)) {
+        return a.path;
+      }
+    } catch (e) {
+      console.error(`denatran trigger ${a.path} error:`, e);
+    }
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -116,7 +175,6 @@ Deno.serve(async (req) => {
     }
     const { personal, plate, vehicleType } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
-
     if (!token) {
       return new Response(JSON.stringify({ error: "POWERCRM_API_TOKEN not configured" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -126,27 +184,32 @@ Deno.serve(async (req) => {
     const phone = (personal.phone || "").replace(/\D/g, "");
     const cpfDigits = (personal.cpf || "").replace(/\D/g, "");
 
-    // 1. Create minimal quotation in CRM (with workVehicle hint)
-    const crmPayload = {
+    // Pre-resolve vehicleTypeId so we can include it on /add too
+    const types = await loadVehicleTypes(token);
+    const vehicleTypeId = resolveVehicleTypeId(types, vehicleType);
+    const workVehicle = vehicleType === "caminhao";
+    console.log(`Resolved vehicleType="${vehicleType}" → id=${vehicleTypeId}`);
+
+    // 1. Create quotation in CRM — include vehicleType candidates on add too
+    const crmPayload: Record<string, unknown> = {
       name: personal.name || "",
       phone,
       email: personal.email || "",
       registration: cpfDigits,
       plts: plate || "",
-      workVehicle: vehicleType === "caminhao",
+      workVehicle,
     };
+    if (vehicleTypeId != null) {
+      crmPayload.vehicleType = vehicleTypeId;
+      crmPayload.vehicleTypeId = vehicleTypeId;
+    }
 
     console.log("Creating CRM quotation with payload:", JSON.stringify(crmPayload));
-
-    const crmRes = await fetch("https://api.powercrm.com.br/api/quotation/add", {
+    const crmRes = await fetch(`${CRM_BASE}/quotation/add`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify(crmPayload),
     });
-
     const crmData = await crmRes.json();
     console.log("CRM quotation response:", JSON.stringify(crmData));
 
@@ -154,43 +217,39 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         error: "Não foi possível criar a cotação no CRM",
         details: crmData.message || crmData.error || "Unknown error",
-      }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const quotationCode = crmData.quotationCode;
     const negotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
 
-    // 2. Set vehicle type on the quotation BEFORE DENATRAN poll — this is what
-    //    triggers the CRM to dispatch the correct DENATRAN/FIPE lookup.
-    const typeResult = await setVehicleTypeOnQuotation(token, quotationCode, vehicleType);
-    console.log("Vehicle type set result:", JSON.stringify(typeResult));
+    // 2. Set vehicle type via /update with verification (discovers correct key name)
+    let typeResult = { ok: false, keyUsed: null as string | null };
+    if (vehicleTypeId != null) {
+      typeResult = await setVehicleTypeWithVerify(token, quotationCode, vehicleTypeId, workVehicle);
+    }
 
-    // 3. Add tag 23323 ("30 seg") — response is plain text
+    // 3. Add tag 23323 ("30 seg")
     try {
-      const tagRes = await fetch("https://api.powercrm.com.br/api/quotation/add-tag", {
+      const tagRes = await fetch(`${CRM_BASE}/quotation/add-tag`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ quotationCode, tagId: 23323 }),
       });
-      const tagText = await tagRes.text();
-      console.log("Tag response:", tagText);
+      console.log("Tag response:", await tagRes.text());
     } catch (e) {
       console.error("Error adding tag:", e);
     }
 
-    // NOTE: Inspection is NOT opened here. CRM rejects with 500 because the quotation
-    // doesn't have FIPE/address yet. Inspection is opened later in submit-to-crm.
+    // 4. Explicitly trigger DENATRAN lookup (mimics operator clicking the magnifier)
+    const denatranEndpoint = await triggerDenatranLookup(token, quotationCode, plate);
+    console.log("DENATRAN trigger endpoint result:", denatranEndpoint);
 
-    // Helpers
+    // ===== Helpers for vehicle data extraction =====
     const detectType = (brand: string, model: string): string => {
-      const modelLower = (model + " " + brand).toLowerCase();
-      if (modelLower.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) return "moto";
-      if (modelLower.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) return "caminhao";
+      const ml = (model + " " + brand).toLowerCase();
+      if (ml.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) return "moto";
+      if (ml.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) return "caminhao";
       return "carro";
     };
 
@@ -208,47 +267,41 @@ Deno.serve(async (req) => {
     const tryNegotiation = async () => {
       if (!negotiationCode) return null;
       try {
-        const negRes = await fetch(
-          `https://api.powercrm.com.br/api/negotiation/${negotiationCode}`,
-          { headers: { "Authorization": `Bearer ${token}` } }
-        );
-        if (!negRes.ok) return null;
-        const negData = await negRes.json();
-        const v = negData?.vehicle || negData?.data?.vehicle || {};
-        const brand = v?.brand || v?.brandName || v?.marca || negData?.carModel || "";
-        const model = v?.model || v?.modelName || v?.modelo || negData?.carModel || "";
-        const year = v?.year || v?.ano || v?.modelYear || negData?.carModelYear || "";
-        const color = v?.color || v?.cor || negData?.color || "";
+        const r = await fetch(`${CRM_BASE}/negotiation/${negotiationCode}`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        if (!r.ok) return null;
+        const d = await r.json();
+        const v = d?.vehicle || d?.data?.vehicle || {};
+        const brand = v?.brand || v?.brandName || v?.marca || d?.carModel || "";
+        const model = v?.model || v?.modelName || v?.modelo || d?.carModel || "";
+        const year = v?.year || v?.ano || v?.modelYear || d?.carModelYear || "";
+        const color = v?.color || v?.cor || d?.color || "";
         const fipeCode = v?.fipeCode || v?.cdFp || "";
-        const fipeValue = parseFipeValue(v?.fipeValue ?? v?.vlFipe ?? v?.valorFipe ?? negData?.fipeValue ?? negData?.vlFipe);
+        const fipeValue = parseFipeValue(v?.fipeValue ?? v?.vlFipe ?? v?.valorFipe ?? d?.fipeValue);
         const city = v?.city || v?.cidade || "";
         if (brand || model || year) {
           return { brand, model, year: String(year), color, type: detectType(brand, model), city, fipeCode, fipeValue };
         }
-        return null;
-      } catch (e) {
-        console.error("negotiation error:", e);
-        return null;
-      }
+      } catch (e) { console.error("negotiation error:", e); }
+      return null;
     };
 
     const tryFipeApi = async () => {
       try {
-        const fipeRes = await fetch(
-          `https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
-          { headers: { "Authorization": `Bearer ${token}` } }
-        );
-        if (!fipeRes.ok) return null;
-        const fipeText = await fipeRes.text();
-        let fipeData: unknown;
-        try { fipeData = JSON.parse(fipeText); } catch { return null; }
-        const items = Array.isArray(fipeData)
-          ? fipeData
-          : (fipeData as Record<string, unknown>)?.data
-            ? (Array.isArray((fipeData as Record<string, unknown>).data)
-                ? (fipeData as { data: unknown[] }).data
-                : [(fipeData as { data: unknown }).data])
-            : [fipeData];
+        const r = await fetch(`${CRM_BASE}/quotation/quotationFipeApi?quotationCode=${quotationCode}`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        if (!r.ok) return null;
+        const t = await r.text();
+        let d: unknown; try { d = JSON.parse(t); } catch { return null; }
+        const items = Array.isArray(d)
+          ? d
+          : (d as Record<string, unknown>)?.data
+            ? (Array.isArray((d as Record<string, unknown>).data)
+                ? (d as { data: unknown[] }).data
+                : [(d as { data: unknown }).data])
+            : [d];
         for (const item of items as Record<string, unknown>[]) {
           const brand = (item?.brand || item?.marca || item?.brandName || "") as string;
           const model = (item?.model || item?.modelo || item?.modelName || item?.name || "") as string;
@@ -260,56 +313,39 @@ Deno.serve(async (req) => {
             return { brand, model, year: String(year), color, type: detectType(brand, model), city: "", fipeCode, fipeValue };
           }
         }
-        return null;
-      } catch (e) {
-        console.error("quotationFipeApi error:", e);
-        return null;
-      }
+      } catch (e) { console.error("quotationFipeApi error:", e); }
+      return null;
     };
 
     const tryQuotation = async () => {
       try {
-        const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
-          headers: { "Authorization": `Bearer ${token}` },
-        });
-        if (!qttnRes.ok) return null;
-        const qttnData = await qttnRes.json();
-        const v = qttnData?.vehicle || qttnData?.data?.vehicle || {};
-        const brand = v?.brand || v?.brandName || v?.marca || qttnData?.carModel || "";
-        const model = v?.model || v?.modelName || v?.modelo || qttnData?.carModel || "";
-        const year = v?.year || v?.ano || v?.modelYear || qttnData?.carModelYear || "";
-        const color = v?.color || v?.cor || qttnData?.color || "";
+        const d = await getQuotation(token, quotationCode);
+        if (!d) return null;
+        const v = (d?.vehicle as Record<string, unknown>) || (d?.data as Record<string, unknown>)?.vehicle as Record<string, unknown> || {};
+        const brand = v?.brand || v?.brandName || v?.marca || d?.carModel || "";
+        const model = v?.model || v?.modelName || v?.modelo || d?.carModel || "";
+        const year = v?.year || v?.ano || v?.modelYear || d?.carModelYear || "";
+        const color = v?.color || v?.cor || d?.color || "";
         const fipeCode = v?.fipeCode || v?.cdFp || "";
-        const fipeValue = parseFipeValue(v?.fipeValue ?? v?.vlFipe ?? v?.valorFipe ?? qttnData?.protectedValue);
+        const fipeValue = parseFipeValue(v?.fipeValue ?? v?.vlFipe ?? v?.valorFipe ?? d?.protectedValue);
         const city = v?.city || v?.cidade || "";
         if (brand || model || year) {
-          return { brand, model, year: String(year), color, type: detectType(brand, model), city, fipeCode, fipeValue };
+          return { brand: String(brand), model: String(model), year: String(year), color: String(color), type: detectType(String(brand), String(model)), city: String(city), fipeCode: String(fipeCode), fipeValue };
         }
-        return null;
-      } catch (e) {
-        console.error("quotation error:", e);
-        return null;
-      }
+      } catch (e) { console.error("quotation error:", e); }
+      return null;
     };
 
-    // Adaptive polling: try every 2s up to 15s total. Returns as soon as we have data.
+    // 5. Adaptive polling — extended to ~25s with backoff
     let vehicle: Record<string, unknown> | null = null;
-    const pollDeadline = Date.now() + 15000;
-    let pollAttempt = 0;
-
-    // Initial small wait to let DENATRAN start
-    await new Promise((r) => setTimeout(r, 1500));
-
-    while (!vehicle && Date.now() < pollDeadline) {
-      pollAttempt++;
-      console.log(`Polling vehicle data attempt ${pollAttempt}`);
+    const intervals = [1500, 2000, 2500, 3000, 3500, 4000, 7000];
+    for (let i = 0; i < intervals.length; i++) {
+      await new Promise((r) => setTimeout(r, intervals[i]));
+      console.log(`Polling vehicle data attempt ${i + 1}/${intervals.length}`);
       vehicle = (await tryNegotiation()) || (await tryFipeApi()) || (await tryQuotation());
       if (vehicle) {
-        console.log("Vehicle resolved on attempt", pollAttempt, JSON.stringify(vehicle));
+        console.log("Vehicle resolved on attempt", i + 1, JSON.stringify(vehicle));
         break;
-      }
-      if (Date.now() < pollDeadline) {
-        await new Promise((r) => setTimeout(r, 2000));
       }
     }
 
@@ -318,8 +354,10 @@ Deno.serve(async (req) => {
       negotiationCode,
       vehicle,
       vehicleType,
-      vehicleTypeId: typeResult.vehicleTypeId,
+      vehicleTypeId,
       vehicleTypeSet: typeResult.ok,
+      vehicleTypeKeyUsed: typeResult.keyUsed,
+      denatranEndpoint,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

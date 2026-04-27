@@ -1,88 +1,79 @@
-## Problema
+## Diagnóstico
 
-O CRM Power tem um campo **"Tipo de veículo"** (Carro, Moto, Caminhão) que precisa estar preenchido **antes** da consulta DETRAN — é ele que dispara a busca FIPE/DENATRAN correta. Hoje nosso `consulta-placa-crm` envia só `name`, `phone`, `email`, `registration`, `plts` e o CRM fica em "Dados incompletos" porque o tipo nunca é definido. Resultado: a placa é inserida mas o DETRAN não retorna nada útil porque o CRM não sabe se é carro, moto ou caminhão.
+Pelos prints e logs:
 
-Olhando o swagger do CRM, o campo correto é **`workVehicle`** (boolean — se é veículo de trabalho/comercial) e o **tipo de veículo em si vem do endpoint `GET /api/quotation/vehicleTypes`**, com IDs que podem ser passados na criação da cotação. Não há um campo simples `vehicleType` no `QuotationAddRequest` do swagger — o tipo é inferido pelo CRM a partir do **modelo (`carModel`)** que enviamos depois. Mas o CRM precisa de um sinal antes do DENATRAN.
+1. Estamos enviando `POST /api/quotation/update` com `vehicleType: 2` (Moto) e o CRM responde **200 OK** — mas a resposta inteira da cotação **não contém nenhum campo de tipo de veículo** (só reflete `workVehicle`). Ou seja, o CRM ignora silenciosamente as chaves `vehicleType` / `vehicleTypeId` / `type`.
+2. Por isso, no print do CRM o campo "Tipo de veículo" continua vazio e o DENATRAN só dispara depois que o operador escolhe manualmente "Moto" e clica na lupa azul.
+3. Como o DENATRAN nunca dispara automaticamente, o polling de 15s no nosso edge function não encontra dados de marca/modelo/ano e o app mostra os campos vazios (print 3).
 
-## Solução: detectar o tipo a partir da placa e do banco brasileiro
+A causa raiz é **o nome do campo está errado** — precisamos descobrir o nome real que o CRM aceita.
 
-O Brasil tem padrões fortes que permitem inferir o tipo de veículo **antes** mesmo de qualquer consulta:
+## Estratégia (3 frentes em paralelo, com fallback robusto)
 
-1. **SINIAV/DENATRAN não diferencia por placa** — mas a **categoria** sim (placas vermelhas = aluguel/táxi, placas pretas = colecionador). Para tipo (carro/moto/caminhão), placa sozinha não basta.
-2. **Solução real**: usar uma **API gratuita de consulta de placa que já retorna o tipo**, antes de chamar o CRM. Já temos a function `consulta-placa` (placas-api / api.invertexto via tokens públicos) que retorna `vehicleType`. Vamos usá-la **como pré-passo** para descobrir o tipo e mandar pro CRM.
-3. **Fallback IA**: se a API pública não responder em 3s, usar **Lovable AI (Gemini Flash)** para classificar o tipo a partir do prefixo da placa + heurísticas do estado/região (baixa confiabilidade, mas evita travar o fluxo).
+### 1. Enviar `vehicleType` já no POST de criação (`/quotation/add`)
+Hoje só enviamos no `update`. O endpoint `add` provavelmente aceita o tipo no mesmo payload — é como o operador faz: ele preenche tipo+placa juntos antes de buscar. Vamos incluir `vehicleType: <id>` (e variações) no payload inicial junto com `plts`.
 
-## O que será feito
+### 2. Tentar múltiplos nomes de campo no `update`, validando com GET
+Em vez de assumir 200 = sucesso, vamos:
+- Tentar payloads em sequência com chaves diferentes: `vehicleType`, `vehicleTypeId`, `vehicle_type`, `vehicleTypeCode`, `tpVc`, `cdTpVc`, `vehicleCategory`.
+- Após cada tentativa, fazer `GET /api/quotation/{code}` e verificar se algum campo da resposta agora reflete o id enviado.
+- Parar na primeira chave que persistir e logar qual funcionou — assim descobrimos o nome real e podemos hard-codar.
 
-### 1. Frontend (`Quote.tsx` — passo 2)
+### 3. Forçar o DENATRAN manualmente após setar o tipo
+O CRM tem um endpoint que dispara a consulta DENATRAN/FIPE quando o operador clica na lupa azul. Vamos descobri-lo testando padrões comuns:
+- `POST /api/quotation/searchPlate` `{ quotationCode, plate }`
+- `POST /api/quotation/denatran` `{ quotationCode }`
+- `POST /api/quotation/refreshVehicle` `{ quotationCode }`
+- `GET /api/quotation/quotationFipeApi?quotationCode=...&force=true`
 
-- Adicionar um seletor visual **"Tipo de veículo"** com 3 opções (Carro, Moto, Caminhão) **antes** do campo placa, idêntico ao do CRM.
-- Pré-selecionar **"Carro"** por padrão (cobre ~85% dos casos).
-- Mostrar como `RadioGroup` em cards com ícones (Car, Bike, Truck do lucide-react), no estilo Loovi (verde + glassmorphism).
-- Enviar `vehicleType: "carro" | "moto" | "caminhao"` no body do `consulta-placa-crm`.
+Se algum retornar 2xx com dados, usamos esse como gatilho explícito após setar o tipo.
 
-### 2. Edge Function `consulta-placa-crm`
+### 4. Aumentar polling adaptativo
+- Hoje: 15s total. Subir para 25s com backoff (2s, 2s, 3s, 3s, 4s, 4s, 7s) já que o DENATRAN leva mais tempo quando disparado via API.
+- Em cada tentativa, logar o status bruto da cotação para sabermos se o tipo está realmente persistido.
 
-- Aceitar `vehicleType` no schema Zod.
-- **Chamar internamente `consulta-placa`** (API pública) primeiro, em paralelo com a criação da cotação no CRM, para validar/confirmar o tipo escolhido.
-- Se a API pública retornar tipo diferente do escolhido pelo usuário, usar o da API (mais confiável).
-- Mapear tipo → IDs do CRM: buscar `GET /api/quotation/vehicleTypes` (cacheado em memória do worker — só 1x por boot) e fazer o match pelo nome ("Carro ou utilitário pequeno", "Moto", "Caminhão ou micro-ônibus").
+## Arquivos afetados
 
-### 3. Atualização da cotação no CRM com o tipo
-
-- O endpoint `quotation/add` aceita `workVehicle: boolean`. Mas o **tipo de veículo em si** (carro/moto/caminhão) é definido por outro endpoint. Investigar 2 opções no swagger:
-  - **Opção A**: passar `vehicleTypeId` no `quotation/update` (algumas versões aceitam mesmo sem documentar).
-  - **Opção B**: chamar `POST /api/quotation/{quotationCode}/vehicle-type` se existir, ou usar `quotation/forceVehicleCityChange` + `update` com o tipo.
-- Vou testar via `supabase--curl_edge_functions` e logs reais qual aceita o campo. Documentar no log o payload aceito.
-- Definir em `consulta-placa-crm` logo após `quotation/add`, antes do polling DENATRAN, **garantindo que o tipo está setado no CRM** — assim o DENATRAN dispara corretamente.
-
-### 4. `submit-to-crm`
-
-- Incluir `vehicleType` no payload de `update` para reforçar (caso o CRM perca entre passos).
-
-### 5. Banco
-
-- Adicionar coluna `vehicle_type text` em `quotes` para auditoria.
-
-## O que NÃO será feito
-
-- Não vou usar IA para detectar tipo pela placa (placa brasileira não carrega essa informação — daria resultado pior que perguntar ao usuário).
-- Não vou remover o seletor manual: usuário sempre pode corrigir antes de submeter.
-- Não vou mexer no fluxo de FIPE manual fallback (já funciona).
+- `supabase/functions/consulta-placa-crm/index.ts` — toda a lógica acima
+- (sem mudanças no front-end, banco ou outras edge functions)
 
 ## Detalhes técnicos
 
-```text
-Fluxo atual:
-[Quote step 2] usuário digita placa → consulta-placa-crm → CRM cria cotação SEM tipo
-                                                         → DENATRAN não dispara
-                                                         → polling vazio → FIPE manual
-
-Fluxo proposto:
-[Quote step 2] usuário escolhe tipo (Carro padrão) + placa
-   → consulta-placa-crm:
-       a) cria cotação no CRM (com workVehicle se Caminhão)
-       b) seta vehicleType via endpoint dedicado
-       c) chama consulta-placa pública em paralelo p/ confirmar tipo
-       d) polling DENATRAN agora retorna dados corretos
-   → frontend recebe vehicle preenchido + fipeValue
-   → fluxo segue normal
-```
-
-Mapeamento tipo → CRM (a confirmar via teste com `vehicleTypes` endpoint):
 ```ts
-const TYPE_MAP: Record<string, { name: string; workVehicle: boolean }> = {
-  carro:    { name: "Carro ou utilitário pequeno", workVehicle: false },
-  moto:     { name: "Moto",                         workVehicle: false },
-  caminhao: { name: "Caminhão ou micro-ônibus",     workVehicle: true  },
+// 1) Enviar tipo já no add
+const crmPayload = {
+  name, phone, email, registration: cpfDigits,
+  plts: plate,
+  workVehicle: vehicleType === "caminhao",
+  vehicleType: vehicleTypeId,        // tentativa principal
+  vehicleTypeId,                     // fallback de chave
 };
+
+// 2) Validar update com GET
+async function setVehicleTypeWithVerify(token, code, typeId, workVehicle) {
+  const keys = ["vehicleType","vehicleTypeId","vehicle_type","tpVc","cdTpVc","vehicleCategory"];
+  for (const key of keys) {
+    await fetch(".../quotation/update", { ...body: { code, [key]: typeId, workVehicle } });
+    const got = await fetch(`.../quotation/${code}`).then(r=>r.json());
+    if (Object.values(got).some(v => String(v) === String(typeId))) {
+      console.log("✅ Tipo persistiu via chave:", key);
+      return key;
+    }
+  }
+  return null;
+}
+
+// 3) Disparar DENATRAN
+const triggerEndpoints = [
+  ["POST", "/quotation/searchPlate", { quotationCode, plate }],
+  ["POST", "/quotation/denatran",    { quotationCode }],
+  ["POST", "/quotation/refreshVehicle", { quotationCode }],
+];
+// tenta em ordem; primeira 2xx com payload válido vence
 ```
 
-Arquivos a modificar:
-- `src/pages/Quote.tsx` — adicionar seletor tipo de veículo no passo 2
-- `src/contexts/QuoteContext.tsx` — adicionar `vehicleType` ao state
-- `supabase/functions/consulta-placa-crm/index.ts` — aceitar tipo, buscar `vehicleTypes`, setar no CRM
-- `supabase/functions/submit-to-crm/index.ts` — reforçar tipo no update
-- Nova migration: `alter table quotes add column vehicle_type text`
+Todos os retornos serão logados em detalhe, então depois da primeira cotação real de teste já saberemos exatamente quais chaves/endpoints funcionam, e podemos remover as tentativas que não servem.
 
-Após aprovação, deploy automático e teste real com uma placa de cada tipo para confirmar que o CRM recebe corretamente e o DENATRAN dispara.
+## Resultado esperado
+
+Após uma cotação real, no card do CRM o campo "Tipo de veículo" virá pré-preenchido (ex: "Moto") e os blocos "INFORMAÇÕES DENATRAN" + Marca/Modelo/Ano aparecerão **sem o operador clicar na lupa**, e o app preencherá os campos do passo 2 automaticamente.
