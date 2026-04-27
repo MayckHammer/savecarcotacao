@@ -20,7 +20,7 @@ const BodySchema = z.object({
 // ===== Vehicle type → CRM mapping =====
 // IDs and names from CRM's GET /api/quotation/vehicleTypes ("Zapier" schema).
 // We cache the full list once per worker boot and resolve by fuzzy name match.
-type CrmVehicleType = { id: number | string; name?: string; nm?: string; description?: string; ds?: string };
+type CrmVehicleType = { id: number | string; name?: string; nm?: string; label?: string; description?: string; ds?: string };
 let vehicleTypesCache: CrmVehicleType[] | null = null;
 
 const TYPE_KEYWORDS: Record<string, string[]> = {
