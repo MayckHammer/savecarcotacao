@@ -554,12 +554,50 @@ Deno.serve(async (req) => {
       console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 300));
       await getQuotationFipe(token, crmQuotationCode);
       await new Promise((r) => setTimeout(r, 1200));
-      const verify = await getQuotation(token, crmQuotationCode);
-      if (verify) {
-        console.log(`Selected model verify — mdl=${verify.mdl} mdlYr=${verify.mdlYr} vhclFipeVl=${verify.vhclFipeVl} protectedValue=${verify.protectedValue}`);
+      const verify = await getQuotation(token, crmQuotationCode) as Record<string, unknown> | null;
+
+      // ===== FIPE divergence check =====
+      const sentFipeValue = Number(selectedModel.fipeValue || 0);
+      const sentFipeCode = String(selectedModel.fipeCode || "").trim();
+      const sentModelId = Number(selectedModel.crmModelId || 0);
+      const sentYearId = selectedModel.crmYearId != null ? Number(selectedModel.crmYearId) : null;
+
+      const crmFipeValue = verify
+        ? parseFipeValue(verify.vhclFipeVl ?? verify.vlFipe ?? verify.protectedValue ?? verify.fipeValue)
+        : 0;
+      const crmFipeCode = verify
+        ? String(verify.cdFp ?? verify.codFipe ?? "").trim()
+        : "";
+      const crmModelId = verify ? Number(verify.mdl ?? verify.carModel ?? 0) : 0;
+      const crmYearId = verify ? Number(verify.mdlYr ?? verify.carModelYear ?? 0) : 0;
+
+      const valueDiff = Math.abs(crmFipeValue - sentFipeValue);
+      const valueTolerance = Math.max(1, sentFipeValue * 0.01); // 1% tolerance
+      const mismatches: string[] = [];
+      if (sentFipeValue > 0 && crmFipeValue > 0 && valueDiff > valueTolerance) {
+        mismatches.push(`Valor FIPE diverge (enviado R$ ${sentFipeValue.toFixed(2)} × CRM R$ ${crmFipeValue.toFixed(2)})`);
+      } else if (sentFipeValue > 0 && crmFipeValue === 0) {
+        mismatches.push("CRM ainda não persistiu o valor FIPE");
+      }
+      if (sentFipeCode && crmFipeCode && sentFipeCode !== crmFipeCode) {
+        mismatches.push(`Código FIPE diverge (enviado ${sentFipeCode} × CRM ${crmFipeCode})`);
+      }
+      if (sentModelId && crmModelId && sentModelId !== crmModelId) {
+        mismatches.push(`Modelo diverge (id ${sentModelId} × CRM ${crmModelId})`);
+      }
+      if (sentYearId != null && crmYearId && sentYearId !== crmYearId) {
+        mismatches.push(`Ano diverge (id ${sentYearId} × CRM ${crmYearId})`);
       }
 
-      return new Response(JSON.stringify({ ok: upd.ok, quotationCode: crmQuotationCode, verify }), {
+      const fipeCheck = {
+        match: mismatches.length === 0,
+        sent: { fipeValue: sentFipeValue, fipeCode: sentFipeCode, modelId: sentModelId, yearId: sentYearId },
+        crm: { fipeValue: crmFipeValue, fipeCode: crmFipeCode, modelId: crmModelId, yearId: crmYearId },
+        mismatches,
+      };
+      console.log("FIPE check:", JSON.stringify(fipeCheck));
+
+      return new Response(JSON.stringify({ ok: upd.ok, quotationCode: crmQuotationCode, verify, fipeCheck }), {
         status: upd.ok ? 200 : 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
