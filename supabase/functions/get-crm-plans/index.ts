@@ -29,13 +29,30 @@ function normalizePlans(data: unknown) {
   }).filter((p) => p.name || p.monthlyPrice > 0);
 }
 
+async function fetchQuotationWithRetry(quotationCode: string, token: string, attempts = 4): Promise<Record<string, unknown> | null> {
+  const delays = [1200, 2000, 3000, 4500];
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const qRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
+        headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+      });
+      const text = await qRes.text();
+      console.log(`Quotation check attempt ${attempt}/${attempts} → ${qRes.status} ${text.substring(0, 250)}`);
+      if (qRes.ok) {
+        try { return JSON.parse(text) as Record<string, unknown>; } catch { return null; }
+      }
+    } catch (e) {
+      console.error(`Quotation check error attempt ${attempt}:`, e);
+    }
+    if (attempt < attempts) await new Promise((r) => setTimeout(r, delays[attempt - 1] || 3000));
+  }
+  return null;
+}
+
 async function fetchPlansByModelRequest(quotationCode: string, token: string): Promise<{ plans: unknown[]; error?: string }> {
   try {
-    const qRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    if (!qRes.ok) return { plans: [], error: "Não foi possível conferir a cotação no CRM" };
-    const qData = await qRes.json() as Record<string, unknown>;
+    const qData = await fetchQuotationWithRetry(quotationCode, token);
+    if (!qData) return { plans: [], error: "CRM ainda está processando a cotação" };
     const nested = (qData?.data || {}) as Record<string, unknown>;
 
     const carModelId = Number(qData?.mdl ?? qData?.carModel ?? nested?.mdl ?? 0);
