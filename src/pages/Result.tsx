@@ -76,7 +76,7 @@ const Result = () => {
     return () => {
       cancelled = true;
     };
-  }, [quote.sessionId, setCrmPlans]);
+  }, [quote.sessionId, quote.vehicle.fipeFormatted, setCrmPlans]);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
