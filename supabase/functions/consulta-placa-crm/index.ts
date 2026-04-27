@@ -25,6 +25,12 @@ const BodySchema = z.object({
     crmModelId: z.number(),
     crmYearId: z.number().optional().nullable(),
   }).optional(),
+  // Último FIPE válido obtido na consulta por placa — usado como fallback
+  // quando a busca por modelo/ano falha (Parallelum/CRM sem retorno).
+  plateFipeFallback: z.object({
+    fipeCode: z.string().trim().max(30).optional().default(""),
+    fipeValue: z.number().optional().default(0),
+  }).optional(),
 });
 
 const CRM_BASE = "https://api.powercrm.com.br/api";
