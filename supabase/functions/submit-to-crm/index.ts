@@ -115,6 +115,7 @@ Deno.serve(async (req) => {
       plan_data: plan || {},
       inspection_status: "pending",
       crm_submitted: false,
+      vehicle_type: vehicle.type || null,
     });
 
     if (dbError) {
