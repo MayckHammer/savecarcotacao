@@ -221,6 +221,8 @@ const Quote = () => {
 
       if (data?.vehicle) {
         const v = data.vehicle;
+        const crmOptions = Array.isArray(v.modelOptions) ? (v.modelOptions as CrmModelOption[]) : [];
+        const suggestedOption = crmOptions[0];
         const fipeValueFromCrm = Number(v.fipeValue) || 0;
         const fipeFormattedFromCrm = fipeValueFromCrm > 0
           ? `R$ ${fipeValueFromCrm.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -228,16 +230,19 @@ const Quote = () => {
 
         updateVehicle({
           brand: v.brand || "",
-          model: v.model || "",
+          model: suggestedOption?.name || v.model || "",
           year: v.year || "",
           color: v.color || "",
+          fipeCode: v.fipeCode || "",
+          modelOptions: crmOptions,
+          ...(crmOptions.length === 1 ? { modelCode: crmOptions[0].code } : { modelCode: "" }),
           ...(fipeValueFromCrm > 0 ? { fipeValue: fipeValueFromCrm, fipeFormatted: fipeFormattedFromCrm } : {}),
           ...(v.crmBrandId ? { crmBrandId: Number(v.crmBrandId) } : {}),
-          ...(v.crmModelId ? { crmModelId: Number(v.crmModelId) } : {}),
-          ...(v.crmYearId ? { crmYearId: Number(v.crmYearId) } : {}),
+          ...(suggestedOption?.crmModelId ? { crmModelId: Number(suggestedOption.crmModelId) } : v.crmModelId ? { crmModelId: Number(v.crmModelId) } : {}),
+          ...(suggestedOption?.crmYearId ? { crmYearId: Number(suggestedOption.crmYearId) } : v.crmYearId ? { crmYearId: Number(v.crmYearId) } : {}),
         });
         // Consider identified if we have brand + model + (fipe value OR year)
-        const isFullyIdentified = !!v.brand && !!v.model && (fipeValueFromCrm > 0 || !!v.year);
+        const isFullyIdentified = !!v.brand && !!(suggestedOption?.name || v.model) && (fipeValueFromCrm > 0 || !!v.year);
         if (isFullyIdentified) {
           setPlateConsulted(true);
           if (fipeValueFromCrm > 0) {
