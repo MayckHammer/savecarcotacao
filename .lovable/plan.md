@@ -1,79 +1,35 @@
-## Diagnóstico
+## Diagnóstico definitivo
 
-Pelos prints e logs:
+Os logs + o HTML do CRM revelaram tudo:
 
-1. Estamos enviando `POST /api/quotation/update` com `vehicleType: 2` (Moto) e o CRM responde **200 OK** — mas a resposta inteira da cotação **não contém nenhum campo de tipo de veículo** (só reflete `workVehicle`). Ou seja, o CRM ignora silenciosamente as chaves `vehicleType` / `vehicleTypeId` / `type`.
-2. Por isso, no print do CRM o campo "Tipo de veículo" continua vazio e o DENATRAN só dispara depois que o operador escolhe manualmente "Moto" e clica na lupa azul.
-3. Como o DENATRAN nunca dispara automaticamente, o polling de 15s no nosso edge function não encontra dados de marca/modelo/ano e o app mostra os campos vazios (print 3).
+1. **Nenhuma das 8 chaves testadas** (`vehicleType`, `vehicleTypeId`, `tpVc`, `cdTpVc`, `vehicleCategory` etc.) persiste no `/quotation/update`. Todas retornam 200 mas o GET seguinte mostra que o valor não foi salvo.
+2. **O nome real do campo é `vhclType`** — visível no HTML do print: `<select id="vhclType" class="vehicle_type_select" previousvalue="3">`. Tem todo sentido pelo padrão abreviado do CRM (`plts`, `mdl`, `mdlYr`, `cdFp` etc.).
+3. **O endpoint `/quotation/quotationFipeApi` (GET) retorna 502** — provavelmente porque o `vhclType` ainda está vazio (causa raiz), então a chamada falha no upstream do DENATRAN.
+4. Os outros endpoints de DENATRAN testados (`searchPlate`, `denatran`, `refreshVehicle`, `consultPlate`, `searchVehicle`) retornaram **405 Method Not Allowed** → não existem em `POST`. Provavelmente o CRM dispara o DENATRAN automaticamente assim que o `vhclType` é setado e a placa já está presente — então não precisamos chamar nada extra, basta deixar o polling rodar.
 
-A causa raiz é **o nome do campo está errado** — precisamos descobrir o nome real que o CRM aceita.
+## Plano de implementação
 
-## Estratégia (3 frentes em paralelo, com fallback robusto)
+Refatorar `supabase/functions/consulta-placa-crm/index.ts`:
 
-### 1. Enviar `vehicleType` já no POST de criação (`/quotation/add`)
-Hoje só enviamos no `update`. O endpoint `add` provavelmente aceita o tipo no mesmo payload — é como o operador faz: ele preenche tipo+placa juntos antes de buscar. Vamos incluir `vehicleType: <id>` (e variações) no payload inicial junto com `plts`.
+### 1. Usar a chave correta `vhclType`
+Substituir a função `setVehicleTypeWithVerify` (que tentava 8 chaves) por uma versão direta que envia apenas `{ code, vhclType: <id>, workVehicle }` no `POST /quotation/update` e valida via GET.
 
-### 2. Tentar múltiplos nomes de campo no `update`, validando com GET
-Em vez de assumir 200 = sucesso, vamos:
-- Tentar payloads em sequência com chaves diferentes: `vehicleType`, `vehicleTypeId`, `vehicle_type`, `vehicleTypeCode`, `tpVc`, `cdTpVc`, `vehicleCategory`.
-- Após cada tentativa, fazer `GET /api/quotation/{code}` e verificar se algum campo da resposta agora reflete o id enviado.
-- Parar na primeira chave que persistir e logar qual funcionou — assim descobrimos o nome real e podemos hard-codar.
+### 2. Enviar `vhclType` já no `/quotation/add`
+Incluir `vhclType: <id>` no payload de criação — assim o tipo já fica setado antes do CRM tentar qualquer lookup interno.
 
-### 3. Forçar o DENATRAN manualmente após setar o tipo
-O CRM tem um endpoint que dispara a consulta DENATRAN/FIPE quando o operador clica na lupa azul. Vamos descobri-lo testando padrões comuns:
-- `POST /api/quotation/searchPlate` `{ quotationCode, plate }`
-- `POST /api/quotation/denatran` `{ quotationCode }`
-- `POST /api/quotation/refreshVehicle` `{ quotationCode }`
-- `GET /api/quotation/quotationFipeApi?quotationCode=...&force=true`
+### 3. Remover endpoints que retornam 405
+Eliminar a array de 6 endpoints. Manter apenas o `GET /quotation/quotationFipeApi` (que é o que a UI do CRM realmente chama), executado **depois** do `vhclType` ter sido confirmado por GET. Se ainda assim der 502, ignorar — o polling subsequente recupera os dados quando o DENATRAN interno do CRM termina.
 
-Se algum retornar 2xx com dados, usamos esse como gatilho explícito após setar o tipo.
-
-### 4. Aumentar polling adaptativo
-- Hoje: 15s total. Subir para 25s com backoff (2s, 2s, 3s, 3s, 4s, 4s, 7s) já que o DENATRAN leva mais tempo quando disparado via API.
-- Em cada tentativa, logar o status bruto da cotação para sabermos se o tipo está realmente persistido.
-
-## Arquivos afetados
-
-- `supabase/functions/consulta-placa-crm/index.ts` — toda a lógica acima
-- (sem mudanças no front-end, banco ou outras edge functions)
-
-## Detalhes técnicos
-
-```ts
-// 1) Enviar tipo já no add
-const crmPayload = {
-  name, phone, email, registration: cpfDigits,
-  plts: plate,
-  workVehicle: vehicleType === "caminhao",
-  vehicleType: vehicleTypeId,        // tentativa principal
-  vehicleTypeId,                     // fallback de chave
-};
-
-// 2) Validar update com GET
-async function setVehicleTypeWithVerify(token, code, typeId, workVehicle) {
-  const keys = ["vehicleType","vehicleTypeId","vehicle_type","tpVc","cdTpVc","vehicleCategory"];
-  for (const key of keys) {
-    await fetch(".../quotation/update", { ...body: { code, [key]: typeId, workVehicle } });
-    const got = await fetch(`.../quotation/${code}`).then(r=>r.json());
-    if (Object.values(got).some(v => String(v) === String(typeId))) {
-      console.log("✅ Tipo persistiu via chave:", key);
-      return key;
-    }
-  }
-  return null;
-}
-
-// 3) Disparar DENATRAN
-const triggerEndpoints = [
-  ["POST", "/quotation/searchPlate", { quotationCode, plate }],
-  ["POST", "/quotation/denatran",    { quotationCode }],
-  ["POST", "/quotation/refreshVehicle", { quotationCode }],
-];
-// tenta em ordem; primeira 2xx com payload válido vence
-```
-
-Todos os retornos serão logados em detalhe, então depois da primeira cotação real de teste já saberemos exatamente quais chaves/endpoints funcionam, e podemos remover as tentativas que não servem.
+### 4. Manter polling estendido
+Os 7 ciclos de backoff (~25s total) ficam como rede de segurança — agora com chance real de funcionar porque o `vhclType` finalmente vai persistir.
 
 ## Resultado esperado
 
-Após uma cotação real, no card do CRM o campo "Tipo de veículo" virá pré-preenchido (ex: "Moto") e os blocos "INFORMAÇÕES DENATRAN" + Marca/Modelo/Ano aparecerão **sem o operador clicar na lupa**, e o app preencherá os campos do passo 2 automaticamente.
+No próximo teste:
+- Card do CRM mostra "Caminhão ou micro-ônibus" / "Moto" / "Carro" pré-selecionado em **Tipo de veículo**.
+- Dados Marca/Modelo/Ano aparecem automaticamente via DENATRAN sem clicar na lupa.
+- App preenche os campos do passo 2 sozinho.
+
+## Arquivos afetados
+
+- `supabase/functions/consulta-placa-crm/index.ts` (única alteração)
