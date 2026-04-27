@@ -69,7 +69,10 @@ const parseFipeValue = (raw: unknown): number => {
   if (raw == null) return 0;
   if (typeof raw === "number") return raw;
   if (typeof raw === "string") {
-    const cleaned = raw.replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
+    const onlyNumber = raw.replace(/[^0-9,.-]/g, "");
+    const cleaned = onlyNumber.includes(",")
+      ? onlyNumber.replace(/\./g, "").replace(",", ".")
+      : onlyNumber;
     const n = parseFloat(cleaned);
     return isNaN(n) ? 0 : n;
   }
@@ -403,10 +406,92 @@ const FIPE_TYPE_PATH: Record<string, string> = {
 
 const parsePriceBrl = (raw: string): number => {
   if (!raw) return 0;
-  const cleaned = String(raw).replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? 0 : n;
+  return parseFipeValue(raw);
 };
+
+const fipeBrandCache = new Map<string, { code: string; name: string }[]>();
+const fipeModelCache = new Map<string, { code: string; name: string }[]>();
+const fipeYearCache = new Map<string, { code: string; name: string }[]>();
+
+const fipeHeaders = (): HeadersInit => {
+  const token = Deno.env.get("FIPE_ONLINE_TOKEN");
+  return token ? { "X-Subscription-Token": token } : {};
+};
+
+function extractYearNumber(raw: string): number | null {
+  const m = String(raw || "").match(/(19|20)\d{2}/);
+  return m ? Number(m[0]) : null;
+}
+
+function chooseClosestFipeYear(years: { code: string; name: string }[], targetRaw: string): string | null {
+  if (!years.length) return null;
+  const target = extractYearNumber(targetRaw);
+  if (!target) return years[0].code;
+  const exact = years.find((y) => y.code.startsWith(`${target}-`) || y.name.includes(String(target)));
+  if (exact) return exact.code;
+  const scored = years
+    .map((y, index) => ({ year: y, index, diff: Math.abs((extractYearNumber(y.code) || extractYearNumber(y.name) || target) - target) }))
+    .sort((a, b) => a.diff - b.diff || a.index - b.index);
+  return scored[0]?.year.code ?? years[0].code;
+}
+
+async function fetchFipeByModelLabel(
+  brandLabel: string,
+  modelLabel: string,
+  yearLabel: string,
+  vehicleType: string,
+): Promise<{ fipeCode: string; fipeValue: number; fipeFormatted: string; year: string } | null> {
+  const typePath = FIPE_TYPE_PATH[vehicleType] || "cars";
+  try {
+    let brands = fipeBrandCache.get(typePath);
+    if (!brands) {
+      const r = await fetch(`${FIPE_BASE}/${typePath}/brands`, { headers: fipeHeaders() });
+      if (!r.ok) return null;
+      brands = await r.json();
+      fipeBrandCache.set(typePath, brands);
+    }
+    const brand = pickBestMatch(brands.map((b) => ({ id: Number(b.code), name: b.name })), brandLabel);
+    if (!brand) return null;
+
+    const modelKey = `${typePath}:${brand.id}`;
+    let models = fipeModelCache.get(modelKey);
+    if (!models) {
+      const r = await fetch(`${FIPE_BASE}/${typePath}/brands/${brand.id}/models`, { headers: fipeHeaders() });
+      if (!r.ok) return null;
+      models = await r.json();
+      fipeModelCache.set(modelKey, models);
+    }
+    const model = pickBestMatch(models.map((m) => ({ id: Number(m.code), name: m.name })), modelLabel);
+    if (!model) return null;
+
+    const yearKey = `${typePath}:${brand.id}:${model.id}`;
+    let years = fipeYearCache.get(yearKey);
+    if (!years) {
+      const r = await fetch(`${FIPE_BASE}/${typePath}/brands/${brand.id}/models/${model.id}/years`, { headers: fipeHeaders() });
+      if (!r.ok) return null;
+      years = await r.json();
+      fipeYearCache.set(yearKey, years);
+    }
+    const yearCode = chooseClosestFipeYear(years, yearLabel);
+    if (!yearCode) return null;
+
+    const detailRes = await fetch(`${FIPE_BASE}/${typePath}/brands/${brand.id}/models/${model.id}/years/${yearCode}`, { headers: fipeHeaders() });
+    if (!detailRes.ok) return null;
+    const detail = await detailRes.json() as Record<string, unknown>;
+    const fipeValue = parsePriceBrl(String(detail.price ?? ""));
+    const fipeCode = String(detail.codeFipe ?? "").trim();
+    if (!fipeCode && !fipeValue) return null;
+    return {
+      fipeCode,
+      fipeValue,
+      fipeFormatted: formatBrl(fipeValue),
+      year: String(detail.modelYear ?? yearCode),
+    };
+  } catch (e) {
+    console.error("fetchFipeByModelLabel error:", e);
+    return null;
+  }
+}
 
 async function enrichFromFipeByCode(
   fipeCode: string,
