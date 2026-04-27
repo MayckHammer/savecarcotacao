@@ -29,20 +29,37 @@ function normalizePlans(data: unknown) {
   }).filter((p) => p.name || p.monthlyPrice > 0);
 }
 
+async function fetchQuotationWithRetry(quotationCode: string, token: string, attempts = 4): Promise<Record<string, unknown> | null> {
+  const delays = [1200, 2000, 3000, 4500];
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const qRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
+        headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+      });
+      const text = await qRes.text();
+      console.log(`Quotation check attempt ${attempt}/${attempts} → ${qRes.status} ${text.substring(0, 250)}`);
+      if (qRes.ok) {
+        try { return JSON.parse(text) as Record<string, unknown>; } catch { return null; }
+      }
+    } catch (e) {
+      console.error(`Quotation check error attempt ${attempt}:`, e);
+    }
+    if (attempt < attempts) await new Promise((r) => setTimeout(r, delays[attempt - 1] || 3000));
+  }
+  return null;
+}
+
 async function fetchPlansByModelRequest(quotationCode: string, token: string): Promise<{ plans: unknown[]; error?: string }> {
   try {
-    const qRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    if (!qRes.ok) return { plans: [], error: "Não foi possível conferir a cotação no CRM" };
-    const qData = await qRes.json() as Record<string, unknown>;
+    const qData = await fetchQuotationWithRetry(quotationCode, token);
+    if (!qData) return { plans: [], error: "CRM ainda está processando a cotação" };
     const nested = (qData?.data || {}) as Record<string, unknown>;
 
     const carModelId = Number(qData?.mdl ?? qData?.carModel ?? nested?.mdl ?? 0);
     const carModelYearId = Number(qData?.mdlYr ?? qData?.carModelYear ?? nested?.mdlYr ?? 0);
     const cityId = Number(qData?.city ?? nested?.city ?? 0);
     const workVehicle = Boolean(qData?.workVehicle ?? nested?.workVehicle ?? false);
-    const fipe = Number(qData?.protectedValue ?? qData?.vhclFipeVl ?? nested?.protectedValue ?? 0);
+    const fipe = Number(qData?.protectedValue ?? qData?.vhclFipeVl ?? nested?.protectedValue ?? nested?.vhclFipeVl ?? 0);
     const missing: string[] = [];
     if (!carModelId) missing.push("modelo");
     if (!carModelYearId) missing.push("ano");
@@ -50,10 +67,10 @@ async function fetchPlansByModelRequest(quotationCode: string, token: string): P
     if (missing.length) return { plans: [], error: `Cotação incompleta no CRM (faltando: ${missing.join(", ")})` };
 
     console.log("Fallback /api/plans request:", JSON.stringify({ carModelId, carModelYearId, cityId, workVehicle, fipe }));
-    const plansRes = await fetch("https://api.powercrm.com.br/api/plans/", {
+      const plansRes = await fetch("https://api.powercrm.com.br/api/plans/", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify({ carModelId, carModelYearId, cityId, quotationWorkVehicle: workVehicle, token }),
+        body: JSON.stringify({ carModelId, carModelYearId, cityId, quotationWorkVehicle: workVehicle, protectedValue: fipe, token }),
     });
     const text = await plansRes.text();
     let data: unknown;

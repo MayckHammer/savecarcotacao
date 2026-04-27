@@ -18,6 +18,7 @@ const BodySchema = z.object({
   crmQuotationCode: z.string().trim().max(100).optional().or(z.literal("")),
   selectedModel: z.object({
     name: z.string().trim().max(255),
+    brand: z.string().trim().max(255).optional().default(""),
     year: z.string().trim().max(30).optional().default(""),
     fipeCode: z.string().trim().max(30).optional().default(""),
     fipeValue: z.number().optional().default(0),
@@ -69,7 +70,10 @@ const parseFipeValue = (raw: unknown): number => {
   if (raw == null) return 0;
   if (typeof raw === "number") return raw;
   if (typeof raw === "string") {
-    const cleaned = raw.replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
+    const onlyNumber = raw.replace(/[^0-9,.-]/g, "");
+    const cleaned = onlyNumber.includes(",")
+      ? onlyNumber.replace(/\./g, "").replace(",", ".")
+      : onlyNumber;
     const n = parseFloat(cleaned);
     return isNaN(n) ? 0 : n;
   }
@@ -233,13 +237,15 @@ async function buildCrmModelOptions(
     let yearMatch = targetYear ? years.find((y) => normalize(labelOf(y)).startsWith(targetYear)) : null;
     if (!yearMatch && targetYear) yearMatch = years.find((y) => normalize(labelOf(y)).includes(targetYear));
     if (!yearMatch && years.length) yearMatch = years[0];
+    const optionYear = targetYear || (yearMatch ? labelOf(yearMatch) : vehicle.year);
+    const fipe = await fetchFipeByModelLabel(vehicle.brand, labelOf(candidate.item), optionYear, vehicle.type);
     out.push({
       code: String(candidate.item.id),
       name: labelOf(candidate.item),
-      year: targetYear || (yearMatch ? labelOf(yearMatch) : vehicle.year),
-      fipeCode: vehicle.fipeCode,
-      fipeValue: vehicle.fipeValue || 0,
-      fipeFormatted: formatBrl(vehicle.fipeValue || 0),
+      year: optionYear,
+      fipeCode: fipe?.fipeCode || "",
+      fipeValue: fipe?.fipeValue || 0,
+      fipeFormatted: fipe?.fipeFormatted || "",
       crmModelId: candidate.item.id,
       crmYearId: yearMatch?.id ?? null,
       score: candidate.score,
@@ -351,7 +357,7 @@ function extractVehicleFromAny(input: unknown, fallbackType: string): Vehicle | 
     const color = (c.color ?? c.cor ?? "") as string;
     const fipeCode = (c.fipeCode ?? c.codFipe ?? c.codeFipe ?? c.codigoFipe ?? c.cdFp ?? "") as string;
     const fipeValue = parseFipeValue(
-      c.fipeValue ?? c.vlFipe ?? c.valorFipe ?? c.protectedValue ?? c.value,
+      c.fipeValue ?? c.vhclFipeVl ?? c.vlFipe ?? c.valorFipe ?? c.protectedValue ?? c.value,
     );
     const city = (c.city ?? c.cidade ?? "") as string;
 
@@ -403,10 +409,92 @@ const FIPE_TYPE_PATH: Record<string, string> = {
 
 const parsePriceBrl = (raw: string): number => {
   if (!raw) return 0;
-  const cleaned = String(raw).replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? 0 : n;
+  return parseFipeValue(raw);
 };
+
+const fipeBrandCache = new Map<string, { code: string; name: string }[]>();
+const fipeModelCache = new Map<string, { code: string; name: string }[]>();
+const fipeYearCache = new Map<string, { code: string; name: string }[]>();
+
+const fipeHeaders = (): HeadersInit => {
+  const token = Deno.env.get("FIPE_ONLINE_TOKEN");
+  return token ? { "X-Subscription-Token": token } : {};
+};
+
+function extractYearNumber(raw: string): number | null {
+  const m = String(raw || "").match(/(19|20)\d{2}/);
+  return m ? Number(m[0]) : null;
+}
+
+function chooseClosestFipeYear(years: { code: string; name: string }[], targetRaw: string): string | null {
+  if (!years.length) return null;
+  const target = extractYearNumber(targetRaw);
+  if (!target) return years[0].code;
+  const exact = years.find((y) => y.code.startsWith(`${target}-`) || y.name.includes(String(target)));
+  if (exact) return exact.code;
+  const scored = years
+    .map((y, index) => ({ year: y, index, diff: Math.abs((extractYearNumber(y.code) || extractYearNumber(y.name) || target) - target) }))
+    .sort((a, b) => a.diff - b.diff || a.index - b.index);
+  return scored[0]?.year.code ?? years[0].code;
+}
+
+async function fetchFipeByModelLabel(
+  brandLabel: string,
+  modelLabel: string,
+  yearLabel: string,
+  vehicleType: string,
+): Promise<{ fipeCode: string; fipeValue: number; fipeFormatted: string; year: string } | null> {
+  const typePath = FIPE_TYPE_PATH[vehicleType] || "cars";
+  try {
+    let brands = fipeBrandCache.get(typePath);
+    if (!brands) {
+      const r = await fetch(`${FIPE_BASE}/${typePath}/brands`, { headers: fipeHeaders() });
+      if (!r.ok) return null;
+      brands = await r.json();
+      fipeBrandCache.set(typePath, brands);
+    }
+    const brand = pickBestMatch(brands.map((b) => ({ id: Number(b.code), name: b.name })), brandLabel);
+    if (!brand) return null;
+
+    const modelKey = `${typePath}:${brand.id}`;
+    let models = fipeModelCache.get(modelKey);
+    if (!models) {
+      const r = await fetch(`${FIPE_BASE}/${typePath}/brands/${brand.id}/models`, { headers: fipeHeaders() });
+      if (!r.ok) return null;
+      models = await r.json();
+      fipeModelCache.set(modelKey, models);
+    }
+    const model = pickBestMatch(models.map((m) => ({ id: Number(m.code), name: m.name })), modelLabel);
+    if (!model) return null;
+
+    const yearKey = `${typePath}:${brand.id}:${model.id}`;
+    let years = fipeYearCache.get(yearKey);
+    if (!years) {
+      const r = await fetch(`${FIPE_BASE}/${typePath}/brands/${brand.id}/models/${model.id}/years`, { headers: fipeHeaders() });
+      if (!r.ok) return null;
+      years = await r.json();
+      fipeYearCache.set(yearKey, years);
+    }
+    const yearCode = chooseClosestFipeYear(years, yearLabel);
+    if (!yearCode) return null;
+
+    const detailRes = await fetch(`${FIPE_BASE}/${typePath}/brands/${brand.id}/models/${model.id}/years/${yearCode}`, { headers: fipeHeaders() });
+    if (!detailRes.ok) return null;
+    const detail = await detailRes.json() as Record<string, unknown>;
+    const fipeValue = parsePriceBrl(String(detail.price ?? ""));
+    const fipeCode = String(detail.codeFipe ?? "").trim();
+    if (!fipeCode && !fipeValue) return null;
+    return {
+      fipeCode,
+      fipeValue,
+      fipeFormatted: formatBrl(fipeValue),
+      year: String(detail.modelYear ?? yearCode),
+    };
+  } catch (e) {
+    console.error("fetchFipeByModelLabel error:", e);
+    return null;
+  }
+}
 
 async function enrichFromFipeByCode(
   fipeCode: string,
@@ -427,12 +515,7 @@ async function enrichFromFipeByCode(
     const years = (await yearsRes.json()) as { code: string; name: string }[];
     if (!Array.isArray(years) || years.length === 0) return null;
 
-    // Pick year matching the plate year (e.g. "2025/2025" or "2025"); fallback to first
-    const targetYear = (plateYear || "").split("/")[0]?.trim();
-    const yearMatch = targetYear
-      ? years.find((y) => y.code?.startsWith(`${targetYear}-`)) || years.find((y) => y.code?.startsWith(targetYear))
-      : null;
-    const yearId = (yearMatch || years[0]).code;
+    const yearId = chooseClosestFipeYear(years, plateYear) || years[0].code;
 
     const detailRes = await fetch(`${FIPE_BASE}/${typePath}/${fipeCode}/years/${yearId}`, { headers });
     if (!detailRes.ok) {
@@ -459,9 +542,12 @@ async function getQuotation(token: string, code: string): Promise<Record<string,
     const res = await fetch(`${CRM_BASE}/quotation/${code}`, {
       headers: { "Authorization": `Bearer ${token}` },
     });
+    const text = await res.text();
+    console.log(`getQuotation ${code} → ${res.status} ${text.substring(0, 250)}`);
     if (!res.ok) return null;
-    return await res.json();
-  } catch {
+    try { return JSON.parse(text); } catch { return null; }
+  } catch (e) {
+    console.error("getQuotation error:", e);
     return null;
   }
 }
@@ -487,29 +573,27 @@ async function getQuotationFipe(token: string, code: string): Promise<unknown | 
   } catch { return null; }
 }
 
-// Mimics the "magnifying glass" button in CRM: re-runs plate lookup inside quotation context
-async function triggerCrmPlateLookup(token: string, quotationCode: string, plate: string): Promise<void> {
-  const endpoints = [
-    { path: "/quotation/getPlate", body: { quotationCode, plates: plate, plts: plate } },
-    { path: "/quotation/plateConsult", body: { quotationCode, plates: plate } },
-    { path: "/quotation/consultPlate", body: { quotationCode, plates: plate } },
-  ];
-  for (const ep of endpoints) {
-    try {
-      const r = await fetch(`${CRM_BASE}${ep.path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify(ep.body),
-      });
-      if (r.ok) {
-        console.log(`triggerCrmPlateLookup ${ep.path} → 200`);
-        return;
+async function triggerCrmFipeRefresh(token: string, quotationCode: string): Promise<unknown | null> {
+  const queries = [`quotationCode=${encodeURIComponent(quotationCode)}`, `h=${encodeURIComponent(quotationCode)}`];
+  const delays = [1200, 1800];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    for (const query of queries) {
+      try {
+        const r = await fetch(`${CRM_BASE}/quotation/quotationFipeApi?${query}`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        });
+        const text = await r.text();
+        console.log(`triggerCrmFipeRefresh quotationFipeApi(${query}) attempt ${attempt} → ${r.status} ${text.substring(0, 300)}`);
+        if (r.ok) {
+          try { return JSON.parse(text); } catch { return text; }
+        }
+      } catch (e) {
+        console.error(`triggerCrmFipeRefresh error attempt ${attempt}:`, e);
       }
-      console.log(`triggerCrmPlateLookup ${ep.path} → ${r.status}`);
-    } catch (e) {
-      console.error(`triggerCrmPlateLookup ${ep.path} error:`, e);
     }
+    if (attempt < 3) await new Promise((r) => setTimeout(r, delays[attempt - 1] || 1500));
   }
+  return null;
 }
 
 // Resolve FIPE code/value for a specific CRM model+year via CRM internal endpoint
@@ -582,6 +666,17 @@ Deno.serve(async (req) => {
         if (crmFipe.fipeValue > 0) recomputedFipeValue = crmFipe.fipeValue;
       }
 
+      const labelFipe = await fetchFipeByModelLabel(
+        selectedModel.brand || "",
+        selectedModel.name,
+        selectedModel.year,
+        vehicleType,
+      );
+      if (labelFipe) {
+        if (labelFipe.fipeCode) recomputedFipeCode = labelFipe.fipeCode;
+        if (labelFipe.fipeValue > 0) recomputedFipeValue = labelFipe.fipeValue;
+      }
+
       // Se ainda não temos valor (ou o CRM só devolveu o código), bate na FIPE Parallelum
       if (recomputedFipeCode && (!recomputedFipeValue || crmFipe?.fipeValue === 0)) {
         const enriched = await enrichFromFipeByCode(recomputedFipeCode, vehicleType, String(selectedModel.year || ""));
@@ -625,9 +720,8 @@ Deno.serve(async (req) => {
       const updText = await upd.text();
       console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 200));
 
-      // 2. Disparar a "lupa" do CRM para forçar persistência do FIPE no card
-      await triggerCrmPlateLookup(token, crmQuotationCode, plate);
-      await getQuotationFipe(token, crmQuotationCode);
+      // 2. Disparar a rotina FIPE oficial da cotação para simular o refresh da lupa sem endpoints inválidos
+      await triggerCrmFipeRefresh(token, crmQuotationCode);
 
       // 3. Segundo update isolado só com FIPE (alguns ambientes só persistem assim)
       if (recomputedFipeValue > 0 || recomputedFipeCode) {
@@ -664,7 +758,7 @@ Deno.serve(async (req) => {
         await new Promise((r) => setTimeout(r, intervals[i]));
         verify = await getQuotation(token, crmQuotationCode) as Record<string, unknown> | null;
         if (!verify) continue;
-        crmFipeValue = parseFipeValue(verify.vhclFipeVl ?? verify.vlFipe ?? verify.protectedValue ?? verify.fipeValue);
+        crmFipeValue = parseFipeValue(verify.protectedValue ?? verify.vhclFipeVl ?? verify.vlFipe ?? verify.fipeValue);
         crmFipeCode = String(verify.cdFp ?? verify.codFipe ?? "").trim();
         crmModelId = Number(verify.mdl ?? verify.carModel ?? 0);
         crmYearId = Number(verify.mdlYr ?? verify.carModelYear ?? 0);
@@ -879,9 +973,8 @@ Deno.serve(async (req) => {
             });
             console.log(`Early CRM update with mdl/mdlYr/FIPE → ${upd.status}`);
 
-            // Trigger the "magnifying glass" so CRM persists vhclFipeVl in the card
-            await triggerCrmPlateLookup(token, quotationCode, plate);
-            await getQuotationFipe(token, quotationCode);
+            // Trigger official FIPE refresh for the quotation; avoids invalid 405 endpoints
+            await triggerCrmFipeRefresh(token, quotationCode);
 
             // Second isolated FIPE-only update — forces persistence on stricter tenants
             if (vehicle.fipeValue || vehicle.fipeCode) {
