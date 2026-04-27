@@ -18,6 +18,7 @@ const BodySchema = z.object({
   crmQuotationCode: z.string().trim().max(100).optional().or(z.literal("")),
   selectedModel: z.object({
     name: z.string().trim().max(255),
+    brand: z.string().trim().max(255).optional().default(""),
     year: z.string().trim().max(30).optional().default(""),
     fipeCode: z.string().trim().max(30).optional().default(""),
     fipeValue: z.number().optional().default(0),
@@ -514,12 +515,7 @@ async function enrichFromFipeByCode(
     const years = (await yearsRes.json()) as { code: string; name: string }[];
     if (!Array.isArray(years) || years.length === 0) return null;
 
-    // Pick year matching the plate year (e.g. "2025/2025" or "2025"); fallback to first
-    const targetYear = (plateYear || "").split("/")[0]?.trim();
-    const yearMatch = targetYear
-      ? years.find((y) => y.code?.startsWith(`${targetYear}-`)) || years.find((y) => y.code?.startsWith(targetYear))
-      : null;
-    const yearId = (yearMatch || years[0]).code;
+    const yearId = chooseClosestFipeYear(years, plateYear) || years[0].code;
 
     const detailRes = await fetch(`${FIPE_BASE}/${typePath}/${fipeCode}/years/${yearId}`, { headers });
     if (!detailRes.ok) {
@@ -574,28 +570,18 @@ async function getQuotationFipe(token: string, code: string): Promise<unknown | 
   } catch { return null; }
 }
 
-// Mimics the "magnifying glass" button in CRM: re-runs plate lookup inside quotation context
-async function triggerCrmPlateLookup(token: string, quotationCode: string, plate: string): Promise<void> {
-  const endpoints = [
-    { path: "/quotation/getPlate", body: { quotationCode, plates: plate, plts: plate } },
-    { path: "/quotation/plateConsult", body: { quotationCode, plates: plate } },
-    { path: "/quotation/consultPlate", body: { quotationCode, plates: plate } },
-  ];
-  for (const ep of endpoints) {
-    try {
-      const r = await fetch(`${CRM_BASE}${ep.path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify(ep.body),
-      });
-      if (r.ok) {
-        console.log(`triggerCrmPlateLookup ${ep.path} → 200`);
-        return;
-      }
-      console.log(`triggerCrmPlateLookup ${ep.path} → ${r.status}`);
-    } catch (e) {
-      console.error(`triggerCrmPlateLookup ${ep.path} error:`, e);
-    }
+async function triggerCrmFipeRefresh(token: string, quotationCode: string): Promise<unknown | null> {
+  try {
+    const r = await fetch(`${CRM_BASE}/quotation/quotationFipeApi?quotationCode=${encodeURIComponent(quotationCode)}`, {
+      headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+    });
+    const text = await r.text();
+    console.log(`triggerCrmFipeRefresh quotationFipeApi → ${r.status} ${text.substring(0, 300)}`);
+    if (!r.ok) return null;
+    try { return JSON.parse(text); } catch { return text; }
+  } catch (e) {
+    console.error("triggerCrmFipeRefresh error:", e);
+    return null;
   }
 }
 
