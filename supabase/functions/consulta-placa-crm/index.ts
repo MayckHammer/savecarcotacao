@@ -357,7 +357,7 @@ function extractVehicleFromAny(input: unknown, fallbackType: string): Vehicle | 
     const color = (c.color ?? c.cor ?? "") as string;
     const fipeCode = (c.fipeCode ?? c.codFipe ?? c.codeFipe ?? c.codigoFipe ?? c.cdFp ?? "") as string;
     const fipeValue = parseFipeValue(
-      c.fipeValue ?? c.vlFipe ?? c.valorFipe ?? c.protectedValue ?? c.value,
+      c.fipeValue ?? c.vhclFipeVl ?? c.vlFipe ?? c.valorFipe ?? c.protectedValue ?? c.value,
     );
     const city = (c.city ?? c.cidade ?? "") as string;
 
@@ -571,18 +571,26 @@ async function getQuotationFipe(token: string, code: string): Promise<unknown | 
 }
 
 async function triggerCrmFipeRefresh(token: string, quotationCode: string): Promise<unknown | null> {
-  try {
-    const r = await fetch(`${CRM_BASE}/quotation/quotationFipeApi?quotationCode=${encodeURIComponent(quotationCode)}`, {
-      headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-    });
-    const text = await r.text();
-    console.log(`triggerCrmFipeRefresh quotationFipeApi → ${r.status} ${text.substring(0, 300)}`);
-    if (!r.ok) return null;
-    try { return JSON.parse(text); } catch { return text; }
-  } catch (e) {
-    console.error("triggerCrmFipeRefresh error:", e);
-    return null;
+  const queries = [`quotationCode=${encodeURIComponent(quotationCode)}`, `h=${encodeURIComponent(quotationCode)}`];
+  const delays = [1500, 3000, 5000];
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    for (const query of queries) {
+      try {
+        const r = await fetch(`${CRM_BASE}/quotation/quotationFipeApi?${query}`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        });
+        const text = await r.text();
+        console.log(`triggerCrmFipeRefresh quotationFipeApi(${query}) attempt ${attempt} → ${r.status} ${text.substring(0, 300)}`);
+        if (r.ok) {
+          try { return JSON.parse(text); } catch { return text; }
+        }
+      } catch (e) {
+        console.error(`triggerCrmFipeRefresh error attempt ${attempt}:`, e);
+      }
+    }
+    if (attempt < 4) await new Promise((r) => setTimeout(r, delays[attempt - 1] || 3000));
   }
+  return null;
 }
 
 // Resolve FIPE code/value for a specific CRM model+year via CRM internal endpoint
