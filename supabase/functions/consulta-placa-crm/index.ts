@@ -357,6 +357,23 @@ Deno.serve(async (req) => {
       if (vehicle) console.log("Vehicle resolved via polling:", JSON.stringify(vehicle));
     }
 
+    // 6. Enrich with FIPE API by code (vehicle.fipeCode) when model/value missing
+    if (vehicle && vehicle.fipeCode && (!vehicle.model || !vehicle.fipeValue)) {
+      console.log(`Enriching via FIPE API by code: ${vehicle.fipeCode}`);
+      const enriched = await enrichFromFipeByCode(vehicle.fipeCode, vehicleType, vehicle.year);
+      if (enriched) {
+        console.log("FIPE enrichment result:", JSON.stringify(enriched));
+        vehicle = {
+          ...vehicle,
+          brand: enriched.brand || vehicle.brand,
+          model: enriched.model || vehicle.model,
+          year: enriched.year || vehicle.year,
+          fipeCode: enriched.fipeCode || vehicle.fipeCode,
+          fipeValue: enriched.fipeValue || vehicle.fipeValue,
+        };
+      }
+    }
+
     return new Response(JSON.stringify({
       quotationCode,
       negotiationCode,
