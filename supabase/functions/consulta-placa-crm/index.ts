@@ -510,6 +510,47 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 7. Resolve internal CRM brand/model/year IDs (so the card and plansQuotation can use them)
+    if (vehicle && vehicleTypeId != null && vehicle.brand) {
+      try {
+        const ids = await resolveCrmIds(token, vehicleTypeId, vehicle.brand, vehicle.model, vehicle.year);
+        vehicle.crmBrandId = ids.crmBrandId;
+        vehicle.crmModelId = ids.crmModelId;
+        vehicle.crmYearId = ids.crmYearId;
+
+        // 8. Push these IDs into the quotation immediately so the CRM card shows the vehicle
+        if (ids.crmModelId || ids.crmYearId) {
+          const updateBody: Record<string, unknown> = { code: quotationCode };
+          if (ids.crmModelId) {
+            updateBody.mdl = ids.crmModelId;
+            updateBody.carModel = ids.crmModelId;
+          }
+          if (ids.crmYearId) {
+            updateBody.mdlYr = ids.crmYearId;
+            updateBody.carModelYear = ids.crmYearId;
+          }
+          if (vehicle.color) updateBody.color = vehicle.color;
+          if (vehicle.year) {
+            const yr = parseInt(String(vehicle.year).split("/")[0], 10);
+            if (yr) updateBody.fabricationYear = yr;
+          }
+          if (vehicle.fipeValue) updateBody.protectedValue = vehicle.fipeValue;
+          updateBody.plates = plate;
+          updateBody.plts = plate;
+          if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
+
+          try {
+            const upd = await fetch(`${CRM_BASE}/quotation/update`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+              body: JSON.stringify(updateBody),
+            });
+            console.log(`Early CRM update with mdl/mdlYr → ${upd.status}`);
+          } catch (e) { console.error("Early CRM update error:", e); }
+        }
+      } catch (e) { console.error("resolveCrmIds error:", e); }
+    }
+
     return new Response(JSON.stringify({
       quotationCode,
       negotiationCode,
