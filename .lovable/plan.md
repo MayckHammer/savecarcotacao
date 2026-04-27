@@ -1,35 +1,90 @@
-## Diagnóstico definitivo
+## Diagnóstico
 
-Os logs + o HTML do CRM revelaram tudo:
+Pelos logs do teste com a placa `TEV3H48`:
 
-1. **Nenhuma das 8 chaves testadas** (`vehicleType`, `vehicleTypeId`, `tpVc`, `cdTpVc`, `vehicleCategory` etc.) persiste no `/quotation/update`. Todas retornam 200 mas o GET seguinte mostra que o valor não foi salvo.
-2. **O nome real do campo é `vhclType`** — visível no HTML do print: `<select id="vhclType" class="vehicle_type_select" previousvalue="3">`. Tem todo sentido pelo padrão abreviado do CRM (`plts`, `mdl`, `mdlYr`, `cdFp` etc.).
-3. **O endpoint `/quotation/quotationFipeApi` (GET) retorna 502** — provavelmente porque o `vhclType` ainda está vazio (causa raiz), então a chamada falha no upstream do DENATRAN.
-4. Os outros endpoints de DENATRAN testados (`searchPlate`, `denatran`, `refreshVehicle`, `consultPlate`, `searchVehicle`) retornaram **405 Method Not Allowed** → não existem em `POST`. Provavelmente o CRM dispara o DENATRAN automaticamente assim que o `vhclType` é setado e a placa já está presente — então não precisamos chamar nada extra, basta deixar o polling rodar.
+- O app enviou corretamente `vehicleType: "moto"`.
+- A integração resolveu corretamente o tipo do CRM: `Moto -> id=2`.
+- A cotação foi criada no CRM com `plts: "TEV3H48"` e `vhclType: 2`.
+- O retorno do CRM ainda veio sem dados de veículo: `mdl`, `mdlYr`, `carModel`, `protectedValue` todos `null`.
+- A chamada que tentamos usar como “lupa” (`GET /quotation/quotationFipeApi`) retornou `502`, então ela não está sendo o caminho correto para iniciar a busca pela placa nesse momento.
 
-## Plano de implementação
+Também conferi a documentação local da API do CRM. O campo `vhclType` não aparece no Swagger como campo oficial de `quotation/add` ou `quotation/update`, apesar de existir no HTML do card. Isso indica que o problema pode sim ser divergência entre o campo visual do card e o contrato público da API. O caminho mais promissor encontrado na documentação é outro: `GET /api/quotation/plates/{plate}`, descrito como “Informação da placa do carro”.
 
-Refatorar `supabase/functions/consulta-placa-crm/index.ts`:
+## Plano de correção
 
-### 1. Usar a chave correta `vhclType`
-Substituir a função `setVehicleTypeWithVerify` (que tentava 8 chaves) por uma versão direta que envia apenas `{ code, vhclType: <id>, workVehicle }` no `POST /quotation/update` e valida via GET.
+### 1. Usar a consulta direta por placa do CRM antes de criar/atualizar a cotação
+Alterar `consulta-placa-crm` para consultar:
 
-### 2. Enviar `vhclType` já no `/quotation/add`
-Incluir `vhclType: <id>` no payload de criação — assim o tipo já fica setado antes do CRM tentar qualquer lookup interno.
+```text
+GET /api/quotation/plates/{plate}
+```
 
-### 3. Remover endpoints que retornam 405
-Eliminar a array de 6 endpoints. Manter apenas o `GET /quotation/quotationFipeApi` (que é o que a UI do CRM realmente chama), executado **depois** do `vhclType` ter sido confirmado por GET. Se ainda assim der 502, ignorar — o polling subsequente recupera os dados quando o DENATRAN interno do CRM termina.
+Esse endpoint deve ser usado como primeira tentativa para obter os dados do veículo pela placa, em vez de depender do card do CRM preencher FIPE automaticamente.
 
-### 4. Manter polling estendido
-Os 7 ciclos de backoff (~25s total) ficam como rede de segurança — agora com chance real de funcionar porque o `vhclType` finalmente vai persistir.
+### 2. Normalizar o retorno do CRM em um único formato para o app
+Criar um extrator mais robusto que aceite possíveis formatos do CRM, por exemplo:
+
+```text
+body.brand / body.marca / body.model / body.modelo / body.carModel / body.mdl
+body.year / body.ano / body.modelYear / body.mdlYr / body.carModelYear
+body.fipeValue / body.valorFipe / body.protectedValue
+body.color / body.cor
+body.fipeCode / body.cdFp
+```
+
+Assim, mesmo que o endpoint retorne os dados dentro de `body`, `data`, array ou objeto direto, o app recebe sempre:
+
+```text
+{ brand, model, year, color, fipeCode, fipeValue, type }
+```
+
+### 3. Criar a cotação no CRM com os dados já conhecidos
+Depois da consulta por placa, criar a cotação com:
+
+- `plts`
+- `workVehicle`
+- dados pessoais
+- dados do veículo quando existirem (`carModel`, `carModelYear`, `mdl`, `mdlYr`, `protectedValue`, `color`) somente se o retorno trouxer códigos/campos compatíveis.
+
+O campo de tipo continuará sendo enviado como reforço, mas não será mais a única dependência para obter FIPE.
+
+### 4. Corrigir a atualização da cotação existente
+No fluxo do passo 3 (`submit-to-crm` com `skipCrm=true`), reforçar a placa com os dois campos aceitos pela API:
+
+```text
+plts
+plates
+```
+
+Hoje a atualização usa principalmente `plates`, e vimos nos retornos que o CRM diferencia `plts` e `plates`. Isso pode explicar parte do comportamento de “a placa não voltou / não atualizou como esperado”.
+
+### 5. Melhorar mensagens no app
+No app, quando a API retornar `vehicle: null`, mostrar uma mensagem mais clara:
+
+```text
+Não foi possível buscar automaticamente os dados dessa placa no CRM. Você pode preencher manualmente.
+```
+
+E quando retornar dados parciais, preencher o que veio e manter o restante manual.
 
 ## Resultado esperado
 
-No próximo teste:
-- Card do CRM mostra "Caminhão ou micro-ônibus" / "Moto" / "Carro" pré-selecionado em **Tipo de veículo**.
-- Dados Marca/Modelo/Ano aparecem automaticamente via DENATRAN sem clicar na lupa.
-- App preenche os campos do passo 2 sozinho.
+Com essa alteração, o fluxo deixa de depender do preenchimento visual do card do CRM para retornar FIPE. A integração passa a:
 
-## Arquivos afetados
+```text
+App envia placa + tipo
+        ↓
+Backend consulta placa diretamente no CRM
+        ↓
+Backend cria/atualiza card no CRM com placa, tipo e dados encontrados
+        ↓
+App recebe marca/modelo/ano/FIPE quando o CRM retornar esses dados
+```
 
-- `supabase/functions/consulta-placa-crm/index.ts` (única alteração)
+## Arquivos a alterar
+
+- `supabase/functions/consulta-placa-crm/index.ts`
+- `supabase/functions/submit-to-crm/index.ts`
+- `src/pages/Quote.tsx`
+
+Após implementar, vou redeployar as funções e você poderá fazer um novo teste real com a placa de moto.

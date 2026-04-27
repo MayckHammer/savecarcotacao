@@ -38,7 +38,6 @@ async function loadVehicleTypes(token: string): Promise<CrmVehicleType[]> {
     if (!res.ok) return [];
     const data = await res.json();
     vehicleTypesCache = Array.isArray(data) ? data : (data?.data || []);
-    console.log("Loaded vehicleTypes:", JSON.stringify(vehicleTypesCache));
     return vehicleTypesCache!;
   } catch (e) {
     console.error("loadVehicleTypes error:", e);
@@ -56,7 +55,95 @@ function resolveVehicleTypeId(types: CrmVehicleType[], userType: string): number
   return null;
 }
 
-// Fetch full quotation as JSON (used for verifying which key the CRM accepted)
+// ===== Helpers =====
+const parseFipeValue = (raw: unknown): number => {
+  if (raw == null) return 0;
+  if (typeof raw === "number") return raw;
+  if (typeof raw === "string") {
+    const cleaned = raw.replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? 0 : n;
+  }
+  return 0;
+};
+
+type Vehicle = {
+  brand: string;
+  model: string;
+  year: string;
+  color: string;
+  fipeCode: string;
+  fipeValue: number;
+  type: string;
+  city?: string;
+};
+
+// Generic extractor — accepts CRM data wrapped in many shapes (object, {body}, {data}, [array])
+function extractVehicleFromAny(input: unknown, fallbackType: string): Vehicle | null {
+  if (!input) return null;
+
+  // Try common envelope shapes recursively
+  const candidates: Record<string, unknown>[] = [];
+  const visit = (val: unknown) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      for (const item of val) visit(item);
+      return;
+    }
+    if (typeof val !== "object") return;
+    candidates.push(val as Record<string, unknown>);
+    const obj = val as Record<string, unknown>;
+    if (obj.body) visit(obj.body);
+    if (obj.data) visit(obj.data);
+    if (obj.vehicle) visit(obj.vehicle);
+    if (obj.negotiation) visit(obj.negotiation);
+  };
+  visit(input);
+
+  for (const c of candidates) {
+    const brand = (c.brand ?? c.marca ?? c.brandName ?? c.nmMarca ?? "") as string;
+    const model = (c.model ?? c.modelo ?? c.modelName ?? c.carModel ?? c.mdl ?? c.nmModelo ?? c.name ?? "") as string;
+    const year = (c.year ?? c.ano ?? c.modelYear ?? c.mdlYr ?? c.carModelYear ?? c.fabricationYear ?? "") as string | number;
+    const color = (c.color ?? c.cor ?? "") as string;
+    const fipeCode = (c.fipeCode ?? c.cdFp ?? c.code ?? "") as string;
+    const fipeValue = parseFipeValue(
+      c.fipeValue ?? c.vlFipe ?? c.valorFipe ?? c.protectedValue ?? c.value,
+    );
+    const city = (c.city ?? c.cidade ?? "") as string;
+
+    if ((brand && String(brand).trim()) || (model && String(model).trim()) || (year && String(year).trim())) {
+      return {
+        brand: String(brand || ""),
+        model: String(model || ""),
+        year: String(year || ""),
+        color: String(color || ""),
+        fipeCode: String(fipeCode || ""),
+        fipeValue,
+        type: fallbackType,
+        city: String(city || ""),
+      };
+    }
+  }
+  return null;
+}
+
+async function fetchPlateFromCrm(token: string, plate: string, fallbackType: string): Promise<Vehicle | null> {
+  try {
+    const r = await fetch(`${CRM_BASE}/quotation/plates/${encodeURIComponent(plate)}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    const text = await r.text();
+    console.log(`/plates/${plate} → ${r.status} ${text.substring(0, 400)}`);
+    if (!r.ok) return null;
+    let data: unknown;
+    try { data = JSON.parse(text); } catch { return null; }
+    return extractVehicleFromAny(data, fallbackType);
+  } catch (e) {
+    console.error("fetchPlateFromCrm error:", e);
+    return null;
+  }
+}
+
 async function getQuotation(token: string, code: string): Promise<Record<string, unknown> | null> {
   try {
     const res = await fetch(`${CRM_BASE}/quotation/${code}`, {
@@ -69,58 +156,25 @@ async function getQuotation(token: string, code: string): Promise<Record<string,
   }
 }
 
-// CRM uses field name "vhclType" (discovered via the CRM UI's <select id="vhclType">).
-// We POST to /quotation/update with that key and verify it persisted via GET.
-async function setVehicleType(
-  token: string,
-  code: string,
-  vehicleTypeId: number | string,
-  workVehicle: boolean,
-): Promise<{ ok: boolean }> {
-  const payload = { code, workVehicle, vhclType: vehicleTypeId };
+async function getNegotiation(token: string, code: string): Promise<Record<string, unknown> | null> {
   try {
-    const res = await fetch(`${CRM_BASE}/quotation/update`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify(payload),
+    const r = await fetch(`${CRM_BASE}/negotiation/${code}`, {
+      headers: { "Authorization": `Bearer ${token}` },
     });
-    const text = await res.text();
-    console.log(`setVehicleType vhclType=${vehicleTypeId} status=${res.status} resp=${text.substring(0, 300)}`);
-
-    if (!res.ok) return { ok: false };
-
-    const got = await getQuotation(token, code);
-    if (got) {
-      const target = String(vehicleTypeId);
-      const persisted = Object.entries(got).some(([k, v]) => {
-        if (v == null || k === "workVehicle") return false;
-        return String(v) === target;
-      });
-      console.log(`vhclType persisted=${persisted}`);
-      return { ok: persisted };
-    }
-    return { ok: true };
-  } catch (e) {
-    console.error("setVehicleType error:", e);
-    return { ok: false };
-  }
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
 }
 
-// After vhclType is set, ping quotationFipeApi (the same call the CRM UI's magnifier
-// triggers). Returns true on 2xx; failures are non-fatal because polling will catch up.
-async function triggerDenatranLookup(token: string, quotationCode: string): Promise<boolean> {
+async function getQuotationFipe(token: string, code: string): Promise<unknown | null> {
   try {
-    const res = await fetch(
-      `${CRM_BASE}/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
-      { headers: { "Authorization": `Bearer ${token}` } },
-    );
-    const text = await res.text();
-    console.log(`denatran trigger GET quotationFipeApi → ${res.status} ${text.substring(0, 200)}`);
-    return res.ok;
-  } catch (e) {
-    console.error("triggerDenatranLookup error:", e);
-    return false;
-  }
+    const r = await fetch(`${CRM_BASE}/quotation/quotationFipeApi?quotationCode=${code}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!r.ok) return null;
+    const t = await r.text();
+    try { return JSON.parse(t); } catch { return null; }
+  } catch { return null; }
 }
 
 Deno.serve(async (req) => {
@@ -147,14 +201,20 @@ Deno.serve(async (req) => {
 
     const phone = (personal.phone || "").replace(/\D/g, "");
     const cpfDigits = (personal.cpf || "").replace(/\D/g, "");
+    const workVehicle = vehicleType === "caminhao";
 
-    // Pre-resolve vehicleTypeId so we can include it on /add too
+    // Resolve vehicleTypeId for later persistence
     const types = await loadVehicleTypes(token);
     const vehicleTypeId = resolveVehicleTypeId(types, vehicleType);
-    const workVehicle = vehicleType === "caminhao";
     console.log(`Resolved vehicleType="${vehicleType}" → id=${vehicleTypeId}`);
 
-    // 1. Create quotation in CRM — include vhclType on add (key discovered via CRM UI)
+    // 1. Try to fetch the vehicle by plate FIRST (independent of any quotation)
+    let vehicle: Vehicle | null = await fetchPlateFromCrm(token, plate, vehicleType);
+    if (vehicle) {
+      console.log("Vehicle resolved from /plates endpoint:", JSON.stringify(vehicle));
+    }
+
+    // 2. Create quotation in CRM (always, so we get a card to follow up with)
     const crmPayload: Record<string, unknown> = {
       name: personal.name || "",
       phone,
@@ -164,6 +224,7 @@ Deno.serve(async (req) => {
       workVehicle,
     };
     if (vehicleTypeId != null) {
+      // Sent as reinforcement; CRM accepts via the same field name as its UI uses.
       crmPayload.vhclType = vehicleTypeId;
     }
 
@@ -174,7 +235,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify(crmPayload),
     });
     const crmData = await crmRes.json();
-    console.log("CRM quotation response:", JSON.stringify(crmData));
+    console.log("CRM quotation response keys:", Object.keys(crmData || {}).slice(0, 20).join(","));
 
     if (!crmData.quotationCode) {
       return new Response(JSON.stringify({
@@ -186,130 +247,53 @@ Deno.serve(async (req) => {
     const quotationCode = crmData.quotationCode;
     const negotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
 
-    // 2. Reinforce vhclType via /update and verify it persisted
-    let typeResult = { ok: false };
+    // 3. Update with vehicle type explicitly
     if (vehicleTypeId != null) {
-      typeResult = await setVehicleType(token, quotationCode, vehicleTypeId, workVehicle);
+      try {
+        await fetch(`${CRM_BASE}/quotation/update`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ code: quotationCode, workVehicle, vhclType: vehicleTypeId, plates: plate, plts: plate }),
+        });
+      } catch (e) { console.error("update vhclType error:", e); }
     }
 
-    // 3. Add tag 23323 ("30 seg")
+    // 4. Add tag 23323 ("30 seg")
     try {
-      const tagRes = await fetch(`${CRM_BASE}/quotation/add-tag`, {
+      await fetch(`${CRM_BASE}/quotation/add-tag`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ quotationCode, tagId: 23323 }),
       });
-      console.log("Tag response:", await tagRes.text());
-    } catch (e) {
-      console.error("Error adding tag:", e);
-    }
+    } catch (e) { console.error("Error adding tag:", e); }
 
-    // 4. Trigger DENATRAN lookup (same call CRM UI's magnifier makes). Non-fatal.
-    const denatranOk = await triggerDenatranLookup(token, quotationCode);
-    console.log("DENATRAN trigger ok:", denatranOk);
+    // 5. If we don't have vehicle data yet, poll the quotation/negotiation endpoints (data may arrive
+    //    after CRM's internal DENATRAN/FIPE lookup completes).
+    if (!vehicle) {
+      const intervals = [1500, 2000, 2500, 3500, 4500, 6000];
+      for (let i = 0; i < intervals.length; i++) {
+        await new Promise((r) => setTimeout(r, intervals[i]));
+        console.log(`Polling vehicle data attempt ${i + 1}/${intervals.length}`);
 
-    // ===== Helpers for vehicle data extraction =====
-    const detectType = (brand: string, model: string): string => {
-      const ml = (model + " " + brand).toLowerCase();
-      if (ml.match(/moto|honda cg|yamaha|suzuki|kawasaki|dafra|shineray|haojue|bmw gs/)) return "moto";
-      if (ml.match(/caminh|truck|iveco|scania|volvo fh|man tgx/)) return "caminhao";
-      return "carro";
-    };
+        // Re-try the direct plate endpoint each cycle (cheap and authoritative)
+        vehicle = await fetchPlateFromCrm(token, plate, vehicleType);
+        if (vehicle) break;
 
-    const parseFipeValue = (raw: unknown): number => {
-      if (raw == null) return 0;
-      if (typeof raw === "number") return raw;
-      if (typeof raw === "string") {
-        const cleaned = raw.replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
-        const n = parseFloat(cleaned);
-        return isNaN(n) ? 0 : n;
+        const fipeData = await getQuotationFipe(token, quotationCode);
+        vehicle = extractVehicleFromAny(fipeData, vehicleType);
+        if (vehicle) break;
+
+        if (negotiationCode) {
+          const neg = await getNegotiation(token, negotiationCode);
+          vehicle = extractVehicleFromAny(neg, vehicleType);
+          if (vehicle) break;
+        }
+
+        const qttn = await getQuotation(token, quotationCode);
+        vehicle = extractVehicleFromAny(qttn, vehicleType);
+        if (vehicle) break;
       }
-      return 0;
-    };
-
-    const tryNegotiation = async () => {
-      if (!negotiationCode) return null;
-      try {
-        const r = await fetch(`${CRM_BASE}/negotiation/${negotiationCode}`, {
-          headers: { "Authorization": `Bearer ${token}` },
-        });
-        if (!r.ok) return null;
-        const d = await r.json();
-        const v = d?.vehicle || d?.data?.vehicle || {};
-        const brand = v?.brand || v?.brandName || v?.marca || d?.carModel || "";
-        const model = v?.model || v?.modelName || v?.modelo || d?.carModel || "";
-        const year = v?.year || v?.ano || v?.modelYear || d?.carModelYear || "";
-        const color = v?.color || v?.cor || d?.color || "";
-        const fipeCode = v?.fipeCode || v?.cdFp || "";
-        const fipeValue = parseFipeValue(v?.fipeValue ?? v?.vlFipe ?? v?.valorFipe ?? d?.fipeValue);
-        const city = v?.city || v?.cidade || "";
-        if (brand || model || year) {
-          return { brand, model, year: String(year), color, type: detectType(brand, model), city, fipeCode, fipeValue };
-        }
-      } catch (e) { console.error("negotiation error:", e); }
-      return null;
-    };
-
-    const tryFipeApi = async () => {
-      try {
-        const r = await fetch(`${CRM_BASE}/quotation/quotationFipeApi?quotationCode=${quotationCode}`, {
-          headers: { "Authorization": `Bearer ${token}` },
-        });
-        if (!r.ok) return null;
-        const t = await r.text();
-        let d: unknown; try { d = JSON.parse(t); } catch { return null; }
-        const items = Array.isArray(d)
-          ? d
-          : (d as Record<string, unknown>)?.data
-            ? (Array.isArray((d as Record<string, unknown>).data)
-                ? (d as { data: unknown[] }).data
-                : [(d as { data: unknown }).data])
-            : [d];
-        for (const item of items as Record<string, unknown>[]) {
-          const brand = (item?.brand || item?.marca || item?.brandName || "") as string;
-          const model = (item?.model || item?.modelo || item?.modelName || item?.name || "") as string;
-          const year = (item?.year || item?.ano || item?.modelYear || "") as string | number;
-          const color = (item?.color || item?.cor || "") as string;
-          const fipeCode = (item?.fipeCode || item?.cdFp || item?.code || "") as string;
-          const fipeValue = parseFipeValue(item?.fipeValue ?? item?.vlFipe ?? item?.valorFipe ?? item?.value);
-          if (brand || model || year) {
-            return { brand, model, year: String(year), color, type: detectType(brand, model), city: "", fipeCode, fipeValue };
-          }
-        }
-      } catch (e) { console.error("quotationFipeApi error:", e); }
-      return null;
-    };
-
-    const tryQuotation = async () => {
-      try {
-        const d = await getQuotation(token, quotationCode);
-        if (!d) return null;
-        const v = (d?.vehicle as Record<string, unknown>) || (d?.data as Record<string, unknown>)?.vehicle as Record<string, unknown> || {};
-        const brand = v?.brand || v?.brandName || v?.marca || d?.carModel || "";
-        const model = v?.model || v?.modelName || v?.modelo || d?.carModel || "";
-        const year = v?.year || v?.ano || v?.modelYear || d?.carModelYear || "";
-        const color = v?.color || v?.cor || d?.color || "";
-        const fipeCode = v?.fipeCode || v?.cdFp || "";
-        const fipeValue = parseFipeValue(v?.fipeValue ?? v?.vlFipe ?? v?.valorFipe ?? d?.protectedValue);
-        const city = v?.city || v?.cidade || "";
-        if (brand || model || year) {
-          return { brand: String(brand), model: String(model), year: String(year), color: String(color), type: detectType(String(brand), String(model)), city: String(city), fipeCode: String(fipeCode), fipeValue };
-        }
-      } catch (e) { console.error("quotation error:", e); }
-      return null;
-    };
-
-    // 5. Adaptive polling — extended to ~25s with backoff
-    let vehicle: Record<string, unknown> | null = null;
-    const intervals = [1500, 2000, 2500, 3000, 3500, 4000, 7000];
-    for (let i = 0; i < intervals.length; i++) {
-      await new Promise((r) => setTimeout(r, intervals[i]));
-      console.log(`Polling vehicle data attempt ${i + 1}/${intervals.length}`);
-      vehicle = (await tryNegotiation()) || (await tryFipeApi()) || (await tryQuotation());
-      if (vehicle) {
-        console.log("Vehicle resolved on attempt", i + 1, JSON.stringify(vehicle));
-        break;
-      }
+      if (vehicle) console.log("Vehicle resolved via polling:", JSON.stringify(vehicle));
     }
 
     return new Response(JSON.stringify({
@@ -318,8 +302,6 @@ Deno.serve(async (req) => {
       vehicle,
       vehicleType,
       vehicleTypeId,
-      vehicleTypeSet: typeResult.ok,
-      denatranOk,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

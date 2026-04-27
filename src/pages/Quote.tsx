@@ -202,7 +202,7 @@ const Quote = () => {
         }
       } else {
         setPlateConsulted(false);
-        toast.info("Veículo não identificado. Preencha manualmente.");
+        toast.info("Não foi possível buscar automaticamente os dados dessa placa no CRM. Preencha manualmente.");
       }
     } catch (e: unknown) {
       console.error("Consulta placa error:", e);

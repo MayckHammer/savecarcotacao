@@ -230,6 +230,7 @@ Deno.serve(async (req) => {
           registration: cpfDigits,
           phoneMobile1: phone,
           plates: vehicle.plate,
+          plts: vehicle.plate,
           workVehicle: vehicle.type === "caminhao" || vehicle.usage === "aplicativo",
           addressZipcode: address.cep?.replace(/\D/g, ""),
           addressAddress: address.street,
