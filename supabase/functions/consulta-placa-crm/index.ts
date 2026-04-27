@@ -575,8 +575,8 @@ async function getQuotationFipe(token: string, code: string): Promise<unknown | 
 
 async function triggerCrmFipeRefresh(token: string, quotationCode: string): Promise<unknown | null> {
   const queries = [`quotationCode=${encodeURIComponent(quotationCode)}`, `h=${encodeURIComponent(quotationCode)}`];
-  const delays = [1500, 3000, 5000];
-  for (let attempt = 1; attempt <= 4; attempt++) {
+  const delays = [1200, 1800];
+  for (let attempt = 1; attempt <= 3; attempt++) {
     for (const query of queries) {
       try {
         const r = await fetch(`${CRM_BASE}/quotation/quotationFipeApi?${query}`, {
@@ -591,7 +591,7 @@ async function triggerCrmFipeRefresh(token: string, quotationCode: string): Prom
         console.error(`triggerCrmFipeRefresh error attempt ${attempt}:`, e);
       }
     }
-    if (attempt < 4) await new Promise((r) => setTimeout(r, delays[attempt - 1] || 3000));
+    if (attempt < 3) await new Promise((r) => setTimeout(r, delays[attempt - 1] || 1500));
   }
   return null;
 }
