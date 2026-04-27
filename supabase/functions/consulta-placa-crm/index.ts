@@ -88,7 +88,7 @@ const modelsCache = new Map<number, CrmItem[]>(); // key: brandId
 const yearsCache = new Map<number, CrmItem[]>(); // key: modelId
 
 const labelOf = (it: CrmItem): string =>
-  (it.nm || it.name || it.description || it.ds || "").toString();
+  (it.text || it.nm || it.name || it.description || it.ds || "").toString();
 
 const normalize = (s: string): string =>
   s.toLowerCase()
