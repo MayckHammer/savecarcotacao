@@ -487,6 +487,58 @@ async function getQuotationFipe(token: string, code: string): Promise<unknown | 
   } catch { return null; }
 }
 
+// Mimics the "magnifying glass" button in CRM: re-runs plate lookup inside quotation context
+async function triggerCrmPlateLookup(token: string, quotationCode: string, plate: string): Promise<void> {
+  const endpoints = [
+    { path: "/quotation/getPlate", body: { quotationCode, plates: plate, plts: plate } },
+    { path: "/quotation/plateConsult", body: { quotationCode, plates: plate } },
+    { path: "/quotation/consultPlate", body: { quotationCode, plates: plate } },
+  ];
+  for (const ep of endpoints) {
+    try {
+      const r = await fetch(`${CRM_BASE}${ep.path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(ep.body),
+      });
+      if (r.ok) {
+        console.log(`triggerCrmPlateLookup ${ep.path} → 200`);
+        return;
+      }
+      console.log(`triggerCrmPlateLookup ${ep.path} → ${r.status}`);
+    } catch (e) {
+      console.error(`triggerCrmPlateLookup ${ep.path} error:`, e);
+    }
+  }
+}
+
+// Resolve FIPE code/value for a specific CRM model+year via CRM internal endpoint
+async function fetchFipeCodeFromCrm(token: string, crmModelId: number, crmYearId: number | null): Promise<{ fipeCode: string; fipeValue: number } | null> {
+  if (!crmModelId) return null;
+  const tries = [
+    `${CRM_BASE}/quotation/cmf?cm=${crmModelId}${crmYearId ? `&cmy=${crmYearId}` : ""}`,
+    `${CRM_BASE}/quotation/cf?cm=${crmModelId}${crmYearId ? `&cmy=${crmYearId}` : ""}`,
+    `${CRM_BASE}/quotation/fipe?cm=${crmModelId}${crmYearId ? `&cmy=${crmYearId}` : ""}`,
+  ];
+  for (const url of tries) {
+    try {
+      const r = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+      if (!r.ok) continue;
+      const data = await r.json().catch(() => null);
+      if (!data) continue;
+      const arr = Array.isArray(data) ? data : (data?.data || [data]);
+      const first = arr[0] || {};
+      const code = String(first.cdFp || first.codFipe || first.fipeCode || first.codigoFipe || first.code || "").trim();
+      const value = parseFipeValue(first.vlFipe ?? first.fipeValue ?? first.valorFipe ?? first.value ?? first.price);
+      if (code || value > 0) {
+        console.log(`fetchFipeCodeFromCrm ${url} → code=${code} value=${value}`);
+        return { fipeCode: code, fipeValue: value };
+      }
+    } catch (e) { console.error(`fetchFipeCodeFromCrm ${url} error:`, e); }
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
