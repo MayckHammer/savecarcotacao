@@ -55,13 +55,23 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
           if (qRes.ok) {
             const qData = await qRes.json() as Record<string, unknown>;
             const pv = Number(qData?.protectedValue ?? 0);
+            const fipeVl = Number(qData?.vhclFipeVl ?? 0);
             const hasAddr = !!(qData?.addressZipcode || qData?.addressAddress);
             const hasCity = !!qData?.city;
+            const mdl = qData?.mdl;
+            const mdlYr = qData?.mdlYr;
             const missing: string[] = [];
-            if (pv === 0) missing.push("valor FIPE");
+            if (pv === 0 && fipeVl === 0) missing.push("valor FIPE");
             if (!hasAddr) missing.push("endereço");
             if (!hasCity) missing.push("cidade");
-            console.log("Quotation diagnostic — protectedValue:", pv, "hasAddress:", hasAddr, "hasCity:", hasCity);
+            if (!mdl) missing.push("modelo");
+            if (!mdlYr) missing.push("ano");
+            console.log(
+              "Quotation diagnostic — protectedValue:", pv,
+              "vhclFipeVl:", fipeVl,
+              "mdl:", mdl, "mdlYr:", mdlYr,
+              "hasAddress:", hasAddr, "hasCity:", hasCity,
+            );
             if (missing.length) {
               diagnostic = `Cotação incompleta no CRM (faltando: ${missing.join(", ")})`;
             }
