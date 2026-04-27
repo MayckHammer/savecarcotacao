@@ -18,14 +18,15 @@ function findFirstArray(input: unknown): unknown[] {
 function normalizePlans(data: unknown) {
   return findFirstArray(data).map((raw) => {
     const p = raw as Record<string, unknown>;
+    const monthlyPrice = Number(p.monthlyPrice || p.monthlyValue || p.vlMnthly || p.value || p.price || p.total || 0);
     return {
       id: p.id || p.planId || p.tppId || null,
       name: p.name || p.planName || p.nm || p.description || p.ds || "",
-      monthlyPrice: Number(p.monthlyPrice || p.monthlyValue || p.vlMnthly || p.value || p.price || p.total || 0),
-      annualPrice: Number(p.annualPrice || p.annualValue || p.vlAnnl || 0),
+      monthlyPrice,
+      annualPrice: Number(p.annualPrice || p.annualValue || p.vlAnnl || 0) || monthlyPrice * 12,
       coverages: p.coverages || p.items || p.optionals || [],
     };
-  });
+  }).filter((p) => p.name || p.monthlyPrice > 0);
 }
 
 async function fetchPlansByModelRequest(quotationCode: string, token: string): Promise<{ plans: unknown[]; error?: string }> {
