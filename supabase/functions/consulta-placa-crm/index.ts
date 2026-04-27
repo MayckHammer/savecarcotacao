@@ -197,6 +197,45 @@ async function fetchCrmYears(token: string, modelId: number): Promise<CrmItem[]>
   } catch (e) { console.error("fetchCrmYears error:", e); return []; }
 }
 
+async function buildCrmModelOptions(
+  token: string,
+  vehicleTypeId: string | number,
+  vehicle: Vehicle,
+): Promise<CrmModelOption[]> {
+  const brands = await fetchCrmBrands(token, vehicleTypeId);
+  const brandMatch = pickBestMatch(brands, vehicle.brand) || pickBestMatch(brands, vehicle.brandRaw?.split(/\s+/)[0] || "");
+  if (!brandMatch) return [];
+
+  const rawHint = `${vehicle.brandRaw || ""} ${vehicle.modelRaw || ""}`.trim();
+  const models = await fetchCrmModels(token, brandMatch.id);
+  const candidates = models
+    .map((item) => ({ item, score: optionScore(labelOf(item), vehicle.model, rawHint) }))
+    .filter((x) => x.score >= 250)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+
+  const targetYear = String(vehicle.year || "").split("/")[0].trim();
+  const out: CrmModelOption[] = [];
+  for (const candidate of candidates) {
+    const years = await fetchCrmYears(token, candidate.item.id);
+    let yearMatch = targetYear ? years.find((y) => normalize(labelOf(y)).startsWith(targetYear)) : null;
+    if (!yearMatch && targetYear) yearMatch = years.find((y) => normalize(labelOf(y)).includes(targetYear));
+    if (!yearMatch && years.length) yearMatch = years[0];
+    out.push({
+      code: String(candidate.item.id),
+      name: labelOf(candidate.item),
+      year: targetYear || (yearMatch ? labelOf(yearMatch) : vehicle.year),
+      fipeCode: vehicle.fipeCode,
+      fipeValue: vehicle.fipeValue || 0,
+      fipeFormatted: formatBrl(vehicle.fipeValue || 0),
+      crmModelId: candidate.item.id,
+      crmYearId: yearMatch?.id ?? null,
+      score: candidate.score,
+    });
+  }
+  return out;
+}
+
 export async function resolveCrmIds(
   token: string,
   vehicleTypeId: string | number,
