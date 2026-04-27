@@ -879,8 +879,30 @@ Deno.serve(async (req) => {
             });
             console.log(`Early CRM update with mdl/mdlYr/FIPE → ${upd.status}`);
 
-            // Verify what actually persisted in the card
-            await new Promise((r) => setTimeout(r, 1200));
+            // Trigger the "magnifying glass" so CRM persists vhclFipeVl in the card
+            await triggerCrmPlateLookup(token, quotationCode, plate);
+            await getQuotationFipe(token, quotationCode);
+
+            // Second isolated FIPE-only update — forces persistence on stricter tenants
+            if (vehicle.fipeValue || vehicle.fipeCode) {
+              try {
+                await fetch(`${CRM_BASE}/quotation/update`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                  body: JSON.stringify({
+                    code: quotationCode,
+                    cdFp: vehicle.fipeCode,
+                    codFipe: vehicle.fipeCode,
+                    vhclFipeVl: vehicle.fipeValue,
+                    vlFipe: vehicle.fipeValue,
+                    protectedValue: vehicle.fipeValue,
+                    fipeValue: vehicle.fipeValue,
+                  }),
+                });
+              } catch (e) { console.error("FIPE-only update error:", e); }
+            }
+
+            await new Promise((r) => setTimeout(r, 1500));
             const verify = await getQuotation(token, quotationCode);
             if (verify) {
               const v = verify as Record<string, unknown>;
