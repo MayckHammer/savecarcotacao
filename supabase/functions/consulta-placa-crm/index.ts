@@ -656,7 +656,7 @@ Deno.serve(async (req) => {
       }
 
       const labelFipe = await fetchFipeByModelLabel(
-        selectedModel.brand || "Citroën",
+        selectedModel.brand || "",
         selectedModel.name,
         selectedModel.year,
         vehicleType,
@@ -962,9 +962,8 @@ Deno.serve(async (req) => {
             });
             console.log(`Early CRM update with mdl/mdlYr/FIPE → ${upd.status}`);
 
-            // Trigger the "magnifying glass" so CRM persists vhclFipeVl in the card
-            await triggerCrmPlateLookup(token, quotationCode, plate);
-            await getQuotationFipe(token, quotationCode);
+            // Trigger official FIPE refresh for the quotation; avoids invalid 405 endpoints
+            await triggerCrmFipeRefresh(token, quotationCode);
 
             // Second isolated FIPE-only update — forces persistence on stricter tenants
             if (vehicle.fipeValue || vehicle.fipeCode) {
