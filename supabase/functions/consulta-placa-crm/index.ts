@@ -105,7 +105,7 @@ function extractVehicleFromAny(input: unknown, fallbackType: string): Vehicle | 
     const model = (c.model ?? c.modelo ?? c.modelName ?? c.carModel ?? c.mdl ?? c.nmModelo ?? c.name ?? "") as string;
     const year = (c.year ?? c.ano ?? c.modelYear ?? c.mdlYr ?? c.carModelYear ?? c.fabricationYear ?? "") as string | number;
     const color = (c.color ?? c.cor ?? "") as string;
-    const fipeCode = (c.fipeCode ?? c.cdFp ?? c.code ?? "") as string;
+    const fipeCode = (c.fipeCode ?? c.codFipe ?? c.codeFipe ?? c.codigoFipe ?? c.cdFp ?? "") as string;
     const fipeValue = parseFipeValue(
       c.fipeValue ?? c.vlFipe ?? c.valorFipe ?? c.protectedValue ?? c.value,
     );
