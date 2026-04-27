@@ -542,9 +542,12 @@ async function getQuotation(token: string, code: string): Promise<Record<string,
     const res = await fetch(`${CRM_BASE}/quotation/${code}`, {
       headers: { "Authorization": `Bearer ${token}` },
     });
+    const text = await res.text();
+    console.log(`getQuotation ${code} → ${res.status} ${text.substring(0, 250)}`);
     if (!res.ok) return null;
-    return await res.json();
-  } catch {
+    try { return JSON.parse(text); } catch { return null; }
+  } catch (e) {
+    console.error("getQuotation error:", e);
     return null;
   }
 }
