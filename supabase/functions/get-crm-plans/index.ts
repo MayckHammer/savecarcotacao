@@ -4,6 +4,64 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function findFirstArray(input: unknown): unknown[] {
+  if (Array.isArray(input)) return input;
+  if (!input || typeof input !== "object") return [];
+  const obj = input as Record<string, unknown>;
+  for (const key of ["plans", "data", "body", "items", "content", "result"]) {
+    const found = findFirstArray(obj[key]);
+    if (found.length) return found;
+  }
+  return [];
+}
+
+function normalizePlans(data: unknown) {
+  return findFirstArray(data).map((p: Record<string, unknown>) => ({
+    id: p.id || p.planId || p.tppId || null,
+    name: p.name || p.planName || p.nm || p.description || p.ds || "",
+    monthlyPrice: Number(p.monthlyPrice || p.monthlyValue || p.vlMnthly || p.value || p.price || p.total || 0),
+    annualPrice: Number(p.annualPrice || p.annualValue || p.vlAnnl || 0),
+    coverages: p.coverages || p.items || p.optionals || [],
+  }));
+}
+
+async function fetchPlansByModelRequest(quotationCode: string, token: string): Promise<{ plans: unknown[]; error?: string }> {
+  try {
+    const qRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!qRes.ok) return { plans: [], error: "Não foi possível conferir a cotação no CRM" };
+    const qData = await qRes.json() as Record<string, unknown>;
+
+    const carModelId = Number(qData?.mdl ?? qData?.carModel ?? qData?.data?.mdl ?? 0);
+    const carModelYearId = Number(qData?.mdlYr ?? qData?.carModelYear ?? qData?.data?.mdlYr ?? 0);
+    const cityId = Number(qData?.city ?? qData?.data?.city ?? 0);
+    const workVehicle = Boolean(qData?.workVehicle ?? qData?.data?.workVehicle ?? false);
+    const fipe = Number(qData?.protectedValue ?? qData?.vhclFipeVl ?? qData?.data?.protectedValue ?? 0);
+    const missing: string[] = [];
+    if (!carModelId) missing.push("modelo");
+    if (!carModelYearId) missing.push("ano");
+    if (!cityId) missing.push("cidade");
+    if (missing.length) return { plans: [], error: `Cotação incompleta no CRM (faltando: ${missing.join(", ")})` };
+
+    console.log("Fallback /api/plans request:", JSON.stringify({ carModelId, carModelYearId, cityId, workVehicle, fipe }));
+    const plansRes = await fetch("https://api.powercrm.com.br/api/plans/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ carModelId, carModelYearId, cityId, quotationWorkVehicle: workVehicle, token }),
+    });
+    const text = await plansRes.text();
+    let data: unknown;
+    try { data = JSON.parse(text); } catch { data = text; }
+    console.log("Fallback /api/plans response:", plansRes.status, JSON.stringify(data).substring(0, 1000));
+    const plans = normalizePlans(data);
+    return { plans, error: plans.length ? undefined : "Nenhum plano real retornado pelo CRM" };
+  } catch (e) {
+    console.error("Fallback /api/plans error:", e);
+    return { plans: [], error: e.message };
+  }
+}
+
 async function fetchPlansWithRetry(quotationCode: string, token: string, maxAttempts = 4): Promise<{ plans: unknown[]; error?: string }> {
   const delays = [3000, 5000, 7000, 9000]; // progressive delays in ms (~24s total)
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
