@@ -113,7 +113,7 @@ export interface QuoteData {
 
 const defaultQuote: QuoteData = {
   personal: { name: "", email: "", phone: "", cpf: "" },
-  vehicle: { plate: "", model: "", type: "", usage: "", brand: "", year: "", color: "", fipeValue: 0, fipeFormatted: "", brandCode: "", modelCode: "", yearCode: "" },
+  vehicle: { plate: "", model: "", type: "carro", usage: "", brand: "", year: "", color: "", fipeValue: 0, fipeFormatted: "", brandCode: "", modelCode: "", yearCode: "", vehicleTypeId: null },
   address: { cep: "", street: "", neighborhood: "", number: "", complement: "", state: "", city: "", noNumber: false },
   monthlyPrice: 189.9,
   annualPrice: 1899.0,
