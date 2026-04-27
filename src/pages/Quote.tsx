@@ -178,7 +178,18 @@ const Quote = () => {
         },
       });
       if (error || data?.error) throw error || new Error(data.error);
-      toast.success("Modelo confirmado e enviado ao CRM.");
+
+      const check = data?.fipeCheck;
+      if (check && !check.match) {
+        const detail = Array.isArray(check.mismatches) && check.mismatches.length > 0
+          ? check.mismatches.join(" • ")
+          : "Os dados enviados não foram totalmente persistidos no CRM.";
+        toast.warning(`Atenção: divergência FIPE detectada — ${detail}`, { duration: 8000 });
+      } else if (check && check.match) {
+        toast.success("Modelo confirmado e FIPE conferida com o CRM.");
+      } else {
+        toast.success("Modelo confirmado e enviado ao CRM.");
+      }
     } catch (e) {
       console.error("Confirm model error:", e);
       toast.warning("Modelo confirmado no app, mas o CRM pode demorar para atualizar.");
