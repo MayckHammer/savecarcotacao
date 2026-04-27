@@ -25,12 +25,6 @@ const BodySchema = z.object({
     crmModelId: z.number(),
     crmYearId: z.number().optional().nullable(),
   }).optional(),
-  // Último FIPE válido obtido na consulta por placa — usado como fallback
-  // quando a busca por modelo/ano falha (Parallelum/CRM sem retorno).
-  plateFipeFallback: z.object({
-    fipeCode: z.string().trim().max(30).optional().default(""),
-    fipeValue: z.number().optional().default(0),
-  }).optional(),
 });
 
 const CRM_BASE = "https://api.powercrm.com.br/api";
@@ -643,7 +637,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const { personal, plate, vehicleType, crmQuotationCode, selectedModel, plateFipeFallback } = parsed.data;
+    const { personal, plate, vehicleType, crmQuotationCode, selectedModel } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     if (!token) {
       return new Response(JSON.stringify({ error: "POWERCRM_API_TOKEN not configured" }), {
@@ -690,23 +684,7 @@ Deno.serve(async (req) => {
         if (enriched?.fipeCode && !recomputedFipeCode) recomputedFipeCode = enriched.fipeCode;
       }
 
-      // Fallback final: reutilizar o último FIPE válido da consulta por placa
-      // para nunca deixar o card do CRM sem valor.
-      let usedPlateFipeFallback = false;
-      if ((!recomputedFipeValue || recomputedFipeValue <= 0) && plateFipeFallback) {
-        const fbValue = Number(plateFipeFallback.fipeValue || 0);
-        const fbCode = String(plateFipeFallback.fipeCode || "").trim();
-        if (fbValue > 0) {
-          recomputedFipeValue = fbValue;
-          usedPlateFipeFallback = true;
-          console.log(`Using plate FIPE fallback: value=${fbValue} code=${fbCode || "(none)"}`);
-        }
-        if (!recomputedFipeCode && fbCode) {
-          recomputedFipeCode = fbCode;
-        }
-      }
-
-      console.log(`Recomputed FIPE for selected model: code=${recomputedFipeCode} value=${recomputedFipeValue}${usedPlateFipeFallback ? " (fallback)" : ""}`);
+      console.log(`Recomputed FIPE for selected model: code=${recomputedFipeCode} value=${recomputedFipeValue}`);
 
       const updateBody: Record<string, unknown> = {
         code: crmQuotationCode,
@@ -823,7 +801,7 @@ Deno.serve(async (req) => {
         quotationCode: crmQuotationCode,
         verify,
         fipeCheck,
-        recomputed: { fipeCode: recomputedFipeCode, fipeValue: recomputedFipeValue, fipeFormatted, usedPlateFipeFallback },
+        recomputed: { fipeCode: recomputedFipeCode, fipeValue: recomputedFipeValue, fipeFormatted },
       }), {
         status: upd.ok ? 200 : 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -176,12 +176,6 @@ const Quote = () => {
             crmModelId: selected.crmModelId,
             crmYearId: selected.crmYearId,
           },
-          // Fallback: último FIPE válido obtido na consulta por placa,
-          // para nunca deixar o card do CRM vazio se a busca por modelo falhar.
-          plateFipeFallback: {
-            fipeCode: quote.vehicle.fipeCode || "",
-            fipeValue: quote.vehicle.fipeValue || 0,
-          },
         },
       });
       if (error || data?.error) throw error || new Error(data.error);
@@ -196,14 +190,8 @@ const Quote = () => {
         });
       }
 
-      const usedFallback = data?.recomputed?.usedPlateFipeFallback === true;
       const check = data?.fipeCheck;
-      if (usedFallback) {
-        toast.warning(
-          `Usando o FIPE da consulta de placa como referência (${data.recomputed.fipeFormatted || "valor estimado"}). A busca por modelo/ano não retornou um valor exato.`,
-          { duration: 8000 },
-        );
-      } else if (check && !check.match) {
+      if (check && !check.match) {
         const detail = Array.isArray(check.mismatches) && check.mismatches.length > 0
           ? check.mismatches.join(" • ")
           : "Os dados enviados não foram totalmente persistidos no CRM.";
