@@ -319,8 +319,7 @@ Deno.serve(async (req) => {
       vehicleType,
       vehicleTypeId,
       vehicleTypeSet: typeResult.ok,
-      vehicleTypeKeyUsed: typeResult.keyUsed,
-      denatranEndpoint,
+      denatranOk,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
