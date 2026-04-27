@@ -1,94 +1,100 @@
-## Diagnóstico
+## Problema
 
-A mensagem **"Usando valores estimados"** aparece porque o app só mostra preços reais quando o CRM devolve planos em `/quotation/plansQuotation`. Hoje o card já recebe marca/modelo/ano em alguns casos, mas o CRM ainda não calcula planos quando o campo **Valor FIPE** fica vazio ou quando o modelo/ano interno não corresponde exatamente ao veículo.
+Pelos logs e prints:
 
-Pelos prints, o botão de lupa da placa no CRM não é apenas visual: ele dispara a busca DENATRAN/FIPE interna e preenche campos que o simples `/quotation/update` não persiste totalmente, principalmente **Valor FIPE**. Como não dá para “clicar” no CRM pelo backend, precisamos reproduzir o efeito desse clique usando os endpoints do próprio CRM e, quando houver ambiguidade, deixar o usuário escolher o modelo correto no app.
+1. **No app**: Após selecionar "AIRCROSS Live 1.5 Flex 8V 5p Mec." (modelo correto), a tela ainda mostra **"FIPE encontrada: R$ 38.412,00 — código 011117-1"** — que é o valor da FIPE da sugestão anterior (Aircross Tendance 1.6). O valor não é re-buscado para o modelo recém escolhido.
 
-## Plano de correção
+2. **No CRM**: O card mostra "Código FIPE: 011162-7" e **"Valor FIPE: vazio"**. Só após clicar manualmente na lupa azul ao lado da placa o CRM dispara a rotina interna que preenche o Valor FIPE. O endpoint `quotation/quotationFipeApi` que estamos chamando hoje **não é** o mesmo que a lupa aciona — por isso o `fipeCheck` retorna `"CRM ainda não persistiu o valor FIPE"`.
 
-### 1. Enriquecer a consulta de placa com opções de modelo
+3. A lupa do CRM equivale a re-disparar `/quotation/plates/{placa}` **dentro do contexto da cotação** (passando o `quotationCode`), o que faz o CRM:
+   - reconsultar DENATRAN,
+   - persistir `cdFp`,
+   - chamar a FIPE Parallelum internamente,
+   - gravar `vhclFipeVl` no card.
 
-Na função `consulta-placa-crm`:
+## Solução
 
-- Continuar criando o card no CRM e buscando a placa via `/quotation/plates/{plate}`.
-- Usar o código FIPE retornado pela placa (`codFipe`, exemplo `011117-1`) para buscar marca/modelo/ano/valor oficial.
-- Retornar também uma lista de modelos possíveis para o app quando houver ambiguidade, usando os modelos do CRM e/ou FIPE filtrados pelo nome bruto da placa.
-- Para o caso do print (`CITROEN C3 AIRC TENDANCE`), priorizar termos distintivos como `AIRC`, `AIRCROSS`, `TENDANCE`, em vez de aceitar automaticamente o primeiro modelo parecido.
+### 1. Ao confirmar o modelo no app, recalcular a FIPE pelo `crmModelId` + `crmYearId` selecionados
 
-### 2. Mostrar seleção de modelo específico no app após consultar placa
+Hoje, quando o usuário troca a sugestão no dropdown, reusamos o `fipeValue` que veio junto da opção. Mas todas as opções carregam o **mesmo** valor (R$ 38.412 — herdado do código FIPE inicial 011117-1), então a tela não atualiza e o valor fica errado para o modelo realmente escolhido.
 
-Na tela `/cotacao`:
+Mudança em `supabase/functions/consulta-placa-crm/index.ts`:
 
-- Após consultar a placa, mostrar os dados encontrados normalmente.
-- Se houver mais de um modelo possível ou se o match não for 100% seguro, exibir um campo **"Confirme o modelo do veículo"** na mesma tela.
-- Ao selecionar o modelo:
-  - atualizar `model`, `year`, `fipeValue`, `fipeFormatted`, `crmModelId`, `crmYearId` no contexto;
-  - marcar a placa como validada somente depois da confirmação;
-  - manter a experiência simples: placa puxa tudo, usuário só confirma quando necessário.
+- Quando vier `selectedModel` no payload, **antes** do `quotation/update` chamar:
+  1. `GET /quotation/cmf?cm={crmModelId}&cmy={crmYearId}` (endpoint do CRM que retorna o **código FIPE específico** do par modelo+ano).
+  2. Com o `cdFp` retornado, consultar a FIPE Parallelum (`enrichFromFipeByCode`) e obter o **valor real** daquele modelo/ano.
+  3. Sobrescrever `selectedModel.fipeCode` e `selectedModel.fipeValue` com os dados recém-buscados antes de montar o `updateBody`.
+- Retornar o `fipeCode`/`fipeValue` recalculado no JSON de resposta (`recomputed: { fipeCode, fipeValue, fipeFormatted }`).
 
-Fluxo esperado:
+Em `src/pages/Quote.tsx → handleCrmModelConfirm`:
 
-```text
-Usuário digita placa
-→ app consulta CRM
-→ app mostra dados do veículo
-→ se modelo estiver incerto, usuário escolhe modelo exato
-→ app envia modelo/ano/FIPE corretos para o CRM
-→ CRM calcula planos reais
+- Após a chamada, se `data.recomputed` veio, atualizar o estado:
+  ```ts
+  updateVehicle({
+    fipeCode: data.recomputed.fipeCode,
+    fipeValue: data.recomputed.fipeValue,
+    fipeFormatted: data.recomputed.fipeFormatted,
+  });
+  ```
+- O texto "FIPE encontrada: R$ ..." vai refletir o modelo correto.
+
+### 2. Disparar a "lupa" do CRM automaticamente após o update do modelo
+
+A lupa equivale a re-rodar a consulta de placa no contexto da cotação. Os endpoints corretos do PowerCRM para isso são (testaremos qual está disponível, em ordem):
+
+1. `POST /quotation/getPlate` com `{ quotationCode, plates: "PAI0F65" }`
+2. `POST /quotation/setVhclFipeVl` com `{ quotationCode, vhclFipeVl: <valor> }` (alguns CRMs expõem isso)
+3. Fallback: re-`POST /quotation/update` com **apenas** `{ code, cdFp, vhclFipeVl }` separado, que historicamente força o trigger interno.
+
+Mudança em `consulta-placa-crm/index.ts`, dentro do bloco `if (crmQuotationCode && selectedModel)`:
+
+```ts
+// Após o update inicial:
+await fetch(`${CRM_BASE}/quotation/getPlate`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+  body: JSON.stringify({ quotationCode: crmQuotationCode, plates: plate, plts: plate }),
+});
+await new Promise(r => setTimeout(r, 1500));
+await getQuotationFipe(token, crmQuotationCode); // mantém como reforço
+
+// Segundo update isolado só com FIPE — força o CRM a persistir vhclFipeVl
+await fetch(`${CRM_BASE}/quotation/update`, {
+  method: "POST",
+  headers: { ... },
+  body: JSON.stringify({
+    code: crmQuotationCode,
+    cdFp: recomputedFipeCode,
+    codFipe: recomputedFipeCode,
+    vhclFipeVl: recomputedFipeValue,
+    vlFipe: recomputedFipeValue,
+    protectedValue: recomputedFipeValue,
+  }),
+});
 ```
 
-### 3. Criar atualização explícita do veículo escolhido no CRM
+### 3. Replicar o mesmo disparo logo após a criação inicial da cotação
 
-Adicionar/ajustar uma função backend para atualizar o card assim que o usuário confirmar o modelo, enviando:
+No fluxo da consulta de placa (sem `selectedModel`), depois do "Early CRM update" (linha 763-778), adicionar a mesma chamada `getPlate` + segundo update isolado de FIPE para já preencher o card sem precisar de clique.
 
-- `code` da cotação;
-- `mdl` / `carModel`;
-- `mdlYr` / `carModelYear`;
-- `fabricationYear`;
-- `protectedValue`;
-- código FIPE (`cdFp`/`codFipe`, se aceito);
-- cor, placa e tipo de veículo.
+### 4. Polling de verificação até o CRM persistir
 
-### 4. Reproduzir o “clique na lupa” via endpoint, não via automação visual
+No `fipeCheck`, em vez de uma única verificação após 1,2s, fazer **polling de até 6s** (3 tentativas com 2s) re-lendo `getQuotation` e parando assim que `vhclFipeVl > 0`. Reduz falsos negativos do toast "CRM ainda não persistiu".
 
-Em vez de tentar controlar o navegador do CRM, a função backend tentará chamar os endpoints que têm o mesmo papel da lupa:
-
-1. `/quotation/plates/{plate}` para buscar os dados DENATRAN/FIPE.
-2. `/quotation/quotationFipeApi?quotationCode=...` após a criação/atualização da cotação, para forçar/aguardar o processamento FIPE do card.
-3. Depois reconsultar `/quotation/{code}` para confirmar se `protectedValue`/Valor FIPE e modelo/ano persistiram.
-
-Se o CRM exigir o clique de UI para gravar especificamente o campo visual “Valor FIPE”, vamos contornar buscando planos diretamente pelo endpoint documentado `/api/plans/`, usando `carModelId`, `carModelYearId`, `cityId` e `quotationWorkVehicle`, em vez de depender exclusivamente de `/quotation/plansQuotation`.
-
-### 5. Melhorar busca de planos reais
-
-Na função `get-crm-plans`:
-
-- Primeiro tentar `/quotation/plansQuotation` como hoje.
-- Se vier “Nenhum plano disponível”, buscar a cotação, pegar `mdl`, `mdlYr`, `city` e `workVehicle`.
-- Chamar `/api/plans/` com esses dados como fallback real do CRM.
-- Só exibir “valores estimados” se os dois caminhos falharem.
-
-### 6. Ajustar a mensagem no app
-
-Na página de resultado:
-
-- Se houver FIPE oficial mas o CRM ainda não devolveu plano, a mensagem será mais clara:
-  - “FIPE oficial encontrada, aguardando cálculo do CRM” durante as tentativas;
-  - “Usando valores estimados” somente se realmente não houver plano real após os fallbacks.
-
-## Arquivos que serão alterados
+## Arquivos a modificar
 
 - `supabase/functions/consulta-placa-crm/index.ts`
-- `supabase/functions/get-crm-plans/index.ts`
-- `supabase/functions/submit-to-crm/index.ts`
-- `src/contexts/QuoteContext.tsx`
+  - Nova função `fetchFipeCodeForModelYear(token, crmModelId, crmYearId)`.
+  - Nova função `triggerCrmPlateLookup(token, quotationCode, plate)`.
+  - Recalcular FIPE quando `selectedModel` é recebido.
+  - Adicionar `recomputed` no JSON de resposta.
+  - Adicionar polling de verificação (até 3 tentativas).
+  - Replicar `getPlate` + segundo update no fluxo inicial.
 - `src/pages/Quote.tsx`
-- `src/pages/Result.tsx`
+  - `handleCrmModelConfirm`: ler `data.recomputed` e atualizar `fipeCode`/`fipeValue`/`fipeFormatted` no contexto.
 
 ## Resultado esperado
 
-- O app deixa de depender de média estimada quando o CRM consegue calcular plano real.
-- O usuário consegue confirmar o modelo exato quando a placa retorna algo ambíguo.
-- O card do CRM recebe modelo/ano/FIPE com maior precisão.
-- O cálculo dos planos passa a usar o modelo escolhido e o ano correto, reduzindo o caso de “Nenhum plano disponível”.
-- O comportamento da lupa do CRM será reproduzido por chamadas de API e verificação posterior, sem depender de automação visual frágil.
+- Ao trocar o modelo no dropdown, a linha "FIPE encontrada: R$ ..." atualiza para o valor correto daquele modelo/ano.
+- O card no CRM mostra Código FIPE e Valor FIPE preenchidos automaticamente, sem o operador precisar clicar na lupa.
+- O toast de divergência só aparece se realmente houver divergência após o polling.
