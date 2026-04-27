@@ -823,7 +823,7 @@ Deno.serve(async (req) => {
         quotationCode: crmQuotationCode,
         verify,
         fipeCheck,
-        recomputed: { fipeCode: recomputedFipeCode, fipeValue: recomputedFipeValue, fipeFormatted },
+        recomputed: { fipeCode: recomputedFipeCode, fipeValue: recomputedFipeValue, fipeFormatted, usedPlateFipeFallback },
       }), {
         status: upd.ok ? 200 : 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
