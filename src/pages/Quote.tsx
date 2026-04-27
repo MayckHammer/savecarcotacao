@@ -575,22 +575,6 @@ const Quote = () => {
               </>
             )}
 
-            {/* Tipo — show when plate consulted but type needs selection */}
-            {plateConsulted && (
-              <div>
-                <Label>Tipo do veículo</Label>
-                <Select value={quote.vehicle.type} onValueChange={(v) => updateVehicle({ type: v })}>
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="carro">Carro</SelectItem>
-                    <SelectItem value="moto">Moto</SelectItem>
-                    <SelectItem value="caminhao">Caminhão / Pick-up</SelectItem>
-                  </SelectContent>
-                </Select>
-                <ErrorMsg field="type" />
-              </div>
-            )}
-
             <div>
               <Label>Uso do veículo</Label>
               <Select value={quote.vehicle.usage} onValueChange={(v) => updateVehicle({ usage: v })}>
