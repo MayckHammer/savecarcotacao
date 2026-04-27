@@ -144,6 +144,67 @@ async function fetchPlateFromCrm(token: string, plate: string, fallbackType: str
   }
 }
 
+// ===== FIPE enrichment via Parallelum API by FIPE code =====
+const FIPE_BASE = "https://fipe.parallelum.com.br/api/v2";
+const FIPE_TYPE_PATH: Record<string, string> = {
+  carro: "cars",
+  moto: "motorcycles",
+  caminhao: "trucks",
+};
+
+const parsePriceBrl = (raw: string): number => {
+  if (!raw) return 0;
+  const cleaned = String(raw).replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
+};
+
+async function enrichFromFipeByCode(
+  fipeCode: string,
+  vehicleType: string,
+  plateYear: string,
+): Promise<Partial<Vehicle> | null> {
+  const token = Deno.env.get("FIPE_ONLINE_TOKEN");
+  if (!token || !fipeCode) return null;
+  const typePath = FIPE_TYPE_PATH[vehicleType] || "cars";
+  const headers = { "X-Subscription-Token": token };
+
+  try {
+    const yearsRes = await fetch(`${FIPE_BASE}/${typePath}/${fipeCode}/years`, { headers });
+    if (!yearsRes.ok) {
+      console.log(`FIPE years lookup failed: ${yearsRes.status}`);
+      return null;
+    }
+    const years = (await yearsRes.json()) as { code: string; name: string }[];
+    if (!Array.isArray(years) || years.length === 0) return null;
+
+    // Pick year matching the plate year (e.g. "2025/2025" or "2025"); fallback to first
+    const targetYear = (plateYear || "").split("/")[0]?.trim();
+    const yearMatch = targetYear
+      ? years.find((y) => y.code?.startsWith(`${targetYear}-`)) || years.find((y) => y.code?.startsWith(targetYear))
+      : null;
+    const yearId = (yearMatch || years[0]).code;
+
+    const detailRes = await fetch(`${FIPE_BASE}/${typePath}/${fipeCode}/years/${yearId}`, { headers });
+    if (!detailRes.ok) {
+      console.log(`FIPE detail lookup failed: ${detailRes.status}`);
+      return null;
+    }
+    const detail = await detailRes.json() as Record<string, unknown>;
+    const fipeValue = parsePriceBrl(String(detail.price ?? ""));
+    return {
+      brand: String(detail.brand ?? ""),
+      model: String(detail.model ?? ""),
+      year: String(detail.modelYear ?? yearId),
+      fipeCode: String(detail.codeFipe ?? fipeCode),
+      fipeValue,
+    };
+  } catch (e) {
+    console.error("enrichFromFipeByCode error:", e);
+    return null;
+  }
+}
+
 async function getQuotation(token: string, code: string): Promise<Record<string, unknown> | null> {
   try {
     const res = await fetch(`${CRM_BASE}/quotation/${code}`, {
