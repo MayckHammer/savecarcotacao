@@ -598,6 +598,8 @@ Deno.serve(async (req) => {
             }
           } catch (e) { console.error("Early CRM update error:", e); }
         }
+      } catch (e) { console.error("resolveCrmIds error:", e); }
+    }
 
     return new Response(JSON.stringify({
       quotationCode,
