@@ -501,7 +501,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const { personal, plate, vehicleType } = parsed.data;
+    const { personal, plate, vehicleType, crmQuotationCode, selectedModel } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     if (!token) {
       return new Response(JSON.stringify({ error: "POWERCRM_API_TOKEN not configured" }), {
@@ -517,6 +517,53 @@ Deno.serve(async (req) => {
     const types = await loadVehicleTypes(token);
     const vehicleTypeId = resolveVehicleTypeId(types, vehicleType);
     console.log(`Resolved vehicleType="${vehicleType}" → id=${vehicleTypeId}`);
+
+    if (crmQuotationCode && selectedModel) {
+      const updateBody: Record<string, unknown> = {
+        code: crmQuotationCode,
+        plates: plate,
+        plts: plate,
+        mdl: selectedModel.crmModelId,
+        carModel: selectedModel.crmModelId,
+        protectedValue: selectedModel.fipeValue || 0,
+        vhclFipeVl: selectedModel.fipeValue || 0,
+        vlFipe: selectedModel.fipeValue || 0,
+        fipeValue: selectedModel.fipeValue || 0,
+        workVehicle,
+      };
+      if (selectedModel.crmYearId) {
+        updateBody.mdlYr = selectedModel.crmYearId;
+        updateBody.carModelYear = selectedModel.crmYearId;
+      }
+      if (selectedModel.year) {
+        const yr = parseInt(String(selectedModel.year).split("/")[0], 10);
+        if (yr) updateBody.fabricationYear = yr;
+      }
+      if (selectedModel.fipeCode) {
+        updateBody.cdFp = selectedModel.fipeCode;
+        updateBody.codFipe = selectedModel.fipeCode;
+      }
+      if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
+
+      const upd = await fetch(`${CRM_BASE}/quotation/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(updateBody),
+      });
+      const updText = await upd.text();
+      console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 300));
+      await getQuotationFipe(token, crmQuotationCode);
+      await new Promise((r) => setTimeout(r, 1200));
+      const verify = await getQuotation(token, crmQuotationCode);
+      if (verify) {
+        console.log(`Selected model verify — mdl=${verify.mdl} mdlYr=${verify.mdlYr} vhclFipeVl=${verify.vhclFipeVl} protectedValue=${verify.protectedValue}`);
+      }
+
+      return new Response(JSON.stringify({ ok: upd.ok, quotationCode: crmQuotationCode, verify }), {
+        status: upd.ok ? 200 : 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // 1. Try to fetch the vehicle by plate FIRST (independent of any quotation)
     let vehicle: Vehicle | null = await fetchPlateFromCrm(token, plate, vehicleType);
