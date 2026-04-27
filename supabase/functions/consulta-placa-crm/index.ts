@@ -690,7 +690,23 @@ Deno.serve(async (req) => {
         if (enriched?.fipeCode && !recomputedFipeCode) recomputedFipeCode = enriched.fipeCode;
       }
 
-      console.log(`Recomputed FIPE for selected model: code=${recomputedFipeCode} value=${recomputedFipeValue}`);
+      // Fallback final: reutilizar o último FIPE válido da consulta por placa
+      // para nunca deixar o card do CRM sem valor.
+      let usedPlateFipeFallback = false;
+      if ((!recomputedFipeValue || recomputedFipeValue <= 0) && plateFipeFallback) {
+        const fbValue = Number(plateFipeFallback.fipeValue || 0);
+        const fbCode = String(plateFipeFallback.fipeCode || "").trim();
+        if (fbValue > 0) {
+          recomputedFipeValue = fbValue;
+          usedPlateFipeFallback = true;
+          console.log(`Using plate FIPE fallback: value=${fbValue} code=${fbCode || "(none)"}`);
+        }
+        if (!recomputedFipeCode && fbCode) {
+          recomputedFipeCode = fbCode;
+        }
+      }
+
+      console.log(`Recomputed FIPE for selected model: code=${recomputedFipeCode} value=${recomputedFipeValue}${usedPlateFipeFallback ? " (fallback)" : ""}`);
 
       const updateBody: Record<string, unknown> = {
         code: crmQuotationCode,
