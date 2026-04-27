@@ -24,6 +24,7 @@ export type Database = {
           id: string
           inspection_link: string | null
           inspection_status: string
+          last_crm_sync_at: string | null
           personal_data: Json
           plan_data: Json
           session_id: string
@@ -39,6 +40,7 @@ export type Database = {
           id?: string
           inspection_link?: string | null
           inspection_status?: string
+          last_crm_sync_at?: string | null
           personal_data?: Json
           plan_data?: Json
           session_id: string
@@ -54,6 +56,7 @@ export type Database = {
           id?: string
           inspection_link?: string | null
           inspection_status?: string
+          last_crm_sync_at?: string | null
           personal_data?: Json
           plan_data?: Json
           session_id?: string
