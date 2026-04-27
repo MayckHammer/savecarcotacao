@@ -169,6 +169,7 @@ const Quote = () => {
           crmQuotationCode: quote.crmQuotationCode,
           selectedModel: {
             name: selected.name,
+            brand: quote.vehicle.brand,
             year: selected.year,
             fipeCode: selected.fipeCode || quote.vehicle.fipeCode || "",
             fipeValue: selected.fipeValue || quote.vehicle.fipeValue || 0,
