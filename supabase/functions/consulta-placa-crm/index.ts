@@ -76,6 +76,8 @@ type Vehicle = {
   fipeValue: number;
   type: string;
   city?: string;
+  brandRaw?: string;  // original from /plates (e.g. "CITROEN C3 AIRC TENDANCE")
+  modelRaw?: string;  // original from /plates if available
   crmBrandId?: number | null;
   crmModelId?: number | null;
   crmYearId?: number | null;
@@ -170,6 +172,7 @@ export async function resolveCrmIds(
   brand: string,
   model: string,
   year: string,
+  rawPlateName?: string,  // e.g. "CITROEN C3 AIRC TENDANCE" — has distinctive tokens
 ): Promise<{ crmBrandId: number | null; crmModelId: number | null; crmYearId: number | null }> {
   const out = { crmBrandId: null as number | null, crmModelId: null as number | null, crmYearId: null as number | null };
   if (!brand) return out;
@@ -188,19 +191,41 @@ export async function resolveCrmIds(
   out.crmBrandId = brandMatch.id;
   console.log(`CRM brand matched: "${brand}" → ${labelOf(brandMatch)} (id=${brandMatch.id})`);
 
-  if (!model) return out;
+  if (!model && !rawPlateName) return out;
   const models = await fetchCrmModels(token, brandMatch.id);
-  const modelMatch = pickBestMatch(models, model);
-  if (!modelMatch) {
-    console.log(`CRM model not found for "${model}" under brand ${labelOf(brandMatch)}`);
+
+  // Extract distinctive tokens from raw plate name (e.g. "AIRC", "AIRCROSS", "CROSS")
+  // and use them to bias the match. Skip the brand word itself.
+  const brandTokens = new Set(normalize(brandMatch.name || brandMatch.nm || "").split(" "));
+  const rawTokens = rawPlateName
+    ? normalize(rawPlateName).split(" ").filter((t) => t.length >= 3 && !brandTokens.has(t))
+    : [];
+  // Expand AIRC -> AIRCROSS etc. Common Citroën abbreviation
+  const expandedTokens = new Set<string>(rawTokens);
+  if (rawTokens.includes("airc")) expandedTokens.add("aircross");
+
+  let bestModel: { item: CrmItem; score: number } | null = null;
+  for (const m of models) {
+    const label = labelOf(m);
+    const baseScore = matchScore(model || rawPlateName || "", label);
+    let bonus = 0;
+    const labelNorm = normalize(label);
+    for (const tok of expandedTokens) {
+      if (labelNorm.includes(tok)) bonus += 250;
+    }
+    const total = baseScore + bonus;
+    if (total > 0 && (!bestModel || total > bestModel.score)) bestModel = { item: m, score: total };
+  }
+  if (!bestModel) {
+    console.log(`CRM model not found for "${model}" (raw="${rawPlateName ?? ""}") under brand ${labelOf(brandMatch)}`);
     return out;
   }
-  out.crmModelId = modelMatch.id;
-  console.log(`CRM model matched: "${model}" → ${labelOf(modelMatch)} (id=${modelMatch.id})`);
+  out.crmModelId = bestModel.item.id;
+  console.log(`CRM model matched: "${model}" raw="${rawPlateName ?? ""}" → ${labelOf(bestModel.item)} (id=${bestModel.item.id}, score=${bestModel.score})`);
 
   if (!year) return out;
   const targetYear = String(year).split("/")[0].trim();
-  const years = await fetchCrmYears(token, modelMatch.id);
+  const years = await fetchCrmYears(token, bestModel.item.id);
   // year items typically have label like "2025" or "2025 Gasolina"
   let yearMatch = years.find((y) => normalize(labelOf(y)).startsWith(targetYear));
   if (!yearMatch) yearMatch = years.find((y) => normalize(labelOf(y)).includes(targetYear));
@@ -246,15 +271,20 @@ function extractVehicleFromAny(input: unknown, fallbackType: string): Vehicle | 
     const city = (c.city ?? c.cidade ?? "") as string;
 
     if ((brand && String(brand).trim()) || (model && String(model).trim()) || (year && String(year).trim())) {
+      const brandStr = String(brand || "");
+      const modelStr = String(model || "");
       return {
-        brand: String(brand || ""),
-        model: String(model || ""),
+        brand: brandStr,
+        model: modelStr,
         year: String(year || ""),
         color: String(color || ""),
         fipeCode: String(fipeCode || ""),
         fipeValue,
         type: fallbackType,
         city: String(city || ""),
+        // Preserve raw names for later CRM matching (e.g. "CITROEN C3 AIRC TENDANCE" carries "AIRC"/"AIRCROSS" hint)
+        brandRaw: brandStr,
+        modelRaw: modelStr,
       };
     }
   }
@@ -513,13 +543,15 @@ Deno.serve(async (req) => {
     // 7. Resolve internal CRM brand/model/year IDs (so the card and plansQuotation can use them)
     if (vehicle && vehicleTypeId != null && vehicle.brand) {
       try {
-        const ids = await resolveCrmIds(token, vehicleTypeId, vehicle.brand, vehicle.model, vehicle.year);
+        // Use the raw plate name (preserved before FIPE enrichment) for distinctive token matching
+        const rawHint = `${vehicle.brandRaw || ""} ${vehicle.modelRaw || ""}`.trim() || undefined;
+        const ids = await resolveCrmIds(token, vehicleTypeId, vehicle.brand, vehicle.model, vehicle.year, rawHint);
         vehicle.crmBrandId = ids.crmBrandId;
         vehicle.crmModelId = ids.crmModelId;
         vehicle.crmYearId = ids.crmYearId;
 
-        // 8. Push these IDs into the quotation immediately so the CRM card shows the vehicle
-        if (ids.crmModelId || ids.crmYearId) {
+        // 8. Push these IDs + FIPE value into the quotation immediately so the CRM card is populated
+        if (ids.crmModelId || ids.crmYearId || vehicle.fipeValue) {
           const updateBody: Record<string, unknown> = { code: quotationCode };
           if (ids.crmModelId) {
             updateBody.mdl = ids.crmModelId;
@@ -534,7 +566,17 @@ Deno.serve(async (req) => {
             const yr = parseInt(String(vehicle.year).split("/")[0], 10);
             if (yr) updateBody.fabricationYear = yr;
           }
-          if (vehicle.fipeValue) updateBody.protectedValue = vehicle.fipeValue;
+          // Send FIPE value with all known aliases — the card field is `vhclFipeVl`
+          if (vehicle.fipeValue) {
+            updateBody.protectedValue = vehicle.fipeValue;
+            updateBody.vhclFipeVl     = vehicle.fipeValue;
+            updateBody.vlFipe         = vehicle.fipeValue;
+            updateBody.fipeValue      = vehicle.fipeValue;
+          }
+          if (vehicle.fipeCode) {
+            updateBody.cdFp    = vehicle.fipeCode;
+            updateBody.codFipe = vehicle.fipeCode;
+          }
           updateBody.plates = plate;
           updateBody.plts = plate;
           if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
@@ -545,7 +587,15 @@ Deno.serve(async (req) => {
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
               body: JSON.stringify(updateBody),
             });
-            console.log(`Early CRM update with mdl/mdlYr → ${upd.status}`);
+            console.log(`Early CRM update with mdl/mdlYr/FIPE → ${upd.status}`);
+
+            // Verify what actually persisted in the card
+            await new Promise((r) => setTimeout(r, 1200));
+            const verify = await getQuotation(token, quotationCode);
+            if (verify) {
+              const v = verify as Record<string, unknown>;
+              console.log(`Post-update verify — mdl=${v.mdl} mdlYr=${v.mdlYr} vhclFipeVl=${v.vhclFipeVl} protectedValue=${v.protectedValue}`);
+            }
           } catch (e) { console.error("Early CRM update error:", e); }
         }
       } catch (e) { console.error("resolveCrmIds error:", e); }

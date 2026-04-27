@@ -266,6 +266,17 @@ Deno.serve(async (req) => {
           const yr = parseInt(String(vehicle.year).split("/")[0], 10);
           if (yr) updatePayload.fabricationYear = yr;
         }
+        // Send FIPE value with all known aliases — the CRM card field is `vhclFipeVl`
+        if (vehicle.fipeValue) {
+          updatePayload.vhclFipeVl = vehicle.fipeValue;
+          updatePayload.vlFipe     = vehicle.fipeValue;
+          updatePayload.fipeValue  = vehicle.fipeValue;
+        }
+        const fipeCodeAny = (vehicle as Record<string, unknown>).fipeCode as string | undefined;
+        if (fipeCodeAny) {
+          updatePayload.cdFp    = fipeCodeAny;
+          updatePayload.codFipe = fipeCodeAny;
+        }
 
         const sendUpdate = async () => {
           console.log("Updating CRM quotation:", JSON.stringify(updatePayload, null, 2));
@@ -287,11 +298,12 @@ Deno.serve(async (req) => {
             if (!qttnRes.ok) return { ok: false, protectedValue: 0, hasAddress: false, hasModel: false };
             const qttnData = await qttnRes.json();
             const pv = Number(qttnData?.protectedValue ?? qttnData?.data?.protectedValue ?? 0);
+            const fipeVl = Number(qttnData?.vhclFipeVl ?? qttnData?.data?.vhclFipeVl ?? 0);
             const addr = qttnData?.addressZipcode || qttnData?.data?.addressZipcode || qttnData?.addressAddress;
             const mdl = qttnData?.mdl ?? qttnData?.data?.mdl ?? null;
             const hasModel = mdl !== null && mdl !== undefined;
-            console.log("Post-update verify — protectedValue:", pv, "hasAddress:", !!addr, "mdl:", mdl);
-            return { ok: true, protectedValue: pv, hasAddress: !!addr, hasModel };
+            console.log("Post-update verify — protectedValue:", pv, "vhclFipeVl:", fipeVl, "hasAddress:", !!addr, "mdl:", mdl);
+            return { ok: true, protectedValue: pv || fipeVl, hasAddress: !!addr, hasModel };
           } catch (e) {
             console.error("verify error:", e);
             return { ok: false, protectedValue: 0, hasAddress: false, hasModel: false };
