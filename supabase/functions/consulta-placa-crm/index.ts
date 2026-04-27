@@ -271,15 +271,20 @@ function extractVehicleFromAny(input: unknown, fallbackType: string): Vehicle | 
     const city = (c.city ?? c.cidade ?? "") as string;
 
     if ((brand && String(brand).trim()) || (model && String(model).trim()) || (year && String(year).trim())) {
+      const brandStr = String(brand || "");
+      const modelStr = String(model || "");
       return {
-        brand: String(brand || ""),
-        model: String(model || ""),
+        brand: brandStr,
+        model: modelStr,
         year: String(year || ""),
         color: String(color || ""),
         fipeCode: String(fipeCode || ""),
         fipeValue,
         type: fallbackType,
         city: String(city || ""),
+        // Preserve raw names for later CRM matching (e.g. "CITROEN C3 AIRC TENDANCE" carries "AIRC"/"AIRCROSS" hint)
+        brandRaw: brandStr,
+        modelRaw: modelStr,
       };
     }
   }
