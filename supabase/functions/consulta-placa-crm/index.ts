@@ -76,6 +76,8 @@ type Vehicle = {
   fipeValue: number;
   type: string;
   city?: string;
+  brandRaw?: string;  // original from /plates (e.g. "CITROEN C3 AIRC TENDANCE")
+  modelRaw?: string;  // original from /plates if available
   crmBrandId?: number | null;
   crmModelId?: number | null;
   crmYearId?: number | null;

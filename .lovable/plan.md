@@ -1,110 +1,57 @@
-## Validação FIPE
+## Problema
 
-Confirmei direto na **API oficial da FIPE** (Parallelum) com os dados do veículo:
+Após a cotação, dois sintomas aparecem juntos:
 
-```text
-SHINERAY XY 125 JET SS — 2025 — Gasolina
-Código FIPE: 850036-3
-Mês de referência: abril/2026
-Valor oficial: R$ 9.136,00
-```
+1. **App mostra "Usando valores estimados — Nenhum plano disponível"** — apesar de o valor FIPE (R$ 38.412,00) ter sido encontrado.
+2. **No card do CRM (terceiro print), o campo "Valor FIPE" fica em branco** — mesmo com Marca, Modelo e Ano preenchidos.
+3. **Modelo no card aparece errado**: a placa real é um **Citroën Aircross**, mas o CRM mostra "AIRCROSS SALOMON TENDANCE 1.6" (parece certo no print, mas o modelo que enviamos foi `C3 Tendance 1.5 Flex 8V 5p Mec.` — id 646). Ou seja: ou o fuzzy match pegou o modelo errado da FIPE Parallelum, ou o CRM tem seu próprio "renderizador" que sobrescreve.
 
-Resposta crua:
-```json
-{"Valor":"R$ 9.136,00","Marca":"SHINERAY","Modelo":"XY 125 JET SS",
- "AnoModelo":2025,"CodigoFipe":"850036-3","MesReferencia":"abril de 2026"}
-```
+### Causa raiz
 
-✅ O valor que apareceu no app está **100% correto** com a FIPE oficial.
+**(A) Valor FIPE em branco no card**: enviamos só `protectedValue` no `/quotation/update`. O campo do card chamado `vhclFipeVl` (visto no terceiro print) é alimentado por outras chaves — o CRM espera `vhclFipeVl`, `vlFipe` ou `fipeValue` explicitamente, e também o código FIPE em `cdFp`. Sem o valor FIPE preenchido, o motor de cálculo de planos não roda → "Nenhum plano disponível".
 
-## Por que apareceu "Nenhum plano disponível"
+**(B) Modelo errado**: a placa PAI0F65 é "CITROEN C3 AIRC TENDANCE" (Aircross). O FIPE Parallelum, consultado pelo código `011117-1`, retornou `C3 Tendance 1.5 Flex` — porque esse código FIPE corresponde a essa variação. Nosso fuzzy match então casou com o modelo errado no CRM. Precisamos preferir, para fins de matching no CRM, o **nome bruto da placa** ("C3 AIRC TENDANCE") em vez do nome FIPE Parallelum quando eles divergem.
 
-O CRM Power retornou planos vazios porque o card foi criado sem `mdl/mdlYr` (IDs internos do modelo/ano). O endpoint `/api/quotation/plansQuotation` precisa que o card já tenha o veículo identificado pelos IDs do CRM para calcular preços. Hoje:
+## Solução
 
-- O `protectedValue` (R$ 9.136) chega no card ✅
-- Mas `mdl=null, mdlYr=null` (visto no log do `submit-to-crm`) ❌
-- Sem isso, o CRM responde "Nenhum plano disponível" → app cai no fallback estimado.
+### 1. `supabase/functions/consulta-placa-crm/index.ts`
 
-## Plano
+**Preservar o nome original da placa para matching:**
+- Salvar `vehicle.brandRaw` e `vehicle.modelRaw` capturados do endpoint `/plates` antes da enriquecimento FIPE.
+- Em `resolveCrmIds`, tentar matching primeiro com o nome original da placa (que contém "AIRC"/"AIRCROSS"), e só usar o nome FIPE como fallback.
+- No `pickBestMatch`, dar bônus extra (+200) quando o candidato contém uma palavra-chave distintiva do nome bruto (ex: "AIRCROSS", "AIRC").
 
-### 1. Resolver `mdl/mdlYr` no `consulta-placa-crm`
-
-Após a consulta da placa (que já entrega marca/modelo/ano via FIPE), chamar os endpoints do CRM para mapear nome → ID interno:
-
-- `GET /api/quotation/cb?type={vehicleTypeId}` → marcas (id + nome)
-- `GET /api/quotation/cm?cb={brandId}` → modelos da marca
-- `GET /api/quotation/cmy?cm={modelId}` → anos disponíveis
-
-Estratégia de match:
-- **Marca**: normalização case-insensitive + remoção de sufixos (ex: `SHINERAY XY150-8` → `SHINERAY`).
-- **Modelo**: substring + score (Levenshtein simples) entre nome FIPE (`XY 125 JET SS`) e nomes do CRM.
-- **Ano**: match exato (`2025`); fallback para o ano mais próximo.
-
-Cachear resultados em memória (já existe padrão `vehicleTypesCache`).
-
-Retornar adicionalmente no JSON:
-```json
-"vehicle": { ...,
-  "crmBrandId": 134,
-  "crmModelId": 9876,
-  "crmYearId": 2025014
+**Enviar Valor FIPE com todos os aliases no early update (passo 8, linhas 521-550):**
+```ts
+if (vehicle.fipeValue) {
+  updateBody.protectedValue = vehicle.fipeValue;
+  updateBody.vhclFipeVl     = vehicle.fipeValue;  // campo do card
+  updateBody.vlFipe         = vehicle.fipeValue;
+  updateBody.fipeValue      = vehicle.fipeValue;
+}
+if (vehicle.fipeCode) {
+  updateBody.cdFp           = vehicle.fipeCode;
+  updateBody.codFipe        = vehicle.fipeCode;
 }
 ```
 
-### 2. Persistir os IDs no estado
+**Adicionar verificação pós-update**: re-consultar `/quotation/{code}` e logar `vhclFipeVl`/`mdl`/`protectedValue` para diagnóstico.
 
-- `src/contexts/QuoteContext.tsx`: adicionar `crmBrandId`, `crmModelId`, `crmYearId` ao tipo Vehicle.
-- `src/pages/Quote.tsx`: gravar esses IDs no `updateVehicle` quando vierem do retorno.
+### 2. `supabase/functions/submit-to-crm/index.ts`
 
-### 3. Enviar `mdl/mdlYr` no `submit-to-crm`
+Mesmo tratamento no `updatePayload` do bloco `skipCrm` (linhas 228-268): adicionar `vhclFipeVl`, `vlFipe`, `fipeValue` e `cdFp` ao lado do `protectedValue` já enviado.
 
-No `updatePayload` do `/api/quotation/update`:
-```typescript
-if (vehicle.crmModelId) {
-  updatePayload.mdl = Number(vehicle.crmModelId);
-  updatePayload.carModel = Number(vehicle.crmModelId);
-}
-if (vehicle.crmYearId) {
-  updatePayload.mdlYr = Number(vehicle.crmYearId);
-  updatePayload.carModelYear = Number(vehicle.crmYearId);
-}
-if (vehicle.year) {
-  const yr = parseInt(String(vehicle.year).split("/")[0], 10);
-  if (yr) updatePayload.fabricationYear = yr;
-}
-if (vehicle.color) updatePayload.color = vehicle.color;
-```
+### 3. `supabase/functions/get-crm-plans/index.ts`
 
-Fallback: se o frontend não tiver os IDs (caso manual), o `submit-to-crm` chama `cb/cm/cmy` para resolver antes do update.
-
-Ampliar `verifyUpdate` para conferir `mdl != null` no retorno e logar quando persistir nulo.
-
-### 4. Aplicar o plano com valores reais
-
-Depois que `mdl/mdlYr` estiverem no card, o `get-crm-plans` deve voltar com planos reais. Hoje o retry já existe (4 tentativas, ~24s). Vou apenas:
-
-- No `Result.tsx`: quando os planos chegam, mostrar toast "Plano calculado com valor FIPE oficial: R$ 9.136,00".
-- No `PlanDetails.tsx`: o `FinancialSummary` já consome `crmPlans` via `getSubtotalWithoutDiscount` — vai pegar o COMPLETO automaticamente.
-- Garantir que o `setPlanName("COMPLETO")` seja default ao chegar em `/detalhes` (já é).
-
-### 5. Teste
-
-Refazer cotação com placa `TEV3H48`:
-- Logs do `consulta-placa-crm` devem mostrar `crmBrandId/crmModelId/crmYearId` resolvidos.
-- Logs do `submit-to-crm` devem mostrar `mdl, mdlYr, color, fabricationYear` no payload.
-- Logs do `get-crm-plans` devem retornar pelo menos um plano com preço.
-- Tela `/resultado` deve mostrar o plano COMPLETO com valor real do CRM.
-
-## Arquivos a alterar
-
-- `supabase/functions/consulta-placa-crm/index.ts` — resolver IDs CRM (cb/cm/cmy) e retornar.
-- `supabase/functions/submit-to-crm/index.ts` — incluir `mdl/mdlYr/color/fabricationYear` + fallback.
-- `src/contexts/QuoteContext.tsx` — campos `crmBrandId/crmModelId/crmYearId`.
-- `src/pages/Quote.tsx` — propagar IDs do retorno da placa.
-- `src/pages/Result.tsx` — toast confirmando FIPE oficial quando planos chegam.
+No diagnóstico atual (linhas 60-83), além de checar `protectedValue`, checar também `vhclFipeVl`/`mdl`/`mdlYr` e logar o que falta — assim conseguimos identificar rapidamente em produção.
 
 ## Resultado esperado
 
-1. Card no CRM preenchido com marca, modelo, ano modelo, ano fabricação, cor, placa, FIPE R$ 9.136 e tipo Moto.
-2. `get-crm-plans` retorna planos reais (não cai em "Nenhum plano disponível").
-3. Tela de resultado mostra o plano COMPLETO calculado com base na FIPE oficial confirmada.
+- Card do CRM aparece com **Valor FIPE: R$ 38.412,00** preenchido.
+- Modelo correto: **C3 Aircross** (não C3 Tendance).
+- O motor de planos do CRM passa a calcular → o app deixa de mostrar "valores estimados" e exibe os planos reais COMPLETO/PREMIUM.
+
+## Arquivos modificados
+- `supabase/functions/consulta-placa-crm/index.ts`
+- `supabase/functions/submit-to-crm/index.ts`
+- `supabase/functions/get-crm-plans/index.ts`
