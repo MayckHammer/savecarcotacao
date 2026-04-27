@@ -15,6 +15,12 @@ const Result = () => {
   const [planWarning, setPlanWarning] = useState<string | null>(null);
   const [progressDots, setProgressDots] = useState(".");
 
+  const warningText = planWarning?.toLowerCase().includes("processando")
+    ? `FIPE oficial: ${quote.vehicle.fipeFormatted}. O CRM ainda está processando a cotação; tente continuar novamente em instantes.`
+    : quote.vehicle.fipeFormatted
+      ? `FIPE oficial: ${quote.vehicle.fipeFormatted}. Usando valores estimados — ${planWarning}`
+      : `Usando valores estimados — ${planWarning}`;
+
   // Animated dots while loading
   useEffect(() => {
     if (!loadingPlans) return;
@@ -116,7 +122,7 @@ const Result = () => {
         {!loadingPlans && planWarning && (
           <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 mb-4">
             <p className="text-xs text-yellow-700">
-              {quote.vehicle.fipeFormatted ? `FIPE oficial: ${quote.vehicle.fipeFormatted}. Usando valores estimados — ${planWarning}` : `Usando valores estimados — ${planWarning}`}
+              {warningText}
             </p>
           </div>
         )}
