@@ -152,6 +152,9 @@ const optionScore = (label: string, model: string, rawPlateName?: string): numbe
   for (const tok of expandedTokens) {
     if (labelNorm.includes(tok)) score += tok.length >= 6 ? 260 : 180;
   }
+  if ((expandedTokens.has("airc") || expandedTokens.has("aircross")) && !labelNorm.includes("aircross") && !labelNorm.includes("airc")) {
+    score -= 800;
+  }
   return score;
 };
 
