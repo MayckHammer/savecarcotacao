@@ -69,94 +69,58 @@ async function getQuotation(token: string, code: string): Promise<Record<string,
   }
 }
 
-// Try multiple key names on /quotation/update and verify by GET which one persists.
-async function setVehicleTypeWithVerify(
+// CRM uses field name "vhclType" (discovered via the CRM UI's <select id="vhclType">).
+// We POST to /quotation/update with that key and verify it persisted via GET.
+async function setVehicleType(
   token: string,
   code: string,
   vehicleTypeId: number | string,
   workVehicle: boolean,
-): Promise<{ ok: boolean; keyUsed: string | null }> {
-  const candidateKeys = [
-    "vehicleType",
-    "vehicleTypeId",
-    "vehicle_type",
-    "vehicleTypeCode",
-    "tpVc",
-    "cdTpVc",
-    "vehicleCategory",
-    "vehicleCategoryId",
-  ];
+): Promise<{ ok: boolean }> {
+  const payload = { code, workVehicle, vhclType: vehicleTypeId };
+  try {
+    const res = await fetch(`${CRM_BASE}/quotation/update`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    console.log(`setVehicleType vhclType=${vehicleTypeId} status=${res.status} resp=${text.substring(0, 300)}`);
 
-  for (const key of candidateKeys) {
-    const payload: Record<string, unknown> = { code, workVehicle, [key]: vehicleTypeId };
-    try {
-      const res = await fetch(`${CRM_BASE}/quotation/update`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      const text = await res.text();
-      console.log(`update key=${key} status=${res.status} resp=${text.substring(0, 250)}`);
+    if (!res.ok) return { ok: false };
 
-      if (!res.ok) continue;
-
-      // Verify by GET
-      const got = await getQuotation(token, code);
-      if (!got) continue;
-      // Look for any field whose value matches the vehicleTypeId we sent
+    const got = await getQuotation(token, code);
+    if (got) {
       const target = String(vehicleTypeId);
       const persisted = Object.entries(got).some(([k, v]) => {
-        if (v == null) return false;
-        if (k === "workVehicle") return false;
+        if (v == null || k === "workVehicle") return false;
         return String(v) === target;
       });
-      if (persisted) {
-        console.log(`✅ Vehicle type persisted via key="${key}"`);
-        return { ok: true, keyUsed: key };
-      }
-    } catch (e) {
-      console.error(`update key=${key} error:`, e);
+      console.log(`vhclType persisted=${persisted}`);
+      return { ok: persisted };
     }
+    return { ok: true };
+  } catch (e) {
+    console.error("setVehicleType error:", e);
+    return { ok: false };
   }
-  return { ok: false, keyUsed: null };
 }
 
-// Try several known/guessed endpoints that the CRM may use to trigger DENATRAN
-async function triggerDenatranLookup(
-  token: string,
-  quotationCode: string,
-  plate: string,
-): Promise<string | null> {
-  const attempts: Array<{ method: string; path: string; body?: unknown; query?: string }> = [
-    { method: "POST", path: "/quotation/searchPlate",     body: { quotationCode, plate } },
-    { method: "POST", path: "/quotation/searchVehicle",   body: { quotationCode, plate } },
-    { method: "POST", path: "/quotation/denatran",        body: { quotationCode } },
-    { method: "POST", path: "/quotation/refreshVehicle",  body: { quotationCode } },
-    { method: "POST", path: "/quotation/consultPlate",    body: { quotationCode, plate } },
-    { method: "GET",  path: "/quotation/quotationFipeApi", query: `quotationCode=${quotationCode}&force=true` },
-  ];
-
-  for (const a of attempts) {
-    try {
-      const url = `${CRM_BASE}${a.path}${a.query ? `?${a.query}` : ""}`;
-      const res = await fetch(url, {
-        method: a.method,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: a.body ? JSON.stringify(a.body) : undefined,
-      });
-      const text = await res.text();
-      console.log(`denatran trigger ${a.method} ${a.path} → ${res.status} ${text.substring(0, 200)}`);
-      if (res.ok && !/not.?found|error|invalid/i.test(text)) {
-        return a.path;
-      }
-    } catch (e) {
-      console.error(`denatran trigger ${a.path} error:`, e);
-    }
+// After vhclType is set, ping quotationFipeApi (the same call the CRM UI's magnifier
+// triggers). Returns true on 2xx; failures are non-fatal because polling will catch up.
+async function triggerDenatranLookup(token: string, quotationCode: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${CRM_BASE}/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
+      { headers: { "Authorization": `Bearer ${token}` } },
+    );
+    const text = await res.text();
+    console.log(`denatran trigger GET quotationFipeApi → ${res.status} ${text.substring(0, 200)}`);
+    return res.ok;
+  } catch (e) {
+    console.error("triggerDenatranLookup error:", e);
+    return false;
   }
-  return null;
 }
 
 Deno.serve(async (req) => {
@@ -190,7 +154,7 @@ Deno.serve(async (req) => {
     const workVehicle = vehicleType === "caminhao";
     console.log(`Resolved vehicleType="${vehicleType}" → id=${vehicleTypeId}`);
 
-    // 1. Create quotation in CRM — include vehicleType candidates on add too
+    // 1. Create quotation in CRM — include vhclType on add (key discovered via CRM UI)
     const crmPayload: Record<string, unknown> = {
       name: personal.name || "",
       phone,
@@ -200,8 +164,7 @@ Deno.serve(async (req) => {
       workVehicle,
     };
     if (vehicleTypeId != null) {
-      crmPayload.vehicleType = vehicleTypeId;
-      crmPayload.vehicleTypeId = vehicleTypeId;
+      crmPayload.vhclType = vehicleTypeId;
     }
 
     console.log("Creating CRM quotation with payload:", JSON.stringify(crmPayload));
@@ -223,10 +186,10 @@ Deno.serve(async (req) => {
     const quotationCode = crmData.quotationCode;
     const negotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
 
-    // 2. Set vehicle type via /update with verification (discovers correct key name)
-    let typeResult = { ok: false, keyUsed: null as string | null };
+    // 2. Reinforce vhclType via /update and verify it persisted
+    let typeResult = { ok: false };
     if (vehicleTypeId != null) {
-      typeResult = await setVehicleTypeWithVerify(token, quotationCode, vehicleTypeId, workVehicle);
+      typeResult = await setVehicleType(token, quotationCode, vehicleTypeId, workVehicle);
     }
 
     // 3. Add tag 23323 ("30 seg")
@@ -241,9 +204,9 @@ Deno.serve(async (req) => {
       console.error("Error adding tag:", e);
     }
 
-    // 4. Explicitly trigger DENATRAN lookup (mimics operator clicking the magnifier)
-    const denatranEndpoint = await triggerDenatranLookup(token, quotationCode, plate);
-    console.log("DENATRAN trigger endpoint result:", denatranEndpoint);
+    // 4. Trigger DENATRAN lookup (same call CRM UI's magnifier makes). Non-fatal.
+    const denatranOk = await triggerDenatranLookup(token, quotationCode);
+    console.log("DENATRAN trigger ok:", denatranOk);
 
     // ===== Helpers for vehicle data extraction =====
     const detectType = (brand: string, model: string): string => {
@@ -356,8 +319,7 @@ Deno.serve(async (req) => {
       vehicleType,
       vehicleTypeId,
       vehicleTypeSet: typeResult.ok,
-      vehicleTypeKeyUsed: typeResult.keyUsed,
-      denatranEndpoint,
+      denatranOk,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
