@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, RotateCcw, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import Header from "@/components/Header";
@@ -57,6 +58,9 @@ const Result = () => {
         if (!error && plansData?.plans?.length > 0) {
           setCrmPlans(plansData.plans);
           console.log("CRM plans loaded:", plansData.plans);
+          if (quote.vehicle.fipeFormatted) {
+            toast.success(`Plano calculado com FIPE oficial: ${quote.vehicle.fipeFormatted}`);
+          }
         } else if (plansData?.warning) {
           setPlanWarning(plansData.warning);
           console.warn("CRM plans warning:", plansData.warning);
@@ -72,7 +76,7 @@ const Result = () => {
     return () => {
       cancelled = true;
     };
-  }, [quote.sessionId, setCrmPlans]);
+  }, [quote.sessionId, quote.vehicle.fipeFormatted, setCrmPlans]);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">

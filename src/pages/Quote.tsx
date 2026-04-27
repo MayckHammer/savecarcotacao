@@ -186,6 +186,9 @@ const Quote = () => {
           year: v.year || "",
           color: v.color || "",
           ...(fipeValueFromCrm > 0 ? { fipeValue: fipeValueFromCrm, fipeFormatted: fipeFormattedFromCrm } : {}),
+          ...(v.crmBrandId ? { crmBrandId: Number(v.crmBrandId) } : {}),
+          ...(v.crmModelId ? { crmModelId: Number(v.crmModelId) } : {}),
+          ...(v.crmYearId ? { crmYearId: Number(v.crmYearId) } : {}),
         });
         // Consider identified if we have brand + model + (fipe value OR year)
         const isFullyIdentified = !!v.brand && !!v.model && (fipeValueFromCrm > 0 || !!v.year);

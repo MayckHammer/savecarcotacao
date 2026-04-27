@@ -21,6 +21,9 @@ export interface VehicleData {
   modelCode: string;
   yearCode: string;
   vehicleTypeId?: string | number | null;
+  crmBrandId?: number | null;
+  crmModelId?: number | null;
+  crmYearId?: number | null;
 }
 
 export interface AddressData {

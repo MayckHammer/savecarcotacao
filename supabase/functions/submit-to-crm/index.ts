@@ -67,6 +67,9 @@ const BodySchema = z.object({
     fipeValue: z.number().optional().default(0),
     fipeFormatted: z.string().optional().default(""),
     vehicleTypeId: z.union([z.string(), z.number()]).optional().nullable(),
+    crmBrandId: z.union([z.string(), z.number()]).optional().nullable(),
+    crmModelId: z.union([z.string(), z.number()]).optional().nullable(),
+    crmYearId: z.union([z.string(), z.number()]).optional().nullable(),
   }).passthrough(),
   address: z.object({
     cep: z.string().optional().default(""),
@@ -247,6 +250,23 @@ Deno.serve(async (req) => {
           updatePayload.vhclType = vt;
         }
 
+        // CRM internal IDs for the vehicle (resolved by consulta-placa-crm)
+        const crmModelId = Number((vehicle as Record<string, unknown>).crmModelId) || 0;
+        const crmYearId = Number((vehicle as Record<string, unknown>).crmYearId) || 0;
+        if (crmModelId > 0) {
+          updatePayload.mdl = crmModelId;
+          updatePayload.carModel = crmModelId;
+        }
+        if (crmYearId > 0) {
+          updatePayload.mdlYr = crmYearId;
+          updatePayload.carModelYear = crmYearId;
+        }
+        if (vehicle.color) updatePayload.color = vehicle.color;
+        if (vehicle.year) {
+          const yr = parseInt(String(vehicle.year).split("/")[0], 10);
+          if (yr) updatePayload.fabricationYear = yr;
+        }
+
         const sendUpdate = async () => {
           console.log("Updating CRM quotation:", JSON.stringify(updatePayload, null, 2));
           const updateRes = await fetch("https://api.powercrm.com.br/api/quotation/update", {
@@ -259,20 +279,22 @@ Deno.serve(async (req) => {
           return updateRes.ok;
         };
 
-        const verifyUpdate = async (): Promise<{ ok: boolean; protectedValue: number; hasAddress: boolean }> => {
+        const verifyUpdate = async (): Promise<{ ok: boolean; protectedValue: number; hasAddress: boolean; hasModel: boolean }> => {
           try {
             const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${crmQuotationCode}`, {
               headers: { "Authorization": `Bearer ${token}` },
             });
-            if (!qttnRes.ok) return { ok: false, protectedValue: 0, hasAddress: false };
+            if (!qttnRes.ok) return { ok: false, protectedValue: 0, hasAddress: false, hasModel: false };
             const qttnData = await qttnRes.json();
             const pv = Number(qttnData?.protectedValue ?? qttnData?.data?.protectedValue ?? 0);
             const addr = qttnData?.addressZipcode || qttnData?.data?.addressZipcode || qttnData?.addressAddress;
-            console.log("Post-update verify — protectedValue:", pv, "hasAddress:", !!addr);
-            return { ok: true, protectedValue: pv, hasAddress: !!addr };
+            const mdl = qttnData?.mdl ?? qttnData?.data?.mdl ?? null;
+            const hasModel = mdl !== null && mdl !== undefined;
+            console.log("Post-update verify — protectedValue:", pv, "hasAddress:", !!addr, "mdl:", mdl);
+            return { ok: true, protectedValue: pv, hasAddress: !!addr, hasModel };
           } catch (e) {
             console.error("verify error:", e);
-            return { ok: false, protectedValue: 0, hasAddress: false };
+            return { ok: false, protectedValue: 0, hasAddress: false, hasModel: false };
           }
         };
 
