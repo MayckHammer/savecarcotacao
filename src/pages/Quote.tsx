@@ -477,20 +477,6 @@ const Quote = () => {
             {/* Manual FIPE selection — show only if NOT consulted via CRM */}
             {!plateConsulted && (
               <>
-                {/* Tipo do veículo */}
-                <div>
-                  <Label>Tipo do veículo</Label>
-                  <Select value={quote.vehicle.type} onValueChange={handleTypeChange}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="carro">Carro</SelectItem>
-                      <SelectItem value="moto">Moto</SelectItem>
-                      <SelectItem value="caminhao">Caminhão / Pick-up</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <ErrorMsg field="type" />
-                </div>
-
                 {/* Marca */}
                 <div>
                   <Label>Marca</Label>
