@@ -1,8 +1,20 @@
+import { z } from "https://esm.sh/zod@3.23.8";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const BodySchema = z.object({
+  personal: z.object({
+    name: z.string().trim().min(1).max(200),
+    email: z.string().trim().email().max(255).optional().or(z.literal("")),
+    phone: z.string().trim().max(20).optional().or(z.literal("")),
+    cpf: z.string().trim().max(20).optional().or(z.literal("")),
+  }),
+  plate: z.string().trim().min(6).max(10),
+});
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -10,7 +22,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { personal, plate } = await req.json();
+    const raw = await req.json().catch(() => null);
+    const parsed = BodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return new Response(
+        JSON.stringify({ error: "Invalid input", details: parsed.error.flatten().fieldErrors }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const { personal, plate } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
 
     if (!token) {
@@ -73,21 +93,8 @@ Deno.serve(async (req) => {
       console.error("Error adding tag:", e);
     }
 
-    // 3. Open inspection — response is plain text
-    try {
-      const inspRes = await fetch("https://api.powercrm.com.br/api/quotation/open-inspection", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({ quotationCode }),
-      });
-      const inspText = await inspRes.text();
-      console.log("Open inspection response:", inspText);
-    } catch (e) {
-      console.error("Error opening inspection:", e);
-    }
+    // NOTE: Inspection is NOT opened here. CRM rejects with 500 because the quotation
+    // doesn't have FIPE/address yet. Inspection is opened later in submit-to-crm.
 
     // Helpers
     const detectType = (brand: string, model: string): string => {
@@ -101,7 +108,6 @@ Deno.serve(async (req) => {
       if (raw == null) return 0;
       if (typeof raw === "number") return raw;
       if (typeof raw === "string") {
-        // "R$ 45.000,00" or "45000.00"
         const cleaned = raw.replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
         const n = parseFloat(cleaned);
         return isNaN(n) ? 0 : n;

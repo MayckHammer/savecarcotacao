@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,13 +17,86 @@ const UF_MAP: Record<string, string> = {
   SC: "Santa Catarina", SE: "Sergipe", SP: "São Paulo", TO: "Tocantins",
 };
 
+// In-memory cache for state/city codes (lives for the worker lifetime)
+const stateCityCache = new Map<string, number>(); // key: `${stateName}|${cityName}` -> cityId
+let statesListCache: { nm: string; id: number }[] | null = null;
+
+async function getCityCode(stateUF: string, cityName: string): Promise<number | null> {
+  const stateName = UF_MAP[stateUF?.toUpperCase()] || stateUF;
+  const cacheKey = `${stateName?.toLowerCase()}|${cityName?.toLowerCase()}`;
+  if (stateCityCache.has(cacheKey)) return stateCityCache.get(cacheKey)!;
+
+  try {
+    if (!statesListCache) {
+      const statesRes = await fetch("https://utilities.powercrm.com.br/state/stt");
+      if (!statesRes.ok) return null;
+      statesListCache = await statesRes.json();
+    }
+    const found = statesListCache!.find((s) => s.nm?.toLowerCase() === stateName?.toLowerCase());
+    if (!found) return null;
+    const citiesRes = await fetch(`https://utilities.powercrm.com.br/city/ct?st=${found.id}`);
+    if (!citiesRes.ok) return null;
+    const cities = await citiesRes.json() as { nm: string; id: number }[];
+    const cityFound = cities.find((c) => c.nm?.toLowerCase() === cityName?.toLowerCase());
+    if (cityFound) {
+      stateCityCache.set(cacheKey, cityFound.id);
+      return cityFound.id;
+    }
+    return null;
+  } catch (e) {
+    console.error("getCityCode error:", e);
+    return null;
+  }
+}
+
+const BodySchema = z.object({
+  personal: z.object({
+    name: z.string().trim().max(200).optional().default(""),
+    email: z.string().trim().max(255).optional().default(""),
+    phone: z.string().trim().max(20).optional().default(""),
+    cpf: z.string().trim().max(20).optional().default(""),
+  }),
+  vehicle: z.object({
+    plate: z.string().trim().max(10).optional().default(""),
+    brand: z.string().optional().default(""),
+    model: z.string().optional().default(""),
+    year: z.string().optional().default(""),
+    color: z.string().optional().default(""),
+    type: z.string().optional().default(""),
+    usage: z.string().optional().default(""),
+    fipeValue: z.number().optional().default(0),
+    fipeFormatted: z.string().optional().default(""),
+  }).passthrough(),
+  address: z.object({
+    cep: z.string().optional().default(""),
+    street: z.string().optional().default(""),
+    number: z.string().optional().default(""),
+    complement: z.string().optional().default(""),
+    neighborhood: z.string().optional().default(""),
+    state: z.string().optional().default(""),
+    city: z.string().optional().default(""),
+  }).passthrough(),
+  plan: z.record(z.unknown()).optional().default({}),
+  skipCrm: z.boolean().optional(),
+  crmQuotationCode: z.string().optional().nullable(),
+  crmNegotiationCode: z.string().optional().nullable(),
+});
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { personal, vehicle, address, plan, skipCrm, crmQuotationCode: existingQuotationCode, crmNegotiationCode: existingNegotiationCode } = await req.json();
+    const raw = await req.json().catch(() => null);
+    const parsed = BodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return new Response(
+        JSON.stringify({ error: "Invalid input", details: parsed.error.flatten().fieldErrors }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const { personal, vehicle, address, plan, skipCrm, crmQuotationCode: existingQuotationCode, crmNegotiationCode: existingNegotiationCode } = parsed.data;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -49,21 +123,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Phone & CPF: digits only
     const phone = (personal.phone || "").replace(/\D/g, "");
     const cpfDigits = (personal.cpf || "").replace(/\D/g, "");
 
-    const planName = plan?.planName || "COMPLETO";
-    const totalValue = plan?.total || 0;
-    const billingLabel = plan?.billingPeriod === "annual" ? "Anual" : "Mensal";
+    const planObj = plan as Record<string, unknown>;
+    const planName = (planObj?.planName as string) || "COMPLETO";
+    const totalValue = Number(planObj?.total) || 0;
+    const billingLabel = planObj?.billingPeriod === "annual" ? "Anual" : "Mensal";
 
-    // Build rich observation with TAG 30 seg
     const observation = [
       `[TAG: 30 seg]`,
       ``,
       `=== PLANO: ${planName} ===`,
       `Valor: R$ ${totalValue ? totalValue.toFixed(2).replace(".", ",") : "A definir"}/${billingLabel === "Anual" ? "ano" : "mês"}`,
-      `Forma de pagamento: ${plan?.paymentMethod === "credit" ? "Cartão de Crédito" : "PIX / Boleto"}`,
+      `Forma de pagamento: ${planObj?.paymentMethod === "credit" ? "Cartão de Crédito" : "PIX / Boleto"}`,
       ``,
       `=== ASSOCIADO ===`,
       `Nome: ${personal.name || "N/A"}`,
@@ -85,36 +158,11 @@ Deno.serve(async (req) => {
       `CEP: ${address.cep || "N/A"}`,
       ``,
       `=== COBERTURAS ===`,
-      plan?.coverages ? plan.coverages.join(", ") : "A definir",
+      Array.isArray(planObj?.coverages) ? (planObj.coverages as string[]).join(", ") : "A definir",
     ].join("\n");
 
-    // Resolve state/city codes
-    let cityCode: number | null = null;
+    const cityCode = await getCityCode(address.state || "", address.city || "");
 
-    try {
-      const stateName = UF_MAP[address.state?.toUpperCase()] || address.state;
-      const statesRes = await fetch("https://utilities.powercrm.com.br/state/stt");
-      if (statesRes.ok) {
-        const states = await statesRes.json();
-        const found = states.find((s: { nm: string; id: number }) =>
-          s.nm?.toLowerCase() === stateName?.toLowerCase()
-        );
-        if (found) {
-          const citiesRes = await fetch(`https://utilities.powercrm.com.br/city/ct?st=${found.id}`);
-          if (citiesRes.ok) {
-            const cities = await citiesRes.json();
-            const cityFound = cities.find((c: { nm: string; id: number }) =>
-              c.nm?.toLowerCase() === address.city?.toLowerCase()
-            );
-            if (cityFound) cityCode = cityFound.id;
-          }
-        }
-      }
-    } catch (e) {
-      console.error("Error fetching state/city codes:", e);
-    }
-
-    // Build CRM payload
     const crmPayload: Record<string, unknown> = {
       name: personal.name || "",
       phone: phone,
@@ -124,24 +172,49 @@ Deno.serve(async (req) => {
       workVehicle: vehicle.usage === "aplicativo",
       observation,
     };
-
     if (cityCode) crmPayload.city = cityCode;
 
-    console.log("CRM payload:", JSON.stringify(crmPayload, null, 2));
-
-    // Submit to Power CRM (skip if already created via consulta-placa-crm)
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     let crmSuccess = !!skipCrm;
     let crmQuotationCode: string | null = null;
     let crmNegotiationCode: string | null = null;
     let crmError: string | null = null;
+    let inspectionLink: string | null = null;
+
+    // ----- Helper: open inspection (only after data is complete) -----
+    const openInspection = async (quotationCode: string): Promise<string | null> => {
+      try {
+        const inspRes = await fetch("https://api.powercrm.com.br/api/quotation/open-inspection", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ quotationCode }),
+        });
+        const inspText = await inspRes.text();
+        console.log("open-inspection response:", inspRes.status, inspText.substring(0, 300));
+      } catch (e) {
+        console.error("open-inspection error:", e);
+      }
+      // Try to fetch the link
+      try {
+        const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        if (qttnRes.ok) {
+          const qttnData = await qttnRes.json();
+          return qttnData?.inspectionLink || qttnData?.inspection_link
+            || qttnData?.data?.inspectionLink || qttnData?.negotiation?.inspectionLink || null;
+        }
+      } catch (e) {
+        console.error("fetch inspection link error:", e);
+      }
+      return null;
+    };
 
     if (skipCrm) {
       crmQuotationCode = existingQuotationCode || null;
       crmNegotiationCode = existingNegotiationCode || null;
       console.log("Using existing CRM codes, will update quotation:", crmQuotationCode, crmNegotiationCode);
 
-      // UPDATE the existing quotation with full data so CRM can calculate plans
       if (crmQuotationCode && token) {
         const updatePayload: Record<string, unknown> = {
           code: crmQuotationCode,
@@ -166,10 +239,7 @@ Deno.serve(async (req) => {
           console.log("Updating CRM quotation:", JSON.stringify(updatePayload, null, 2));
           const updateRes = await fetch("https://api.powercrm.com.br/api/quotation/update", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${token}`,
-            },
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify(updatePayload),
           });
           const updateText = await updateRes.text();
@@ -196,15 +266,20 @@ Deno.serve(async (req) => {
 
         try {
           await sendUpdate();
-          // Wait briefly for CRM to persist
           await new Promise((r) => setTimeout(r, 1500));
-          const v1 = await verifyUpdate();
-          // Retry once if protectedValue did not stick and we have a fipeValue to send
-          if ((updatePayload.protectedValue as number) > 0 && v1.protectedValue === 0) {
+          let v = await verifyUpdate();
+          if ((updatePayload.protectedValue as number) > 0 && v.protectedValue === 0) {
             console.log("protectedValue not persisted, retrying update once...");
             await sendUpdate();
             await new Promise((r) => setTimeout(r, 1500));
-            await verifyUpdate();
+            v = await verifyUpdate();
+          }
+
+          // Now that data is complete, open inspection
+          if (v.protectedValue > 0 && v.hasAddress) {
+            inspectionLink = await openInspection(crmQuotationCode);
+          } else {
+            console.log("Skipping open-inspection — data still incomplete in CRM");
           }
         } catch (updateErr) {
           console.error("Error updating CRM quotation:", updateErr);
@@ -214,99 +289,61 @@ Deno.serve(async (req) => {
       crmSuccess = true;
     } else {
       try {
-      const crmRes = await fetch("https://api.powercrm.com.br/api/quotation/add", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify(crmPayload),
-      });
+        console.log("CRM payload (new quotation):", JSON.stringify(crmPayload, null, 2));
+        const crmRes = await fetch("https://api.powercrm.com.br/api/quotation/add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify(crmPayload),
+        });
 
-      const crmData = await crmRes.json();
-      console.log("CRM response:", JSON.stringify(crmData, null, 2));
+        const crmData = await crmRes.json();
+        console.log("CRM response:", JSON.stringify(crmData, null, 2));
 
-      if (crmData.quotationCode) {
-        crmSuccess = true;
-        crmQuotationCode = crmData.quotationCode || null;
-        crmNegotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
+        if (crmData.quotationCode) {
+          crmSuccess = true;
+          crmQuotationCode = crmData.quotationCode || null;
+          crmNegotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
 
-        // Try to add tag "30 seg" via dedicated endpoint
-        if (crmQuotationCode) {
-          try {
-            const tagRes = await fetch("https://api.powercrm.com.br/api/quotation/add-tag", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                quotationCode: crmQuotationCode,
-                tagId: 23323,
-              }),
-            });
-            const tagData = await tagRes.json();
-            console.log("Tag response:", JSON.stringify(tagData, null, 2));
-          } catch (tagErr) {
-            console.error("Error adding tag:", tagErr);
-          }
-        }
-
-        // Open inspection automatically
-        if (crmQuotationCode) {
-          try {
-            const inspRes = await fetch("https://api.powercrm.com.br/api/quotation/open-inspection", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`,
-              },
-              body: JSON.stringify({ quotationCode: crmQuotationCode }),
-            });
-            const inspData = await inspRes.json();
-            console.log("Open inspection response:", JSON.stringify(inspData, null, 2));
-          } catch (inspErr) {
-            console.error("Error opening inspection:", inspErr);
-          }
-        }
-
-        // Try to fetch inspection link from quotation
-        if (crmQuotationCode) {
-          try {
-            const qttnRes = await fetch(`https://api.powercrm.com.br/api/quotation/${crmQuotationCode}`, {
-              headers: { "Authorization": `Bearer ${token}` },
-            });
-            if (qttnRes.ok) {
-              const qttnData = await qttnRes.json();
-              console.log("Quotation data:", JSON.stringify(qttnData, null, 2));
-              const inspLink = qttnData?.inspectionLink || qttnData?.inspection_link
-                || qttnData?.data?.inspectionLink || qttnData?.negotiation?.inspectionLink || null;
-              if (inspLink) {
-                await supabase.from("quotes").update({
-                  inspection_link: inspLink,
-                  inspection_status: "released",
-                }).eq("session_id", sessionId);
-              }
+          // Add tag
+          if (crmQuotationCode) {
+            try {
+              const tagRes = await fetch("https://api.powercrm.com.br/api/quotation/add-tag", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify({ quotationCode: crmQuotationCode, tagId: 23323 }),
+              });
+              const tagText = await tagRes.text();
+              console.log("Tag response:", tagText);
+            } catch (tagErr) {
+              console.error("Error adding tag:", tagErr);
             }
-          } catch (qttnErr) {
-            console.error("Error fetching quotation:", qttnErr);
+
+            // Open inspection — at this point we have FIPE + address from the form
+            if ((vehicle.fipeValue || 0) > 0 && address.cep) {
+              inspectionLink = await openInspection(crmQuotationCode);
+            }
           }
+        } else {
+          crmError = crmData.message || crmData.error || "CRM submission failed";
         }
-      } else {
-        crmError = crmData.message || crmData.error || "CRM submission failed";
-      }
       } catch (e) {
         crmError = `CRM request error: ${e.message}`;
         console.error("CRM submission error:", e);
       }
-    } // end else (skipCrm)
+    }
 
     // Update quote with CRM result
-    await supabase.from("quotes").update({
+    const updateQuote: Record<string, unknown> = {
       crm_submitted: crmSuccess,
       crm_quotation_code: crmQuotationCode,
       crm_error: crmError,
-    }).eq("session_id", sessionId);
+      last_crm_sync_at: new Date().toISOString(),
+    };
+    if (inspectionLink) {
+      updateQuote.inspection_link = inspectionLink;
+      updateQuote.inspection_status = "released";
+    }
+    await supabase.from("quotes").update(updateQuote).eq("session_id", sessionId);
 
     return new Response(
       JSON.stringify({
@@ -315,6 +352,7 @@ Deno.serve(async (req) => {
         crm_quotation_code: crmQuotationCode,
         crm_negotiation_code: crmNegotiationCode,
         crm_error: crmError,
+        inspection_link: inspectionLink,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
