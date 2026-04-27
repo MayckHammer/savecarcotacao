@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 export interface PersonalData {
   name: string;
@@ -125,7 +125,7 @@ const defaultQuote: QuoteData = {
   cardExpiry: "",
   cardCvv: "",
   cardName: "",
-  sessionId: localStorage.getItem("savecar_session_id") || "",
+  sessionId: "",
   coupon: "",
   crmQuotationCode: "",
   crmNegotiationCode: "",
@@ -156,6 +156,12 @@ const QuoteContext = createContext<QuoteContextType | undefined>(undefined);
 export const QuoteProvider = ({ children }: { children: ReactNode }) => {
   const [quote, setQuote] = useState<QuoteData>(defaultQuote);
   const [crmPlans, setCrmPlans] = useState<CrmPlan[]>([]);
+
+  // Hydrate session from localStorage on mount (avoids SSR issues + stale defaults)
+  useEffect(() => {
+    const stored = typeof window !== "undefined" ? localStorage.getItem("savecar_session_id") : null;
+    if (stored) setQuote((prev) => ({ ...prev, sessionId: stored }));
+  }, []);
 
   const updatePersonal = (data: Partial<PersonalData>) =>
     setQuote((prev) => ({ ...prev, personal: { ...prev.personal, ...data } }));
@@ -192,6 +198,7 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const resetQuote = () => {
+    if (typeof window !== "undefined") localStorage.removeItem("savecar_session_id");
     setQuote(defaultQuote);
     setCrmPlans([]);
   };
