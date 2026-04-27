@@ -108,8 +108,10 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
+        const fallback = await fetchPlansByModelRequest(quotationCode, token);
+        if (fallback.plans.length) return fallback;
         // Final attempt failed — diagnose quotation state
-        let diagnostic = "Nenhum plano disponível para esta cotação";
+        let diagnostic = fallback.error || "Nenhum plano disponível para esta cotação";
         try {
           const qRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
             headers: { "Authorization": `Bearer ${token}` },
@@ -154,14 +156,7 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
       }
 
       // Normalize plans
-      const rawPlans = Array.isArray(data) ? data : ((dataObj?.plans || dataObj?.data || []) as unknown[]);
-      const plans = rawPlans.map((p: Record<string, unknown>) => ({
-        id: p.id || p.planId || null,
-        name: p.name || p.planName || p.nm || "",
-        monthlyPrice: p.monthlyPrice || p.monthlyValue || p.vlMnthly || 0,
-        annualPrice: p.annualPrice || p.annualValue || p.vlAnnl || 0,
-        coverages: p.coverages || p.items || [],
-      }));
+      const plans = normalizePlans(data);
 
       return { plans };
     } catch (e) {
