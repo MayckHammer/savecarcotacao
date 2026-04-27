@@ -171,10 +171,15 @@ Deno.serve(async (req) => {
       email: personal.email || "",
       registration: cpfDigits,
       plts: vehicle.plate || "",
-      workVehicle: vehicle.usage === "aplicativo",
+      workVehicle: vehicle.type === "caminhao" || vehicle.usage === "aplicativo",
       observation,
     };
     if (cityCode) crmPayload.city = cityCode;
+    const vtNew = (vehicle as Record<string, unknown>).vehicleTypeId;
+    if (vtNew) {
+      crmPayload.vehicleType = vtNew;
+      crmPayload.vehicleTypeId = vtNew;
+    }
 
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     let crmSuccess = !!skipCrm;
