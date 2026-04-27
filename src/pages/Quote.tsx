@@ -147,11 +147,19 @@ const Quote = () => {
       setErrors({ plate: "Placa inválida" });
       return;
     }
+    if (!quote.vehicle.type) {
+      setErrors({ type: "Selecione o tipo de veículo antes de consultar" });
+      return;
+    }
     setPlateLoading(true);
     setFipeError("");
     try {
       const { data, error } = await supabase.functions.invoke("consulta-placa-crm", {
-        body: { personal: quote.personal, plate: quote.vehicle.plate },
+        body: {
+          personal: quote.personal,
+          plate: quote.vehicle.plate,
+          vehicleType: quote.vehicle.type,
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -159,6 +167,10 @@ const Quote = () => {
       if (data?.quotationCode) {
         setCrmQuotationCode(data.quotationCode);
         if (data.negotiationCode) setCrmNegotiationCode(data.negotiationCode);
+      }
+      // Persist resolved CRM vehicle type id for later updates
+      if (data?.vehicleTypeId) {
+        updateVehicle({ vehicleTypeId: data.vehicleTypeId } as Partial<typeof quote.vehicle>);
       }
 
       if (data?.vehicle) {
@@ -173,7 +185,7 @@ const Quote = () => {
           model: v.model || "",
           year: v.year || "",
           color: v.color || "",
-          type: v.type || "carro",
+          // Keep user-selected type; only override if CRM disagrees AND user picked default
           ...(fipeValueFromCrm > 0 ? { fipeValue: fipeValueFromCrm, fipeFormatted: fipeFormattedFromCrm } : {}),
         });
         // Only mark as consulted if CRM actually identified the vehicle
@@ -192,7 +204,7 @@ const Quote = () => {
         setPlateConsulted(false);
         toast.info("Veículo não identificado. Preencha manualmente.");
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Consulta placa error:", e);
       toast.error("Erro ao consultar placa. Preencha manualmente.");
     } finally {
