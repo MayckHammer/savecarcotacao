@@ -10,7 +10,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { Card, CardContent } from "@/components/ui/card";
 import Header from "@/components/Header";
 import ProgressSteps from "@/components/ProgressSteps";
-import { useQuote } from "@/contexts/QuoteContext";
+import { CrmModelOption, useQuote } from "@/contexts/QuoteContext";
 import { toast } from "sonner";
 import { maskCPF, maskPhone, maskCEP, maskPlate, validateCPF } from "@/lib/masks";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,6 +28,7 @@ const Quote = () => {
   const [submitting, setSubmitting] = useState(false);
   const [plateLoading, setPlateLoading] = useState(false);
   const [plateConsulted, setPlateConsulted] = useState(false);
+  const [confirmingModel, setConfirmingModel] = useState(false);
 
   // FIPE cascade state
   const [brands, setBrands] = useState<FipeOption[]>([]);
@@ -78,7 +79,7 @@ const Quote = () => {
   }, []);
 
   const handleTypeChange = (type: string) => {
-    updateVehicle({ type, brandCode: "", brand: "", modelCode: "", model: "", yearCode: "", year: "", fipeValue: 0, fipeFormatted: "" });
+    updateVehicle({ type, brandCode: "", brand: "", modelCode: "", model: "", yearCode: "", year: "", fipeValue: 0, fipeFormatted: "", fipeCode: "", modelOptions: [] });
     const apiType = vehicleTypeMap[type] || 'cars';
     loadBrands(apiType);
   };
@@ -138,6 +139,51 @@ const Quote = () => {
       setFipeError("Erro ao consultar valor FIPE.");
     } finally {
       setPriceLoading(false);
+    }
+  };
+
+  const handleCrmModelConfirm = async (code: string) => {
+    const selected = quote.vehicle.modelOptions?.find((option) => option.code === code);
+    if (!selected) return;
+
+    updateVehicle({
+      modelCode: selected.code,
+      model: selected.name,
+      year: selected.year,
+      fipeCode: selected.fipeCode || quote.vehicle.fipeCode || "",
+      fipeValue: selected.fipeValue || quote.vehicle.fipeValue,
+      fipeFormatted: selected.fipeFormatted || quote.vehicle.fipeFormatted,
+      crmModelId: selected.crmModelId,
+      crmYearId: selected.crmYearId,
+    });
+    setPlateConsulted(true);
+
+    if (!quote.crmQuotationCode) return;
+    setConfirmingModel(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("consulta-placa-crm", {
+        body: {
+          personal: quote.personal,
+          plate: quote.vehicle.plate,
+          vehicleType: quote.vehicle.type,
+          crmQuotationCode: quote.crmQuotationCode,
+          selectedModel: {
+            name: selected.name,
+            year: selected.year,
+            fipeCode: selected.fipeCode || quote.vehicle.fipeCode || "",
+            fipeValue: selected.fipeValue || quote.vehicle.fipeValue || 0,
+            crmModelId: selected.crmModelId,
+            crmYearId: selected.crmYearId,
+          },
+        },
+      });
+      if (error || data?.error) throw error || new Error(data.error);
+      toast.success("Modelo confirmado e enviado ao CRM.");
+    } catch (e) {
+      console.error("Confirm model error:", e);
+      toast.warning("Modelo confirmado no app, mas o CRM pode demorar para atualizar.");
+    } finally {
+      setConfirmingModel(false);
     }
   };
 
