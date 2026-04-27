@@ -655,6 +655,17 @@ Deno.serve(async (req) => {
         if (crmFipe.fipeValue > 0) recomputedFipeValue = crmFipe.fipeValue;
       }
 
+      const labelFipe = await fetchFipeByModelLabel(
+        selectedModel.brand || "Citroën",
+        selectedModel.name,
+        selectedModel.year,
+        vehicleType,
+      );
+      if (labelFipe) {
+        if (labelFipe.fipeCode) recomputedFipeCode = labelFipe.fipeCode;
+        if (labelFipe.fipeValue > 0) recomputedFipeValue = labelFipe.fipeValue;
+      }
+
       // Se ainda não temos valor (ou o CRM só devolveu o código), bate na FIPE Parallelum
       if (recomputedFipeCode && (!recomputedFipeValue || crmFipe?.fipeValue === 0)) {
         const enriched = await enrichFromFipeByCode(recomputedFipeCode, vehicleType, String(selectedModel.year || ""));
@@ -698,9 +709,8 @@ Deno.serve(async (req) => {
       const updText = await upd.text();
       console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 200));
 
-      // 2. Disparar a "lupa" do CRM para forçar persistência do FIPE no card
-      await triggerCrmPlateLookup(token, crmQuotationCode, plate);
-      await getQuotationFipe(token, crmQuotationCode);
+      // 2. Disparar a rotina FIPE oficial da cotação para simular o refresh da lupa sem endpoints inválidos
+      await triggerCrmFipeRefresh(token, crmQuotationCode);
 
       // 3. Segundo update isolado só com FIPE (alguns ambientes só persistem assim)
       if (recomputedFipeValue > 0 || recomputedFipeCode) {
@@ -737,7 +747,7 @@ Deno.serve(async (req) => {
         await new Promise((r) => setTimeout(r, intervals[i]));
         verify = await getQuotation(token, crmQuotationCode) as Record<string, unknown> | null;
         if (!verify) continue;
-        crmFipeValue = parseFipeValue(verify.vhclFipeVl ?? verify.vlFipe ?? verify.protectedValue ?? verify.fipeValue);
+        crmFipeValue = parseFipeValue(verify.protectedValue ?? verify.vhclFipeVl ?? verify.vlFipe ?? verify.fipeValue);
         crmFipeCode = String(verify.cdFp ?? verify.codFipe ?? "").trim();
         crmModelId = Number(verify.mdl ?? verify.carModel ?? 0);
         crmYearId = Number(verify.mdlYr ?? verify.carModelYear ?? 0);
