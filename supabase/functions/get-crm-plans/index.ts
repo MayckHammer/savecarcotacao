@@ -16,13 +16,16 @@ function findFirstArray(input: unknown): unknown[] {
 }
 
 function normalizePlans(data: unknown) {
-  return findFirstArray(data).map((p: Record<string, unknown>) => ({
-    id: p.id || p.planId || p.tppId || null,
-    name: p.name || p.planName || p.nm || p.description || p.ds || "",
-    monthlyPrice: Number(p.monthlyPrice || p.monthlyValue || p.vlMnthly || p.value || p.price || p.total || 0),
-    annualPrice: Number(p.annualPrice || p.annualValue || p.vlAnnl || 0),
-    coverages: p.coverages || p.items || p.optionals || [],
-  }));
+  return findFirstArray(data).map((raw) => {
+    const p = raw as Record<string, unknown>;
+    return {
+      id: p.id || p.planId || p.tppId || null,
+      name: p.name || p.planName || p.nm || p.description || p.ds || "",
+      monthlyPrice: Number(p.monthlyPrice || p.monthlyValue || p.vlMnthly || p.value || p.price || p.total || 0),
+      annualPrice: Number(p.annualPrice || p.annualValue || p.vlAnnl || 0),
+      coverages: p.coverages || p.items || p.optionals || [],
+    };
+  });
 }
 
 async function fetchPlansByModelRequest(quotationCode: string, token: string): Promise<{ plans: unknown[]; error?: string }> {
@@ -32,12 +35,13 @@ async function fetchPlansByModelRequest(quotationCode: string, token: string): P
     });
     if (!qRes.ok) return { plans: [], error: "Não foi possível conferir a cotação no CRM" };
     const qData = await qRes.json() as Record<string, unknown>;
+    const nested = (qData?.data || {}) as Record<string, unknown>;
 
-    const carModelId = Number(qData?.mdl ?? qData?.carModel ?? qData?.data?.mdl ?? 0);
-    const carModelYearId = Number(qData?.mdlYr ?? qData?.carModelYear ?? qData?.data?.mdlYr ?? 0);
-    const cityId = Number(qData?.city ?? qData?.data?.city ?? 0);
-    const workVehicle = Boolean(qData?.workVehicle ?? qData?.data?.workVehicle ?? false);
-    const fipe = Number(qData?.protectedValue ?? qData?.vhclFipeVl ?? qData?.data?.protectedValue ?? 0);
+    const carModelId = Number(qData?.mdl ?? qData?.carModel ?? nested?.mdl ?? 0);
+    const carModelYearId = Number(qData?.mdlYr ?? qData?.carModelYear ?? nested?.mdlYr ?? 0);
+    const cityId = Number(qData?.city ?? nested?.city ?? 0);
+    const workVehicle = Boolean(qData?.workVehicle ?? nested?.workVehicle ?? false);
+    const fipe = Number(qData?.protectedValue ?? qData?.vhclFipeVl ?? nested?.protectedValue ?? 0);
     const missing: string[] = [];
     if (!carModelId) missing.push("modelo");
     if (!carModelYearId) missing.push("ano");
