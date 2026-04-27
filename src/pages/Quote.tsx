@@ -10,7 +10,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { Card, CardContent } from "@/components/ui/card";
 import Header from "@/components/Header";
 import ProgressSteps from "@/components/ProgressSteps";
-import { useQuote } from "@/contexts/QuoteContext";
+import { CrmModelOption, useQuote } from "@/contexts/QuoteContext";
 import { toast } from "sonner";
 import { maskCPF, maskPhone, maskCEP, maskPlate, validateCPF } from "@/lib/masks";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,6 +28,7 @@ const Quote = () => {
   const [submitting, setSubmitting] = useState(false);
   const [plateLoading, setPlateLoading] = useState(false);
   const [plateConsulted, setPlateConsulted] = useState(false);
+  const [confirmingModel, setConfirmingModel] = useState(false);
 
   // FIPE cascade state
   const [brands, setBrands] = useState<FipeOption[]>([]);
@@ -78,7 +79,7 @@ const Quote = () => {
   }, []);
 
   const handleTypeChange = (type: string) => {
-    updateVehicle({ type, brandCode: "", brand: "", modelCode: "", model: "", yearCode: "", year: "", fipeValue: 0, fipeFormatted: "" });
+    updateVehicle({ type, brandCode: "", brand: "", modelCode: "", model: "", yearCode: "", year: "", fipeValue: 0, fipeFormatted: "", fipeCode: "", modelOptions: [] });
     const apiType = vehicleTypeMap[type] || 'cars';
     loadBrands(apiType);
   };
@@ -141,6 +142,51 @@ const Quote = () => {
     }
   };
 
+  const handleCrmModelConfirm = async (code: string) => {
+    const selected = quote.vehicle.modelOptions?.find((option) => option.code === code);
+    if (!selected) return;
+
+    updateVehicle({
+      modelCode: selected.code,
+      model: selected.name,
+      year: selected.year,
+      fipeCode: selected.fipeCode || quote.vehicle.fipeCode || "",
+      fipeValue: selected.fipeValue || quote.vehicle.fipeValue,
+      fipeFormatted: selected.fipeFormatted || quote.vehicle.fipeFormatted,
+      crmModelId: selected.crmModelId,
+      crmYearId: selected.crmYearId,
+    });
+    setPlateConsulted(true);
+
+    if (!quote.crmQuotationCode) return;
+    setConfirmingModel(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("consulta-placa-crm", {
+        body: {
+          personal: quote.personal,
+          plate: quote.vehicle.plate,
+          vehicleType: quote.vehicle.type,
+          crmQuotationCode: quote.crmQuotationCode,
+          selectedModel: {
+            name: selected.name,
+            year: selected.year,
+            fipeCode: selected.fipeCode || quote.vehicle.fipeCode || "",
+            fipeValue: selected.fipeValue || quote.vehicle.fipeValue || 0,
+            crmModelId: selected.crmModelId,
+            crmYearId: selected.crmYearId,
+          },
+        },
+      });
+      if (error || data?.error) throw error || new Error(data.error);
+      toast.success("Modelo confirmado e enviado ao CRM.");
+    } catch (e) {
+      console.error("Confirm model error:", e);
+      toast.warning("Modelo confirmado no app, mas o CRM pode demorar para atualizar.");
+    } finally {
+      setConfirmingModel(false);
+    }
+  };
+
   const handleConsultaPlaca = async () => {
     const plateClean = quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "");
     if (plateClean.length < 7) {
@@ -175,6 +221,8 @@ const Quote = () => {
 
       if (data?.vehicle) {
         const v = data.vehicle;
+        const crmOptions = Array.isArray(v.modelOptions) ? (v.modelOptions as CrmModelOption[]) : [];
+        const suggestedOption = crmOptions[0];
         const fipeValueFromCrm = Number(v.fipeValue) || 0;
         const fipeFormattedFromCrm = fipeValueFromCrm > 0
           ? `R$ ${fipeValueFromCrm.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -182,16 +230,19 @@ const Quote = () => {
 
         updateVehicle({
           brand: v.brand || "",
-          model: v.model || "",
+          model: suggestedOption?.name || v.model || "",
           year: v.year || "",
           color: v.color || "",
+          fipeCode: v.fipeCode || "",
+          modelOptions: crmOptions,
+          ...(crmOptions.length === 1 ? { modelCode: crmOptions[0].code } : { modelCode: "" }),
           ...(fipeValueFromCrm > 0 ? { fipeValue: fipeValueFromCrm, fipeFormatted: fipeFormattedFromCrm } : {}),
           ...(v.crmBrandId ? { crmBrandId: Number(v.crmBrandId) } : {}),
-          ...(v.crmModelId ? { crmModelId: Number(v.crmModelId) } : {}),
-          ...(v.crmYearId ? { crmYearId: Number(v.crmYearId) } : {}),
+          ...(suggestedOption?.crmModelId ? { crmModelId: Number(suggestedOption.crmModelId) } : v.crmModelId ? { crmModelId: Number(v.crmModelId) } : {}),
+          ...(suggestedOption?.crmYearId ? { crmYearId: Number(suggestedOption.crmYearId) } : v.crmYearId ? { crmYearId: Number(v.crmYearId) } : {}),
         });
         // Consider identified if we have brand + model + (fipe value OR year)
-        const isFullyIdentified = !!v.brand && !!v.model && (fipeValueFromCrm > 0 || !!v.year);
+        const isFullyIdentified = !!v.brand && !!(suggestedOption?.name || v.model) && (fipeValueFromCrm > 0 || !!v.year);
         if (isFullyIdentified) {
           setPlateConsulted(true);
           if (fipeValueFromCrm > 0) {
@@ -239,6 +290,7 @@ const Quote = () => {
     } else {
       if (!quote.vehicle.brand) e.brand = "Marca não identificada";
       if (!quote.vehicle.model) e.model = "Modelo não identificado";
+      if ((quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode) e.model = "Confirme o modelo";
     }
     if (!quote.vehicle.type) e.type = "Selecione o tipo";
     if (!quote.vehicle.usage) e.usage = "Selecione o uso";
@@ -479,6 +531,28 @@ const Quote = () => {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {plateConsulted && (quote.vehicle.modelOptions?.length || 0) > 1 && (
+              <div>
+                <Label>Confirme o modelo do veículo</Label>
+                <SearchableSelect
+                  options={quote.vehicle.modelOptions || []}
+                  value={quote.vehicle.modelCode}
+                  onValueChange={handleCrmModelConfirm}
+                  placeholder="Selecione o modelo exato"
+                  searchPlaceholder="Buscar modelo..."
+                  emptyMessage="Nenhum modelo encontrado."
+                  loading={confirmingModel}
+                  loadingMessage="Atualizando CRM..."
+                />
+                {quote.vehicle.fipeFormatted && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    FIPE encontrada: {quote.vehicle.fipeFormatted}{quote.vehicle.fipeCode ? ` — código ${quote.vehicle.fipeCode}` : ""}
+                  </p>
+                )}
+                <ErrorMsg field="model" />
+              </div>
             )}
 
             {/* Manual FIPE selection — show only if NOT consulted via CRM */}

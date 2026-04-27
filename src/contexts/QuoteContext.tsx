@@ -17,6 +17,7 @@ export interface VehicleData {
   color: string;
   fipeValue: number;
   fipeFormatted: string;
+  fipeCode?: string;
   brandCode: string;
   modelCode: string;
   yearCode: string;
@@ -24,6 +25,19 @@ export interface VehicleData {
   crmBrandId?: number | null;
   crmModelId?: number | null;
   crmYearId?: number | null;
+  modelOptions?: CrmModelOption[];
+}
+
+export interface CrmModelOption {
+  code: string;
+  name: string;
+  year: string;
+  fipeCode?: string;
+  fipeValue: number;
+  fipeFormatted: string;
+  crmModelId: number;
+  crmYearId: number | null;
+  score?: number;
 }
 
 export interface AddressData {
@@ -116,7 +130,7 @@ export interface QuoteData {
 
 const defaultQuote: QuoteData = {
   personal: { name: "", email: "", phone: "", cpf: "" },
-  vehicle: { plate: "", model: "", type: "carro", usage: "", brand: "", year: "", color: "", fipeValue: 0, fipeFormatted: "", brandCode: "", modelCode: "", yearCode: "", vehicleTypeId: null },
+  vehicle: { plate: "", model: "", type: "carro", usage: "", brand: "", year: "", color: "", fipeValue: 0, fipeFormatted: "", fipeCode: "", brandCode: "", modelCode: "", yearCode: "", vehicleTypeId: null, modelOptions: [] },
   address: { cep: "", street: "", neighborhood: "", number: "", complement: "", state: "", city: "", noNumber: false },
   monthlyPrice: 189.9,
   annualPrice: 1899.0,

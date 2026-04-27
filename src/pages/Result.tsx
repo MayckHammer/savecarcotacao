@@ -105,7 +105,9 @@ const Result = () => {
             <div className="flex-1">
               <p className="text-sm font-semibold text-foreground">Calculando seu plano{progressDots}</p>
               <p className="text-xs text-muted-foreground">
-                Estamos consultando os melhores valores para o seu veículo.
+                {quote.vehicle.fipeFormatted
+                  ? `FIPE oficial encontrada (${quote.vehicle.fipeFormatted}); aguardando cálculo do CRM.`
+                  : "Estamos consultando os melhores valores para o seu veículo."}
               </p>
             </div>
           </div>
@@ -114,7 +116,7 @@ const Result = () => {
         {!loadingPlans && planWarning && (
           <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 mb-4">
             <p className="text-xs text-yellow-700">
-              Usando valores estimados — {planWarning}
+              {quote.vehicle.fipeFormatted ? `FIPE oficial: ${quote.vehicle.fipeFormatted}. Usando valores estimados — ${planWarning}` : `Usando valores estimados — ${planWarning}`}
             </p>
           </div>
         )}

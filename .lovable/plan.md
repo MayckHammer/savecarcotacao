@@ -1,57 +1,94 @@
-## Problema
+## Diagnóstico
 
-Após a cotação, dois sintomas aparecem juntos:
+A mensagem **"Usando valores estimados"** aparece porque o app só mostra preços reais quando o CRM devolve planos em `/quotation/plansQuotation`. Hoje o card já recebe marca/modelo/ano em alguns casos, mas o CRM ainda não calcula planos quando o campo **Valor FIPE** fica vazio ou quando o modelo/ano interno não corresponde exatamente ao veículo.
 
-1. **App mostra "Usando valores estimados — Nenhum plano disponível"** — apesar de o valor FIPE (R$ 38.412,00) ter sido encontrado.
-2. **No card do CRM (terceiro print), o campo "Valor FIPE" fica em branco** — mesmo com Marca, Modelo e Ano preenchidos.
-3. **Modelo no card aparece errado**: a placa real é um **Citroën Aircross**, mas o CRM mostra "AIRCROSS SALOMON TENDANCE 1.6" (parece certo no print, mas o modelo que enviamos foi `C3 Tendance 1.5 Flex 8V 5p Mec.` — id 646). Ou seja: ou o fuzzy match pegou o modelo errado da FIPE Parallelum, ou o CRM tem seu próprio "renderizador" que sobrescreve.
+Pelos prints, o botão de lupa da placa no CRM não é apenas visual: ele dispara a busca DENATRAN/FIPE interna e preenche campos que o simples `/quotation/update` não persiste totalmente, principalmente **Valor FIPE**. Como não dá para “clicar” no CRM pelo backend, precisamos reproduzir o efeito desse clique usando os endpoints do próprio CRM e, quando houver ambiguidade, deixar o usuário escolher o modelo correto no app.
 
-### Causa raiz
+## Plano de correção
 
-**(A) Valor FIPE em branco no card**: enviamos só `protectedValue` no `/quotation/update`. O campo do card chamado `vhclFipeVl` (visto no terceiro print) é alimentado por outras chaves — o CRM espera `vhclFipeVl`, `vlFipe` ou `fipeValue` explicitamente, e também o código FIPE em `cdFp`. Sem o valor FIPE preenchido, o motor de cálculo de planos não roda → "Nenhum plano disponível".
+### 1. Enriquecer a consulta de placa com opções de modelo
 
-**(B) Modelo errado**: a placa PAI0F65 é "CITROEN C3 AIRC TENDANCE" (Aircross). O FIPE Parallelum, consultado pelo código `011117-1`, retornou `C3 Tendance 1.5 Flex` — porque esse código FIPE corresponde a essa variação. Nosso fuzzy match então casou com o modelo errado no CRM. Precisamos preferir, para fins de matching no CRM, o **nome bruto da placa** ("C3 AIRC TENDANCE") em vez do nome FIPE Parallelum quando eles divergem.
+Na função `consulta-placa-crm`:
 
-## Solução
+- Continuar criando o card no CRM e buscando a placa via `/quotation/plates/{plate}`.
+- Usar o código FIPE retornado pela placa (`codFipe`, exemplo `011117-1`) para buscar marca/modelo/ano/valor oficial.
+- Retornar também uma lista de modelos possíveis para o app quando houver ambiguidade, usando os modelos do CRM e/ou FIPE filtrados pelo nome bruto da placa.
+- Para o caso do print (`CITROEN C3 AIRC TENDANCE`), priorizar termos distintivos como `AIRC`, `AIRCROSS`, `TENDANCE`, em vez de aceitar automaticamente o primeiro modelo parecido.
 
-### 1. `supabase/functions/consulta-placa-crm/index.ts`
+### 2. Mostrar seleção de modelo específico no app após consultar placa
 
-**Preservar o nome original da placa para matching:**
-- Salvar `vehicle.brandRaw` e `vehicle.modelRaw` capturados do endpoint `/plates` antes da enriquecimento FIPE.
-- Em `resolveCrmIds`, tentar matching primeiro com o nome original da placa (que contém "AIRC"/"AIRCROSS"), e só usar o nome FIPE como fallback.
-- No `pickBestMatch`, dar bônus extra (+200) quando o candidato contém uma palavra-chave distintiva do nome bruto (ex: "AIRCROSS", "AIRC").
+Na tela `/cotacao`:
 
-**Enviar Valor FIPE com todos os aliases no early update (passo 8, linhas 521-550):**
-```ts
-if (vehicle.fipeValue) {
-  updateBody.protectedValue = vehicle.fipeValue;
-  updateBody.vhclFipeVl     = vehicle.fipeValue;  // campo do card
-  updateBody.vlFipe         = vehicle.fipeValue;
-  updateBody.fipeValue      = vehicle.fipeValue;
-}
-if (vehicle.fipeCode) {
-  updateBody.cdFp           = vehicle.fipeCode;
-  updateBody.codFipe        = vehicle.fipeCode;
-}
+- Após consultar a placa, mostrar os dados encontrados normalmente.
+- Se houver mais de um modelo possível ou se o match não for 100% seguro, exibir um campo **"Confirme o modelo do veículo"** na mesma tela.
+- Ao selecionar o modelo:
+  - atualizar `model`, `year`, `fipeValue`, `fipeFormatted`, `crmModelId`, `crmYearId` no contexto;
+  - marcar a placa como validada somente depois da confirmação;
+  - manter a experiência simples: placa puxa tudo, usuário só confirma quando necessário.
+
+Fluxo esperado:
+
+```text
+Usuário digita placa
+→ app consulta CRM
+→ app mostra dados do veículo
+→ se modelo estiver incerto, usuário escolhe modelo exato
+→ app envia modelo/ano/FIPE corretos para o CRM
+→ CRM calcula planos reais
 ```
 
-**Adicionar verificação pós-update**: re-consultar `/quotation/{code}` e logar `vhclFipeVl`/`mdl`/`protectedValue` para diagnóstico.
+### 3. Criar atualização explícita do veículo escolhido no CRM
 
-### 2. `supabase/functions/submit-to-crm/index.ts`
+Adicionar/ajustar uma função backend para atualizar o card assim que o usuário confirmar o modelo, enviando:
 
-Mesmo tratamento no `updatePayload` do bloco `skipCrm` (linhas 228-268): adicionar `vhclFipeVl`, `vlFipe`, `fipeValue` e `cdFp` ao lado do `protectedValue` já enviado.
+- `code` da cotação;
+- `mdl` / `carModel`;
+- `mdlYr` / `carModelYear`;
+- `fabricationYear`;
+- `protectedValue`;
+- código FIPE (`cdFp`/`codFipe`, se aceito);
+- cor, placa e tipo de veículo.
 
-### 3. `supabase/functions/get-crm-plans/index.ts`
+### 4. Reproduzir o “clique na lupa” via endpoint, não via automação visual
 
-No diagnóstico atual (linhas 60-83), além de checar `protectedValue`, checar também `vhclFipeVl`/`mdl`/`mdlYr` e logar o que falta — assim conseguimos identificar rapidamente em produção.
+Em vez de tentar controlar o navegador do CRM, a função backend tentará chamar os endpoints que têm o mesmo papel da lupa:
+
+1. `/quotation/plates/{plate}` para buscar os dados DENATRAN/FIPE.
+2. `/quotation/quotationFipeApi?quotationCode=...` após a criação/atualização da cotação, para forçar/aguardar o processamento FIPE do card.
+3. Depois reconsultar `/quotation/{code}` para confirmar se `protectedValue`/Valor FIPE e modelo/ano persistiram.
+
+Se o CRM exigir o clique de UI para gravar especificamente o campo visual “Valor FIPE”, vamos contornar buscando planos diretamente pelo endpoint documentado `/api/plans/`, usando `carModelId`, `carModelYearId`, `cityId` e `quotationWorkVehicle`, em vez de depender exclusivamente de `/quotation/plansQuotation`.
+
+### 5. Melhorar busca de planos reais
+
+Na função `get-crm-plans`:
+
+- Primeiro tentar `/quotation/plansQuotation` como hoje.
+- Se vier “Nenhum plano disponível”, buscar a cotação, pegar `mdl`, `mdlYr`, `city` e `workVehicle`.
+- Chamar `/api/plans/` com esses dados como fallback real do CRM.
+- Só exibir “valores estimados” se os dois caminhos falharem.
+
+### 6. Ajustar a mensagem no app
+
+Na página de resultado:
+
+- Se houver FIPE oficial mas o CRM ainda não devolveu plano, a mensagem será mais clara:
+  - “FIPE oficial encontrada, aguardando cálculo do CRM” durante as tentativas;
+  - “Usando valores estimados” somente se realmente não houver plano real após os fallbacks.
+
+## Arquivos que serão alterados
+
+- `supabase/functions/consulta-placa-crm/index.ts`
+- `supabase/functions/get-crm-plans/index.ts`
+- `supabase/functions/submit-to-crm/index.ts`
+- `src/contexts/QuoteContext.tsx`
+- `src/pages/Quote.tsx`
+- `src/pages/Result.tsx`
 
 ## Resultado esperado
 
-- Card do CRM aparece com **Valor FIPE: R$ 38.412,00** preenchido.
-- Modelo correto: **C3 Aircross** (não C3 Tendance).
-- O motor de planos do CRM passa a calcular → o app deixa de mostrar "valores estimados" e exibe os planos reais COMPLETO/PREMIUM.
-
-## Arquivos modificados
-- `supabase/functions/consulta-placa-crm/index.ts`
-- `supabase/functions/submit-to-crm/index.ts`
-- `supabase/functions/get-crm-plans/index.ts`
+- O app deixa de depender de média estimada quando o CRM consegue calcular plano real.
+- O usuário consegue confirmar o modelo exato quando a placa retorna algo ambíguo.
+- O card do CRM recebe modelo/ano/FIPE com maior precisão.
+- O cálculo dos planos passa a usar o modelo escolhido e o ano correto, reduzindo o caso de “Nenhum plano disponível”.
+- O comportamento da lupa do CRM será reproduzido por chamadas de API e verificação posterior, sem depender de automação visual frágil.

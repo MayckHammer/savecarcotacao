@@ -15,6 +15,15 @@ const BodySchema = z.object({
   }),
   plate: z.string().trim().min(6).max(10),
   vehicleType: z.enum(["carro", "moto", "caminhao"]).optional().default("carro"),
+  crmQuotationCode: z.string().trim().max(100).optional().or(z.literal("")),
+  selectedModel: z.object({
+    name: z.string().trim().max(255),
+    year: z.string().trim().max(30).optional().default(""),
+    fipeCode: z.string().trim().max(30).optional().default(""),
+    fipeValue: z.number().optional().default(0),
+    crmModelId: z.number(),
+    crmYearId: z.number().optional().nullable(),
+  }).optional(),
 });
 
 const CRM_BASE = "https://api.powercrm.com.br/api";
@@ -83,6 +92,18 @@ type Vehicle = {
   crmYearId?: number | null;
 };
 
+type CrmModelOption = {
+  code: string;
+  name: string;
+  year: string;
+  fipeCode?: string;
+  fipeValue: number;
+  fipeFormatted: string;
+  crmModelId: number;
+  crmYearId: number | null;
+  score: number;
+};
+
 // ===== CRM brand/model/year resolution =====
 type CrmItem = { id: number; nm?: string; name?: string; description?: string; ds?: string; text?: string };
 const brandsCache = new Map<string | number, CrmItem[]>(); // key: vehicleTypeId
@@ -124,6 +145,28 @@ function pickBestMatch(items: CrmItem[], target: string): CrmItem | null {
   return best?.item ?? null;
 }
 
+const formatBrl = (value: number): string =>
+  value > 0 ? `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "";
+
+const optionScore = (label: string, model: string, rawPlateName?: string): number => {
+  const raw = rawPlateName || "";
+  const brandlessRaw = normalize(raw).split(" ").filter((t) => t.length >= 3).join(" ");
+  const rawTokens = brandlessRaw.split(" ").filter(Boolean);
+  const expandedTokens = new Set<string>(rawTokens);
+  if (rawTokens.includes("airc")) expandedTokens.add("aircross");
+  if (rawTokens.includes("tend")) expandedTokens.add("tendance");
+
+  let score = Math.max(matchScore(model, label), matchScore(brandlessRaw, label));
+  const labelNorm = normalize(label);
+  for (const tok of expandedTokens) {
+    if (labelNorm.includes(tok)) score += tok.length >= 6 ? 260 : 180;
+  }
+  if ((expandedTokens.has("airc") || expandedTokens.has("aircross")) && !labelNorm.includes("aircross") && !labelNorm.includes("airc")) {
+    score -= 800;
+  }
+  return score;
+};
+
 async function fetchCrmBrands(token: string, vehicleTypeId: string | number): Promise<CrmItem[]> {
   if (brandsCache.has(vehicleTypeId)) return brandsCache.get(vehicleTypeId)!;
   try {
@@ -164,6 +207,45 @@ async function fetchCrmYears(token: string, modelId: number): Promise<CrmItem[]>
     yearsCache.set(modelId, arr);
     return arr;
   } catch (e) { console.error("fetchCrmYears error:", e); return []; }
+}
+
+async function buildCrmModelOptions(
+  token: string,
+  vehicleTypeId: string | number,
+  vehicle: Vehicle,
+): Promise<CrmModelOption[]> {
+  const brands = await fetchCrmBrands(token, vehicleTypeId);
+  const brandMatch = pickBestMatch(brands, vehicle.brand) || pickBestMatch(brands, vehicle.brandRaw?.split(/\s+/)[0] || "");
+  if (!brandMatch) return [];
+
+  const rawHint = `${vehicle.brandRaw || ""} ${vehicle.modelRaw || ""}`.trim();
+  const models = await fetchCrmModels(token, brandMatch.id);
+  const candidates = models
+    .map((item) => ({ item, score: optionScore(labelOf(item), vehicle.model, rawHint) }))
+    .filter((x) => x.score >= 250)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+
+  const targetYear = String(vehicle.year || "").split("/")[0].trim();
+  const out: CrmModelOption[] = [];
+  for (const candidate of candidates) {
+    const years = await fetchCrmYears(token, candidate.item.id);
+    let yearMatch = targetYear ? years.find((y) => normalize(labelOf(y)).startsWith(targetYear)) : null;
+    if (!yearMatch && targetYear) yearMatch = years.find((y) => normalize(labelOf(y)).includes(targetYear));
+    if (!yearMatch && years.length) yearMatch = years[0];
+    out.push({
+      code: String(candidate.item.id),
+      name: labelOf(candidate.item),
+      year: targetYear || (yearMatch ? labelOf(yearMatch) : vehicle.year),
+      fipeCode: vehicle.fipeCode,
+      fipeValue: vehicle.fipeValue || 0,
+      fipeFormatted: formatBrl(vehicle.fipeValue || 0),
+      crmModelId: candidate.item.id,
+      crmYearId: yearMatch?.id ?? null,
+      score: candidate.score,
+    });
+  }
+  return out;
 }
 
 export async function resolveCrmIds(
@@ -212,6 +294,9 @@ export async function resolveCrmIds(
     const labelNorm = normalize(label);
     for (const tok of expandedTokens) {
       if (labelNorm.includes(tok)) bonus += 250;
+    }
+    if ((expandedTokens.has("airc") || expandedTokens.has("aircross")) && !labelNorm.includes("aircross") && !labelNorm.includes("airc")) {
+      bonus -= 800;
     }
     const total = baseScore + bonus;
     if (total > 0 && (!bestModel || total > bestModel.score)) bestModel = { item: m, score: total };
@@ -416,7 +501,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const { personal, plate, vehicleType } = parsed.data;
+    const { personal, plate, vehicleType, crmQuotationCode, selectedModel } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     if (!token) {
       return new Response(JSON.stringify({ error: "POWERCRM_API_TOKEN not configured" }), {
@@ -432,6 +517,53 @@ Deno.serve(async (req) => {
     const types = await loadVehicleTypes(token);
     const vehicleTypeId = resolveVehicleTypeId(types, vehicleType);
     console.log(`Resolved vehicleType="${vehicleType}" → id=${vehicleTypeId}`);
+
+    if (crmQuotationCode && selectedModel) {
+      const updateBody: Record<string, unknown> = {
+        code: crmQuotationCode,
+        plates: plate,
+        plts: plate,
+        mdl: selectedModel.crmModelId,
+        carModel: selectedModel.crmModelId,
+        protectedValue: selectedModel.fipeValue || 0,
+        vhclFipeVl: selectedModel.fipeValue || 0,
+        vlFipe: selectedModel.fipeValue || 0,
+        fipeValue: selectedModel.fipeValue || 0,
+        workVehicle,
+      };
+      if (selectedModel.crmYearId) {
+        updateBody.mdlYr = selectedModel.crmYearId;
+        updateBody.carModelYear = selectedModel.crmYearId;
+      }
+      if (selectedModel.year) {
+        const yr = parseInt(String(selectedModel.year).split("/")[0], 10);
+        if (yr) updateBody.fabricationYear = yr;
+      }
+      if (selectedModel.fipeCode) {
+        updateBody.cdFp = selectedModel.fipeCode;
+        updateBody.codFipe = selectedModel.fipeCode;
+      }
+      if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
+
+      const upd = await fetch(`${CRM_BASE}/quotation/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(updateBody),
+      });
+      const updText = await upd.text();
+      console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 300));
+      await getQuotationFipe(token, crmQuotationCode);
+      await new Promise((r) => setTimeout(r, 1200));
+      const verify = await getQuotation(token, crmQuotationCode);
+      if (verify) {
+        console.log(`Selected model verify — mdl=${verify.mdl} mdlYr=${verify.mdlYr} vhclFipeVl=${verify.vhclFipeVl} protectedValue=${verify.protectedValue}`);
+      }
+
+      return new Response(JSON.stringify({ ok: upd.ok, quotationCode: crmQuotationCode, verify }), {
+        status: upd.ok ? 200 : 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // 1. Try to fetch the vehicle by plate FIRST (independent of any quotation)
     let vehicle: Vehicle | null = await fetchPlateFromCrm(token, plate, vehicleType);
@@ -540,15 +672,24 @@ Deno.serve(async (req) => {
       }
     }
 
+    let modelOptions: CrmModelOption[] = [];
+
     // 7. Resolve internal CRM brand/model/year IDs (so the card and plansQuotation can use them)
     if (vehicle && vehicleTypeId != null && vehicle.brand) {
       try {
         // Use the raw plate name (preserved before FIPE enrichment) for distinctive token matching
         const rawHint = `${vehicle.brandRaw || ""} ${vehicle.modelRaw || ""}`.trim() || undefined;
+        modelOptions = await buildCrmModelOptions(token, vehicleTypeId, vehicle);
         const ids = await resolveCrmIds(token, vehicleTypeId, vehicle.brand, vehicle.model, vehicle.year, rawHint);
         vehicle.crmBrandId = ids.crmBrandId;
         vehicle.crmModelId = ids.crmModelId;
         vehicle.crmYearId = ids.crmYearId;
+
+        if (modelOptions.length && ids.crmModelId) {
+          const selected = modelOptions.find((option) => option.crmModelId === ids.crmModelId);
+          if (selected) selected.score += 50;
+          modelOptions = [...modelOptions].sort((a, b) => (b.score || 0) - (a.score || 0));
+        }
 
         // 8. Push these IDs + FIPE value into the quotation immediately so the CRM card is populated
         if (ids.crmModelId || ids.crmYearId || vehicle.fipeValue) {
@@ -604,7 +745,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       quotationCode,
       negotiationCode,
-      vehicle,
+      vehicle: vehicle ? { ...vehicle, modelOptions } : null,
       vehicleType,
       vehicleTypeId,
     }), {
