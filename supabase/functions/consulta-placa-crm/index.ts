@@ -105,7 +105,7 @@ function extractVehicleFromAny(input: unknown, fallbackType: string): Vehicle | 
     const model = (c.model ?? c.modelo ?? c.modelName ?? c.carModel ?? c.mdl ?? c.nmModelo ?? c.name ?? "") as string;
     const year = (c.year ?? c.ano ?? c.modelYear ?? c.mdlYr ?? c.carModelYear ?? c.fabricationYear ?? "") as string | number;
     const color = (c.color ?? c.cor ?? "") as string;
-    const fipeCode = (c.fipeCode ?? c.cdFp ?? c.code ?? "") as string;
+    const fipeCode = (c.fipeCode ?? c.codFipe ?? c.codeFipe ?? c.codigoFipe ?? c.cdFp ?? "") as string;
     const fipeValue = parseFipeValue(
       c.fipeValue ?? c.vlFipe ?? c.valorFipe ?? c.protectedValue ?? c.value,
     );
@@ -140,6 +140,67 @@ async function fetchPlateFromCrm(token: string, plate: string, fallbackType: str
     return extractVehicleFromAny(data, fallbackType);
   } catch (e) {
     console.error("fetchPlateFromCrm error:", e);
+    return null;
+  }
+}
+
+// ===== FIPE enrichment via Parallelum API by FIPE code =====
+const FIPE_BASE = "https://fipe.parallelum.com.br/api/v2";
+const FIPE_TYPE_PATH: Record<string, string> = {
+  carro: "cars",
+  moto: "motorcycles",
+  caminhao: "trucks",
+};
+
+const parsePriceBrl = (raw: string): number => {
+  if (!raw) return 0;
+  const cleaned = String(raw).replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
+};
+
+async function enrichFromFipeByCode(
+  fipeCode: string,
+  vehicleType: string,
+  plateYear: string,
+): Promise<Partial<Vehicle> | null> {
+  const token = Deno.env.get("FIPE_ONLINE_TOKEN");
+  if (!token || !fipeCode) return null;
+  const typePath = FIPE_TYPE_PATH[vehicleType] || "cars";
+  const headers = { "X-Subscription-Token": token };
+
+  try {
+    const yearsRes = await fetch(`${FIPE_BASE}/${typePath}/${fipeCode}/years`, { headers });
+    if (!yearsRes.ok) {
+      console.log(`FIPE years lookup failed: ${yearsRes.status}`);
+      return null;
+    }
+    const years = (await yearsRes.json()) as { code: string; name: string }[];
+    if (!Array.isArray(years) || years.length === 0) return null;
+
+    // Pick year matching the plate year (e.g. "2025/2025" or "2025"); fallback to first
+    const targetYear = (plateYear || "").split("/")[0]?.trim();
+    const yearMatch = targetYear
+      ? years.find((y) => y.code?.startsWith(`${targetYear}-`)) || years.find((y) => y.code?.startsWith(targetYear))
+      : null;
+    const yearId = (yearMatch || years[0]).code;
+
+    const detailRes = await fetch(`${FIPE_BASE}/${typePath}/${fipeCode}/years/${yearId}`, { headers });
+    if (!detailRes.ok) {
+      console.log(`FIPE detail lookup failed: ${detailRes.status}`);
+      return null;
+    }
+    const detail = await detailRes.json() as Record<string, unknown>;
+    const fipeValue = parsePriceBrl(String(detail.price ?? ""));
+    return {
+      brand: String(detail.brand ?? ""),
+      model: String(detail.model ?? ""),
+      year: String(detail.modelYear ?? yearId),
+      fipeCode: String(detail.codeFipe ?? fipeCode),
+      fipeValue,
+    };
+  } catch (e) {
+    console.error("enrichFromFipeByCode error:", e);
     return null;
   }
 }
@@ -221,11 +282,13 @@ Deno.serve(async (req) => {
       email: personal.email || "",
       registration: cpfDigits,
       plts: plate || "",
+      plates: plate || "",
       workVehicle,
     };
     if (vehicleTypeId != null) {
       // Sent as reinforcement; CRM accepts via the same field name as its UI uses.
       crmPayload.vhclType = vehicleTypeId;
+      crmPayload.vehicleType = vehicleTypeId;
     }
 
     console.log("Creating CRM quotation with payload:", JSON.stringify(crmPayload));
@@ -294,6 +357,23 @@ Deno.serve(async (req) => {
         if (vehicle) break;
       }
       if (vehicle) console.log("Vehicle resolved via polling:", JSON.stringify(vehicle));
+    }
+
+    // 6. Enrich with FIPE API by code (vehicle.fipeCode) when model/value missing
+    if (vehicle && vehicle.fipeCode && (!vehicle.model || !vehicle.fipeValue)) {
+      console.log(`Enriching via FIPE API by code: ${vehicle.fipeCode}`);
+      const enriched = await enrichFromFipeByCode(vehicle.fipeCode, vehicleType, vehicle.year);
+      if (enriched) {
+        console.log("FIPE enrichment result:", JSON.stringify(enriched));
+        vehicle = {
+          ...vehicle,
+          brand: enriched.brand || vehicle.brand,
+          model: enriched.model || vehicle.model,
+          year: enriched.year || vehicle.year,
+          fipeCode: enriched.fipeCode || vehicle.fipeCode,
+          fipeValue: enriched.fipeValue || vehicle.fipeValue,
+        };
+      }
     }
 
     return new Response(JSON.stringify({

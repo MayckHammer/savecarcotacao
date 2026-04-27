@@ -1,90 +1,56 @@
 ## Diagnóstico
 
-Pelos logs do teste com a placa `TEV3H48`:
+Ainda não deu certo porque o CRM retornou dados parciais para a placa `TEV3H48`:
 
-- O app enviou corretamente `vehicleType: "moto"`.
-- A integração resolveu corretamente o tipo do CRM: `Moto -> id=2`.
-- A cotação foi criada no CRM com `plts: "TEV3H48"` e `vhclType: 2`.
-- O retorno do CRM ainda veio sem dados de veículo: `mdl`, `mdlYr`, `carModel`, `protectedValue` todos `null`.
-- A chamada que tentamos usar como “lupa” (`GET /quotation/quotationFipeApi`) retornou `502`, então ela não está sendo o caminho correto para iniciar a busca pela placa nesse momento.
+```text
+brand: "SHINERAY XY150-8"
+model: ""
+year: "2025/2025"
+codFipe: "850036-3"
+fipeValue: 0
+vehicleType: "MOTOCICLETA"
+```
 
-Também conferi a documentação local da API do CRM. O campo `vhclType` não aparece no Swagger como campo oficial de `quotation/add` ou `quotation/update`, apesar de existir no HTML do card. Isso indica que o problema pode sim ser divergência entre o campo visual do card e o contrato público da API. O caminho mais promissor encontrado na documentação é outro: `GET /api/quotation/plates/{plate}`, descrito como “Informação da placa do carro”.
+Ou seja: a placa foi encontrada, mas nosso extrator não pegou `codFipe` porque estava procurando `fipeCode`/`cdFp`/`code`, e o app exige `marca + modelo` para considerar o veículo identificado. Como o modelo veio vazio e o valor FIPE veio zero, o app caiu para preenchimento manual.
+
+Também há um ponto importante: no retorno do CRM, a “marca” veio como `SHINERAY XY150-8`, que na prática é marca + modelo juntos. Então o app precisa separar/normalizar isso ou consultar a FIPE usando o `codFipe` retornado.
 
 ## Plano de correção
 
-### 1. Usar a consulta direta por placa do CRM antes de criar/atualizar a cotação
-Alterar `consulta-placa-crm` para consultar:
+1. Ajustar a função `consulta-placa-crm`
+   - Ler também os campos `codFipe`, `codeFipe` e `codigoFipe`.
+   - Quando o CRM retornar `vehicleType: MOTOCICLETA`, confirmar automaticamente o tipo como moto.
+   - Quando o CRM retornar `brand` contendo marca + modelo, tentar separar a marca real do modelo.
 
-```text
-GET /api/quotation/plates/{plate}
-```
+2. Enriquecer dados pela FIPE usando o código FIPE
+   - Se o CRM retornar `codFipe`, chamar a API FIPE por código:
+     - buscar anos disponíveis por código FIPE;
+     - escolher o ano compatível com o ano da placa (`2025/2025`);
+     - buscar detalhes do veículo para obter `brand`, `model`, `modelYear`, `price` e `codeFipe`.
+   - Com isso, o app não dependerá do CRM devolver o modelo e valor FIPE completos.
 
-Esse endpoint deve ser usado como primeira tentativa para obter os dados do veículo pela placa, em vez de depender do card do CRM preencher FIPE automaticamente.
+3. Corrigir a regra do app após consultar placa
+   - Considerar o veículo identificado quando houver `brand + model`, ou quando a função conseguir completar esses dados via FIPE.
+   - Se vier apenas parcial, mostrar mensagem mais clara: “Placa encontrada, mas FIPE/modelo não retornou; complete manualmente”.
+   - Guardar `fipeCode` no estado para ajudar futuras sincronizações.
 
-### 2. Normalizar o retorno do CRM em um único formato para o app
-Criar um extrator mais robusto que aceite possíveis formatos do CRM, por exemplo:
+4. Reforçar envio ao CRM
+   - Enviar a placa como `plts` e `plates` já na criação do card, não só no update.
+   - Continuar enviando o tipo do veículo, mas testar também campos alternativos se necessário (`vehicleType` numérico/string além de `vhclType`) sem quebrar o card.
 
-```text
-body.brand / body.marca / body.model / body.modelo / body.carModel / body.mdl
-body.year / body.ano / body.modelYear / body.mdlYr / body.carModelYear
-body.fipeValue / body.valorFipe / body.protectedValue
-body.color / body.cor
-body.fipeCode / body.cdFp
-```
-
-Assim, mesmo que o endpoint retorne os dados dentro de `body`, `data`, array ou objeto direto, o app recebe sempre:
-
-```text
-{ brand, model, year, color, fipeCode, fipeValue, type }
-```
-
-### 3. Criar a cotação no CRM com os dados já conhecidos
-Depois da consulta por placa, criar a cotação com:
-
-- `plts`
-- `workVehicle`
-- dados pessoais
-- dados do veículo quando existirem (`carModel`, `carModelYear`, `mdl`, `mdlYr`, `protectedValue`, `color`) somente se o retorno trouxer códigos/campos compatíveis.
-
-O campo de tipo continuará sendo enviado como reforço, mas não será mais a única dependência para obter FIPE.
-
-### 4. Corrigir a atualização da cotação existente
-No fluxo do passo 3 (`submit-to-crm` com `skipCrm=true`), reforçar a placa com os dois campos aceitos pela API:
-
-```text
-plts
-plates
-```
-
-Hoje a atualização usa principalmente `plates`, e vimos nos retornos que o CRM diferencia `plts` e `plates`. Isso pode explicar parte do comportamento de “a placa não voltou / não atualizou como esperado”.
-
-### 5. Melhorar mensagens no app
-No app, quando a API retornar `vehicle: null`, mostrar uma mensagem mais clara:
-
-```text
-Não foi possível buscar automaticamente os dados dessa placa no CRM. Você pode preencher manualmente.
-```
-
-E quando retornar dados parciais, preencher o que veio e manter o restante manual.
-
-## Resultado esperado
-
-Com essa alteração, o fluxo deixa de depender do preenchimento visual do card do CRM para retornar FIPE. A integração passa a:
-
-```text
-App envia placa + tipo
-        ↓
-Backend consulta placa diretamente no CRM
-        ↓
-Backend cria/atualiza card no CRM com placa, tipo e dados encontrados
-        ↓
-App recebe marca/modelo/ano/FIPE quando o CRM retornar esses dados
-```
+5. Validar com a placa do teste
+   - Testar a função `consulta-placa-crm` diretamente com:
+     - placa `TEV3H48`
+     - tipo `moto`
+   - Confirmar que a resposta final passa a trazer marca, modelo, ano, código FIPE e valor FIPE preenchidos para o app.
 
 ## Arquivos a alterar
 
 - `supabase/functions/consulta-placa-crm/index.ts`
-- `supabase/functions/submit-to-crm/index.ts`
+- `src/contexts/QuoteContext.tsx`
 - `src/pages/Quote.tsx`
+- possivelmente `supabase/functions/submit-to-crm/index.ts` para reforçar o payload final ao CRM
 
-Após implementar, vou redeployar as funções e você poderá fazer um novo teste real com a placa de moto.
+## Resultado esperado
+
+Ao consultar a placa de moto, o app deve preencher automaticamente os dados do veículo usando o retorno do CRM + enriquecimento FIPE, em vez de deixar marca/modelo/ano em branco. O card no CRM também deve receber placa e tipo reforçados no payload inicial e no update.
