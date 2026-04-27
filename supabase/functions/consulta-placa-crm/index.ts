@@ -14,7 +14,91 @@ const BodySchema = z.object({
     cpf: z.string().trim().max(20).optional().or(z.literal("")),
   }),
   plate: z.string().trim().min(6).max(10),
+  vehicleType: z.enum(["carro", "moto", "caminhao"]).optional().default("carro"),
 });
+
+// ===== Vehicle type → CRM mapping =====
+// IDs and names from CRM's GET /api/quotation/vehicleTypes ("Zapier" schema).
+// We cache the full list once per worker boot and resolve by fuzzy name match.
+type CrmVehicleType = { id: number | string; name?: string; nm?: string; label?: string; description?: string; ds?: string };
+let vehicleTypesCache: CrmVehicleType[] | null = null;
+
+const TYPE_KEYWORDS: Record<string, string[]> = {
+  carro: ["carro", "utilitário pequeno", "utilitario pequeno", "automóvel", "automovel", "passeio"],
+  moto: ["moto", "motocicleta", "motoneta", "scooter"],
+  caminhao: ["caminhão", "caminhao", "micro-ônibus", "micro onibus", "microonibus", "ônibus", "onibus", "truck"],
+};
+
+async function loadVehicleTypes(token: string): Promise<CrmVehicleType[]> {
+  if (vehicleTypesCache) return vehicleTypesCache;
+  try {
+    const res = await fetch("https://api.powercrm.com.br/api/quotation/vehicleTypes", {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      console.error("vehicleTypes fetch failed:", res.status);
+      return [];
+    }
+    const data = await res.json();
+    vehicleTypesCache = Array.isArray(data) ? data : (data?.data || []);
+    console.log("Loaded vehicleTypes:", JSON.stringify(vehicleTypesCache));
+    return vehicleTypesCache!;
+  } catch (e) {
+    console.error("loadVehicleTypes error:", e);
+    return [];
+  }
+}
+
+function resolveVehicleTypeId(types: CrmVehicleType[], userType: string): number | string | null {
+  const keywords = TYPE_KEYWORDS[userType] || TYPE_KEYWORDS.carro;
+  for (const t of types) {
+    const label = ((t.label || t.name || t.nm || t.description || t.ds || "") + "").toLowerCase();
+    if (!label) continue;
+    if (keywords.some((kw) => label.includes(kw))) {
+      return t.id;
+    }
+  }
+  return null;
+}
+
+async function setVehicleTypeOnQuotation(
+  token: string,
+  quotationCode: string,
+  userType: string,
+): Promise<{ ok: boolean; vehicleTypeId: number | string | null }> {
+  const types = await loadVehicleTypes(token);
+  const vehicleTypeId = resolveVehicleTypeId(types, userType);
+  if (!vehicleTypeId) {
+    console.log("Could not resolve vehicleTypeId for", userType, "from", types.length, "types");
+    return { ok: false, vehicleTypeId: null };
+  }
+
+  const workVehicle = userType === "caminhao";
+  // Try multiple field shapes — CRM versions accept different keys
+  const payloads = [
+    { code: quotationCode, vehicleType: vehicleTypeId, workVehicle },
+    { code: quotationCode, vehicleTypeId, workVehicle },
+    { code: quotationCode, type: vehicleTypeId, workVehicle },
+  ];
+
+  for (const payload of payloads) {
+    try {
+      const res = await fetch("https://api.powercrm.com.br/api/quotation/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const text = await res.text();
+      console.log("setVehicleType payload:", JSON.stringify(payload), "→", res.status, text.substring(0, 200));
+      if (res.ok) {
+        return { ok: true, vehicleTypeId };
+      }
+    } catch (e) {
+      console.error("setVehicleType attempt error:", e);
+    }
+  }
+  return { ok: false, vehicleTypeId };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -30,7 +114,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const { personal, plate } = parsed.data;
+    const { personal, plate, vehicleType } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
 
     if (!token) {
@@ -42,13 +126,14 @@ Deno.serve(async (req) => {
     const phone = (personal.phone || "").replace(/\D/g, "");
     const cpfDigits = (personal.cpf || "").replace(/\D/g, "");
 
-    // 1. Create minimal quotation in CRM
+    // 1. Create minimal quotation in CRM (with workVehicle hint)
     const crmPayload = {
       name: personal.name || "",
       phone,
       email: personal.email || "",
       registration: cpfDigits,
       plts: plate || "",
+      workVehicle: vehicleType === "caminhao",
     };
 
     console.log("Creating CRM quotation with payload:", JSON.stringify(crmPayload));
@@ -77,7 +162,12 @@ Deno.serve(async (req) => {
     const quotationCode = crmData.quotationCode;
     const negotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
 
-    // 2. Add tag 23323 ("30 seg") — response is plain text
+    // 2. Set vehicle type on the quotation BEFORE DENATRAN poll — this is what
+    //    triggers the CRM to dispatch the correct DENATRAN/FIPE lookup.
+    const typeResult = await setVehicleTypeOnQuotation(token, quotationCode, vehicleType);
+    console.log("Vehicle type set result:", JSON.stringify(typeResult));
+
+    // 3. Add tag 23323 ("30 seg") — response is plain text
     try {
       const tagRes = await fetch("https://api.powercrm.com.br/api/quotation/add-tag", {
         method: "POST",
@@ -227,6 +317,9 @@ Deno.serve(async (req) => {
       quotationCode,
       negotiationCode,
       vehicle,
+      vehicleType,
+      vehicleTypeId: typeResult.vehicleTypeId,
+      vehicleTypeSet: typeResult.ok,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

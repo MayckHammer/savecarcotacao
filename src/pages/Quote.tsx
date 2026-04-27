@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ArrowLeft, AlertCircle, Loader2, Car, Search } from "lucide-react";
+import { ArrowRight, ArrowLeft, AlertCircle, Loader2, Car, Search, Bike, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -147,11 +147,19 @@ const Quote = () => {
       setErrors({ plate: "Placa inválida" });
       return;
     }
+    if (!quote.vehicle.type) {
+      setErrors({ type: "Selecione o tipo de veículo antes de consultar" });
+      return;
+    }
     setPlateLoading(true);
     setFipeError("");
     try {
       const { data, error } = await supabase.functions.invoke("consulta-placa-crm", {
-        body: { personal: quote.personal, plate: quote.vehicle.plate },
+        body: {
+          personal: quote.personal,
+          plate: quote.vehicle.plate,
+          vehicleType: quote.vehicle.type,
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -159,6 +167,10 @@ const Quote = () => {
       if (data?.quotationCode) {
         setCrmQuotationCode(data.quotationCode);
         if (data.negotiationCode) setCrmNegotiationCode(data.negotiationCode);
+      }
+      // Persist resolved CRM vehicle type id for later updates
+      if (data?.vehicleTypeId) {
+        updateVehicle({ vehicleTypeId: data.vehicleTypeId } as Partial<typeof quote.vehicle>);
       }
 
       if (data?.vehicle) {
@@ -173,7 +185,7 @@ const Quote = () => {
           model: v.model || "",
           year: v.year || "",
           color: v.color || "",
-          type: v.type || "carro",
+          // Keep user-selected type; only override if CRM disagrees AND user picked default
           ...(fipeValueFromCrm > 0 ? { fipeValue: fipeValueFromCrm, fipeFormatted: fipeFormattedFromCrm } : {}),
         });
         // Only mark as consulted if CRM actually identified the vehicle
@@ -192,7 +204,7 @@ const Quote = () => {
         setPlateConsulted(false);
         toast.info("Veículo não identificado. Preencha manualmente.");
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Consulta placa error:", e);
       toast.error("Erro ao consultar placa. Preencha manualmente.");
     } finally {
@@ -350,7 +362,43 @@ const Quote = () => {
         {step === 2 && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-foreground">Dados do Veículo</h2>
-            
+
+            {/* Tipo do veículo — primeiro campo, igual ao CRM */}
+            <div>
+              <Label>Tipo do veículo</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Selecione antes de consultar a placa para que o sistema busque os dados corretos.
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: "carro", label: "Carro", icon: Car },
+                  { value: "moto", label: "Moto", icon: Bike },
+                  { value: "caminhao", label: "Caminhão", icon: Truck },
+                ].map(({ value, label, icon: Icon }) => {
+                  const selected = quote.vehicle.type === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        handleTypeChange(value);
+                        setPlateConsulted(false);
+                      }}
+                      className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 p-3 transition-all ${
+                        selected
+                          ? "border-primary bg-primary/10 text-primary shadow-sm"
+                          : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                      }`}
+                    >
+                      <Icon className="h-6 w-6" />
+                      <span className="text-xs font-medium">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <ErrorMsg field="type" />
+            </div>
+
             <div>
               <Label>Placa do veículo</Label>
               <div className="flex gap-2">
@@ -366,7 +414,7 @@ const Quote = () => {
                 <Button
                   type="button"
                   onClick={handleConsultaPlaca}
-                  disabled={plateLoading || quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").length < 7}
+                  disabled={plateLoading || quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").length < 7 || !quote.vehicle.type}
                   className="shrink-0"
                 >
                   {plateLoading ? (
@@ -429,20 +477,6 @@ const Quote = () => {
             {/* Manual FIPE selection — show only if NOT consulted via CRM */}
             {!plateConsulted && (
               <>
-                {/* Tipo do veículo */}
-                <div>
-                  <Label>Tipo do veículo</Label>
-                  <Select value={quote.vehicle.type} onValueChange={handleTypeChange}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="carro">Carro</SelectItem>
-                      <SelectItem value="moto">Moto</SelectItem>
-                      <SelectItem value="caminhao">Caminhão / Pick-up</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <ErrorMsg field="type" />
-                </div>
-
                 {/* Marca */}
                 <div>
                   <Label>Marca</Label>
@@ -539,22 +573,6 @@ const Quote = () => {
                   </Card>
                 )}
               </>
-            )}
-
-            {/* Tipo — show when plate consulted but type needs selection */}
-            {plateConsulted && (
-              <div>
-                <Label>Tipo do veículo</Label>
-                <Select value={quote.vehicle.type} onValueChange={(v) => updateVehicle({ type: v })}>
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="carro">Carro</SelectItem>
-                    <SelectItem value="moto">Moto</SelectItem>
-                    <SelectItem value="caminhao">Caminhão / Pick-up</SelectItem>
-                  </SelectContent>
-                </Select>
-                <ErrorMsg field="type" />
-              </div>
             )}
 
             <div>

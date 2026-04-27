@@ -66,6 +66,7 @@ const BodySchema = z.object({
     usage: z.string().optional().default(""),
     fipeValue: z.number().optional().default(0),
     fipeFormatted: z.string().optional().default(""),
+    vehicleTypeId: z.union([z.string(), z.number()]).optional().nullable(),
   }).passthrough(),
   address: z.object({
     cep: z.string().optional().default(""),
@@ -114,6 +115,7 @@ Deno.serve(async (req) => {
       plan_data: plan || {},
       inspection_status: "pending",
       crm_submitted: false,
+      vehicle_type: vehicle.type || null,
     });
 
     if (dbError) {
@@ -169,10 +171,15 @@ Deno.serve(async (req) => {
       email: personal.email || "",
       registration: cpfDigits,
       plts: vehicle.plate || "",
-      workVehicle: vehicle.usage === "aplicativo",
+      workVehicle: vehicle.type === "caminhao" || vehicle.usage === "aplicativo",
       observation,
     };
     if (cityCode) crmPayload.city = cityCode;
+    const vtNew = (vehicle as Record<string, unknown>).vehicleTypeId;
+    if (vtNew) {
+      crmPayload.vehicleType = vtNew;
+      crmPayload.vehicleTypeId = vtNew;
+    }
 
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     let crmSuccess = !!skipCrm;
@@ -224,7 +231,7 @@ Deno.serve(async (req) => {
           registration: cpfDigits,
           phoneMobile1: phone,
           plates: vehicle.plate,
-          workVehicle: vehicle.usage === "aplicativo",
+          workVehicle: vehicle.type === "caminhao" || vehicle.usage === "aplicativo",
           addressZipcode: address.cep?.replace(/\D/g, ""),
           addressAddress: address.street,
           addressNumber: address.number || "S/N",
@@ -234,6 +241,12 @@ Deno.serve(async (req) => {
           observation,
         };
         if (cityCode) updatePayload.city = cityCode;
+        // Reinforce vehicle type in case it was lost between steps
+        const vt = (vehicle as Record<string, unknown>).vehicleTypeId;
+        if (vt) {
+          updatePayload.vehicleType = vt;
+          updatePayload.vehicleTypeId = vt;
+        }
 
         const sendUpdate = async () => {
           console.log("Updating CRM quotation:", JSON.stringify(updatePayload, null, 2));
