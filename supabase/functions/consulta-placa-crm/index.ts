@@ -82,7 +82,7 @@ type Vehicle = {
 };
 
 // ===== CRM brand/model/year resolution =====
-type CrmItem = { id: number; nm?: string; name?: string; description?: string; ds?: string };
+type CrmItem = { id: number; nm?: string; name?: string; description?: string; ds?: string; text?: string };
 const brandsCache = new Map<string | number, CrmItem[]>(); // key: vehicleTypeId
 const modelsCache = new Map<number, CrmItem[]>(); // key: brandId
 const yearsCache = new Map<number, CrmItem[]>(); // key: modelId
