@@ -12,7 +12,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { session_id, inspection_status, inspection_link } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const session_id = typeof body?.session_id === "string" ? body.session_id.trim() : "";
+    const inspection_status = typeof body?.inspection_status === "string" ? body.inspection_status : "";
+    const inspection_link = typeof body?.inspection_link === "string" ? body.inspection_link : undefined;
 
     if (!session_id || !inspection_status) {
       return new Response(

@@ -18,8 +18,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { cep } = await req.json();
-    const clean = (cep || '').replace(/\D/g, '');
+    const body = await req.json().catch(() => ({}));
+    const cep = typeof body?.cep === 'string' ? body.cep : '';
+    const clean = cep.replace(/\D/g, '');
 
     if (clean.length !== 8) {
       return new Response(JSON.stringify({ error: 'CEP inválido' }), {
