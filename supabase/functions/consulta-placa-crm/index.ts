@@ -610,15 +610,24 @@ Deno.serve(async (req) => {
       }
     }
 
+    let modelOptions: CrmModelOption[] = [];
+
     // 7. Resolve internal CRM brand/model/year IDs (so the card and plansQuotation can use them)
     if (vehicle && vehicleTypeId != null && vehicle.brand) {
       try {
         // Use the raw plate name (preserved before FIPE enrichment) for distinctive token matching
         const rawHint = `${vehicle.brandRaw || ""} ${vehicle.modelRaw || ""}`.trim() || undefined;
+        modelOptions = await buildCrmModelOptions(token, vehicleTypeId, vehicle);
         const ids = await resolveCrmIds(token, vehicleTypeId, vehicle.brand, vehicle.model, vehicle.year, rawHint);
         vehicle.crmBrandId = ids.crmBrandId;
         vehicle.crmModelId = ids.crmModelId;
         vehicle.crmYearId = ids.crmYearId;
+
+        if (modelOptions.length && ids.crmModelId) {
+          const selected = modelOptions.find((option) => option.crmModelId === ids.crmModelId);
+          if (selected) selected.score += 50;
+          modelOptions = [...modelOptions].sort((a, b) => (b.score || 0) - (a.score || 0));
+        }
 
         // 8. Push these IDs + FIPE value into the quotation immediately so the CRM card is populated
         if (ids.crmModelId || ids.crmYearId || vehicle.fipeValue) {
@@ -674,7 +683,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       quotationCode,
       negotiationCode,
-      vehicle,
+      vehicle: vehicle ? { ...vehicle, modelOptions } : null,
       vehicleType,
       vehicleTypeId,
     }), {
