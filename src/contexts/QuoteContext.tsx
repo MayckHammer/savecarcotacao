@@ -20,6 +20,7 @@ export interface VehicleData {
   brandCode: string;
   modelCode: string;
   yearCode: string;
+  vehicleTypeId?: string | number | null;
 }
 
 export interface AddressData {
