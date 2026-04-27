@@ -163,17 +163,27 @@ const Quote = () => {
 
       if (data?.vehicle) {
         const v = data.vehicle;
+        const fipeValueFromCrm = Number(v.fipeValue) || 0;
+        const fipeFormattedFromCrm = fipeValueFromCrm > 0
+          ? `R$ ${fipeValueFromCrm.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : "";
+
         updateVehicle({
           brand: v.brand || "",
           model: v.model || "",
           year: v.year || "",
           color: v.color || "",
           type: v.type || "carro",
+          ...(fipeValueFromCrm > 0 ? { fipeValue: fipeValueFromCrm, fipeFormatted: fipeFormattedFromCrm } : {}),
         });
         // Only mark as consulted if CRM actually identified the vehicle
         if (v.brand && v.model) {
           setPlateConsulted(true);
-          toast.success("Veículo identificado com sucesso!");
+          if (fipeValueFromCrm > 0) {
+            toast.success(`Veículo identificado! FIPE: ${fipeFormattedFromCrm}`);
+          } else {
+            toast.success("Veículo identificado com sucesso!");
+          }
         } else {
           setPlateConsulted(false);
           toast.info("Veículo não identificado pelo CRM. Preencha manualmente.");
