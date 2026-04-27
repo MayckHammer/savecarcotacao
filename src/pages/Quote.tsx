@@ -290,6 +290,7 @@ const Quote = () => {
     } else {
       if (!quote.vehicle.brand) e.brand = "Marca não identificada";
       if (!quote.vehicle.model) e.model = "Modelo não identificado";
+      if ((quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode) e.model = "Confirme o modelo";
     }
     if (!quote.vehicle.type) e.type = "Selecione o tipo";
     if (!quote.vehicle.usage) e.usage = "Selecione o uso";
@@ -530,6 +531,28 @@ const Quote = () => {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {plateConsulted && (quote.vehicle.modelOptions?.length || 0) > 1 && (
+              <div>
+                <Label>Confirme o modelo do veículo</Label>
+                <SearchableSelect
+                  options={quote.vehicle.modelOptions || []}
+                  value={quote.vehicle.modelCode}
+                  onValueChange={handleCrmModelConfirm}
+                  placeholder="Selecione o modelo exato"
+                  searchPlaceholder="Buscar modelo..."
+                  emptyMessage="Nenhum modelo encontrado."
+                  loading={confirmingModel}
+                  loadingMessage="Atualizando CRM..."
+                />
+                {quote.vehicle.fipeFormatted && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    FIPE encontrada: {quote.vehicle.fipeFormatted}{quote.vehicle.fipeCode ? ` — código ${quote.vehicle.fipeCode}` : ""}
+                  </p>
+                )}
+                <ErrorMsg field="model" />
+              </div>
             )}
 
             {/* Manual FIPE selection — show only if NOT consulted via CRM */}
