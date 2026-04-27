@@ -225,7 +225,7 @@ Deno.serve(async (req) => {
           registration: cpfDigits,
           phoneMobile1: phone,
           plates: vehicle.plate,
-          workVehicle: vehicle.usage === "aplicativo",
+          workVehicle: vehicle.type === "caminhao" || vehicle.usage === "aplicativo",
           addressZipcode: address.cep?.replace(/\D/g, ""),
           addressAddress: address.street,
           addressNumber: address.number || "S/N",
@@ -235,6 +235,12 @@ Deno.serve(async (req) => {
           observation,
         };
         if (cityCode) updatePayload.city = cityCode;
+        // Reinforce vehicle type in case it was lost between steps
+        const vt = (vehicle as Record<string, unknown>).vehicleTypeId;
+        if (vt) {
+          updatePayload.vehicleType = vt;
+          updatePayload.vehicleTypeId = vt;
+        }
 
         const sendUpdate = async () => {
           console.log("Updating CRM quotation:", JSON.stringify(updatePayload, null, 2));
