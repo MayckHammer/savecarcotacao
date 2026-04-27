@@ -83,6 +83,18 @@ type Vehicle = {
   crmYearId?: number | null;
 };
 
+type CrmModelOption = {
+  code: string;
+  name: string;
+  year: string;
+  fipeCode?: string;
+  fipeValue: number;
+  fipeFormatted: string;
+  crmModelId: number;
+  crmYearId: number | null;
+  score: number;
+};
+
 // ===== CRM brand/model/year resolution =====
 type CrmItem = { id: number; nm?: string; name?: string; description?: string; ds?: string; text?: string };
 const brandsCache = new Map<string | number, CrmItem[]>(); // key: vehicleTypeId
@@ -123,6 +135,25 @@ function pickBestMatch(items: CrmItem[], target: string): CrmItem | null {
   }
   return best?.item ?? null;
 }
+
+const formatBrl = (value: number): string =>
+  value > 0 ? `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "";
+
+const optionScore = (label: string, model: string, rawPlateName?: string): number => {
+  const raw = rawPlateName || "";
+  const brandlessRaw = normalize(raw).split(" ").filter((t) => t.length >= 3).join(" ");
+  const rawTokens = brandlessRaw.split(" ").filter(Boolean);
+  const expandedTokens = new Set<string>(rawTokens);
+  if (rawTokens.includes("airc")) expandedTokens.add("aircross");
+  if (rawTokens.includes("tend")) expandedTokens.add("tendance");
+
+  let score = Math.max(matchScore(model, label), matchScore(brandlessRaw, label));
+  const labelNorm = normalize(label);
+  for (const tok of expandedTokens) {
+    if (labelNorm.includes(tok)) score += tok.length >= 6 ? 260 : 180;
+  }
+  return score;
+};
 
 async function fetchCrmBrands(token: string, vehicleTypeId: string | number): Promise<CrmItem[]> {
   if (brandsCache.has(vehicleTypeId)) return brandsCache.get(vehicleTypeId)!;
