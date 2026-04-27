@@ -286,6 +286,9 @@ export async function resolveCrmIds(
     for (const tok of expandedTokens) {
       if (labelNorm.includes(tok)) bonus += 250;
     }
+    if ((expandedTokens.has("airc") || expandedTokens.has("aircross")) && !labelNorm.includes("aircross") && !labelNorm.includes("airc")) {
+      bonus -= 800;
+    }
     const total = baseScore + bonus;
     if (total > 0 && (!bestModel || total > bestModel.score)) bestModel = { item: m, score: total };
   }
