@@ -282,11 +282,13 @@ Deno.serve(async (req) => {
       email: personal.email || "",
       registration: cpfDigits,
       plts: plate || "",
+      plates: plate || "",
       workVehicle,
     };
     if (vehicleTypeId != null) {
       // Sent as reinforcement; CRM accepts via the same field name as its UI uses.
       crmPayload.vhclType = vehicleTypeId;
+      crmPayload.vehicleType = vehicleTypeId;
     }
 
     console.log("Creating CRM quotation with payload:", JSON.stringify(crmPayload));
