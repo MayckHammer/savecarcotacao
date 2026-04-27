@@ -76,7 +76,141 @@ type Vehicle = {
   fipeValue: number;
   type: string;
   city?: string;
+  crmBrandId?: number | null;
+  crmModelId?: number | null;
+  crmYearId?: number | null;
 };
+
+// ===== CRM brand/model/year resolution =====
+type CrmItem = { id: number; nm?: string; name?: string; description?: string; ds?: string };
+const brandsCache = new Map<string | number, CrmItem[]>(); // key: vehicleTypeId
+const modelsCache = new Map<number, CrmItem[]>(); // key: brandId
+const yearsCache = new Map<number, CrmItem[]>(); // key: modelId
+
+const labelOf = (it: CrmItem): string =>
+  (it.nm || it.name || it.description || it.ds || "").toString();
+
+const normalize = (s: string): string =>
+  s.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // strip accents
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+// Score how well two strings match: exact > startsWith > all tokens included > token overlap
+function matchScore(target: string, candidate: string): number {
+  const t = normalize(target);
+  const c = normalize(candidate);
+  if (!t || !c) return 0;
+  if (t === c) return 1000;
+  if (c.startsWith(t) || t.startsWith(c)) return 800;
+  const tTokens = t.split(" ").filter((x) => x.length > 1);
+  const cTokens = c.split(" ").filter((x) => x.length > 1);
+  if (tTokens.every((tk) => cTokens.includes(tk))) return 600;
+  const overlap = tTokens.filter((tk) => cTokens.includes(tk)).length;
+  if (overlap > 0) return 100 + overlap * 50;
+  return 0;
+}
+
+function pickBestMatch(items: CrmItem[], target: string): CrmItem | null {
+  if (!items?.length || !target) return null;
+  let best: { item: CrmItem; score: number } | null = null;
+  for (const it of items) {
+    const s = matchScore(target, labelOf(it));
+    if (s > 0 && (!best || s > best.score)) best = { item: it, score: s };
+  }
+  return best?.item ?? null;
+}
+
+async function fetchCrmBrands(token: string, vehicleTypeId: string | number): Promise<CrmItem[]> {
+  if (brandsCache.has(vehicleTypeId)) return brandsCache.get(vehicleTypeId)!;
+  try {
+    const r = await fetch(`${CRM_BASE}/quotation/cb?type=${encodeURIComponent(String(vehicleTypeId))}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!r.ok) return [];
+    const data = await r.json();
+    const arr: CrmItem[] = Array.isArray(data) ? data : (data?.data || []);
+    brandsCache.set(vehicleTypeId, arr);
+    return arr;
+  } catch (e) { console.error("fetchCrmBrands error:", e); return []; }
+}
+
+async function fetchCrmModels(token: string, brandId: number): Promise<CrmItem[]> {
+  if (modelsCache.has(brandId)) return modelsCache.get(brandId)!;
+  try {
+    const r = await fetch(`${CRM_BASE}/quotation/cm?cb=${brandId}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!r.ok) return [];
+    const data = await r.json();
+    const arr: CrmItem[] = Array.isArray(data) ? data : (data?.data || []);
+    modelsCache.set(brandId, arr);
+    return arr;
+  } catch (e) { console.error("fetchCrmModels error:", e); return []; }
+}
+
+async function fetchCrmYears(token: string, modelId: number): Promise<CrmItem[]> {
+  if (yearsCache.has(modelId)) return yearsCache.get(modelId)!;
+  try {
+    const r = await fetch(`${CRM_BASE}/quotation/cmy?cm=${modelId}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!r.ok) return [];
+    const data = await r.json();
+    const arr: CrmItem[] = Array.isArray(data) ? data : (data?.data || []);
+    yearsCache.set(modelId, arr);
+    return arr;
+  } catch (e) { console.error("fetchCrmYears error:", e); return []; }
+}
+
+export async function resolveCrmIds(
+  token: string,
+  vehicleTypeId: string | number,
+  brand: string,
+  model: string,
+  year: string,
+): Promise<{ crmBrandId: number | null; crmModelId: number | null; crmYearId: number | null }> {
+  const out = { crmBrandId: null as number | null, crmModelId: null as number | null, crmYearId: null as number | null };
+  if (!brand) return out;
+
+  // Brand: try with full name, then with first word (e.g. "SHINERAY XY150-8" → "SHINERAY")
+  const brands = await fetchCrmBrands(token, vehicleTypeId);
+  let brandMatch = pickBestMatch(brands, brand);
+  if (!brandMatch) {
+    const firstWord = brand.split(/\s+/)[0];
+    if (firstWord && firstWord !== brand) brandMatch = pickBestMatch(brands, firstWord);
+  }
+  if (!brandMatch) {
+    console.log(`CRM brand not found for "${brand}"`);
+    return out;
+  }
+  out.crmBrandId = brandMatch.id;
+  console.log(`CRM brand matched: "${brand}" → ${labelOf(brandMatch)} (id=${brandMatch.id})`);
+
+  if (!model) return out;
+  const models = await fetchCrmModels(token, brandMatch.id);
+  const modelMatch = pickBestMatch(models, model);
+  if (!modelMatch) {
+    console.log(`CRM model not found for "${model}" under brand ${labelOf(brandMatch)}`);
+    return out;
+  }
+  out.crmModelId = modelMatch.id;
+  console.log(`CRM model matched: "${model}" → ${labelOf(modelMatch)} (id=${modelMatch.id})`);
+
+  if (!year) return out;
+  const targetYear = String(year).split("/")[0].trim();
+  const years = await fetchCrmYears(token, modelMatch.id);
+  // year items typically have label like "2025" or "2025 Gasolina"
+  let yearMatch = years.find((y) => normalize(labelOf(y)).startsWith(targetYear));
+  if (!yearMatch) yearMatch = years.find((y) => normalize(labelOf(y)).includes(targetYear));
+  if (!yearMatch && years.length) yearMatch = years[0]; // fallback to most recent
+  if (yearMatch) {
+    out.crmYearId = yearMatch.id;
+    console.log(`CRM year matched: "${targetYear}" → ${labelOf(yearMatch)} (id=${yearMatch.id})`);
+  }
+  return out;
+}
 
 // Generic extractor — accepts CRM data wrapped in many shapes (object, {body}, {data}, [array])
 function extractVehicleFromAny(input: unknown, fallbackType: string): Vehicle | null {
