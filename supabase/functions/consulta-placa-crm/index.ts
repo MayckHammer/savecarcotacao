@@ -236,13 +236,15 @@ async function buildCrmModelOptions(
     let yearMatch = targetYear ? years.find((y) => normalize(labelOf(y)).startsWith(targetYear)) : null;
     if (!yearMatch && targetYear) yearMatch = years.find((y) => normalize(labelOf(y)).includes(targetYear));
     if (!yearMatch && years.length) yearMatch = years[0];
+    const optionYear = targetYear || (yearMatch ? labelOf(yearMatch) : vehicle.year);
+    const fipe = await fetchFipeByModelLabel(vehicle.brand, labelOf(candidate.item), optionYear, vehicle.type);
     out.push({
       code: String(candidate.item.id),
       name: labelOf(candidate.item),
-      year: targetYear || (yearMatch ? labelOf(yearMatch) : vehicle.year),
-      fipeCode: vehicle.fipeCode,
-      fipeValue: vehicle.fipeValue || 0,
-      fipeFormatted: formatBrl(vehicle.fipeValue || 0),
+      year: optionYear,
+      fipeCode: fipe?.fipeCode || "",
+      fipeValue: fipe?.fipeValue || 0,
+      fipeFormatted: fipe?.fipeFormatted || "",
       crmModelId: candidate.item.id,
       crmYearId: yearMatch?.id ?? null,
       score: candidate.score,
