@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
     const workVehicle = vehicleType === "caminhao";
     console.log(`Resolved vehicleType="${vehicleType}" → id=${vehicleTypeId}`);
 
-    // 1. Create quotation in CRM — include vehicleType candidates on add too
+    // 1. Create quotation in CRM — include vhclType on add (key discovered via CRM UI)
     const crmPayload: Record<string, unknown> = {
       name: personal.name || "",
       phone,
@@ -164,8 +164,7 @@ Deno.serve(async (req) => {
       workVehicle,
     };
     if (vehicleTypeId != null) {
-      crmPayload.vehicleType = vehicleTypeId;
-      crmPayload.vehicleTypeId = vehicleTypeId;
+      crmPayload.vhclType = vehicleTypeId;
     }
 
     console.log("Creating CRM quotation with payload:", JSON.stringify(crmPayload));
@@ -187,10 +186,10 @@ Deno.serve(async (req) => {
     const quotationCode = crmData.quotationCode;
     const negotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
 
-    // 2. Set vehicle type via /update with verification (discovers correct key name)
-    let typeResult = { ok: false, keyUsed: null as string | null };
+    // 2. Reinforce vhclType via /update and verify it persisted
+    let typeResult = { ok: false };
     if (vehicleTypeId != null) {
-      typeResult = await setVehicleTypeWithVerify(token, quotationCode, vehicleTypeId, workVehicle);
+      typeResult = await setVehicleType(token, quotationCode, vehicleTypeId, workVehicle);
     }
 
     // 3. Add tag 23323 ("30 seg")
@@ -205,9 +204,9 @@ Deno.serve(async (req) => {
       console.error("Error adding tag:", e);
     }
 
-    // 4. Explicitly trigger DENATRAN lookup (mimics operator clicking the magnifier)
-    const denatranEndpoint = await triggerDenatranLookup(token, quotationCode, plate);
-    console.log("DENATRAN trigger endpoint result:", denatranEndpoint);
+    // 4. Trigger DENATRAN lookup (same call CRM UI's magnifier makes). Non-fatal.
+    const denatranOk = await triggerDenatranLookup(token, quotationCode);
+    console.log("DENATRAN trigger ok:", denatranOk);
 
     // ===== Helpers for vehicle data extraction =====
     const detectType = (brand: string, model: string): string => {
