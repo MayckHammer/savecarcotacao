@@ -1,110 +1,88 @@
-## Revisão geral do app + integrações com Power CRM
+## Problema
 
-Fiz uma varredura no frontend (`Quote`, `Result`, `PlanDetails`, `Inspection`, `Admin`, `QuoteContext`) e nas 7 edge functions (`consulta-cep`, `consulta-placa`, `consulta-placa-crm`, `submit-to-crm`, `get-crm-plans`, `get-inspection-link`, `update-inspection`), além de checar os logs e os últimos 10 registros da tabela `quotes`.
+O CRM Power tem um campo **"Tipo de veículo"** (Carro, Moto, Caminhão) que precisa estar preenchido **antes** da consulta DETRAN — é ele que dispara a busca FIPE/DENATRAN correta. Hoje nosso `consulta-placa-crm` envia só `name`, `phone`, `email`, `registration`, `plts` e o CRM fica em "Dados incompletos" porque o tipo nunca é definido. Resultado: a placa é inserida mas o DETRAN não retorna nada útil porque o CRM não sabe se é carro, moto ou caminhão.
 
-## Diagnóstico rápido
+Olhando o swagger do CRM, o campo correto é **`workVehicle`** (boolean — se é veículo de trabalho/comercial) e o **tipo de veículo em si vem do endpoint `GET /api/quotation/vehicleTypes`**, com IDs que podem ser passados na criação da cotação. Não há um campo simples `vehicleType` no `QuotationAddRequest` do swagger — o tipo é inferido pelo CRM a partir do **modelo (`carModel`)** que enviamos depois. Mas o CRM precisa de um sinal antes do DENATRAN.
 
-**Funcionando bem:**
-- Fluxo de 3 passos (dados → veículo → endereço), captura de placa via CRM com polling adaptativo, fallback FIPE manual, CEP com ViaCEP+BrasilAPI, vistoria obrigatória antes do pagamento, painel admin.
-- Tabela `quotes` com RLS, edge functions com CORS e tratamento de erros razoável.
+## Solução: detectar o tipo a partir da placa e do banco brasileiro
 
-**Problemas reais encontrados nos logs e no código:**
+O Brasil tem padrões fortes que permitem inferir o tipo de veículo **antes** mesmo de qualquer consulta:
 
-1. **`open-inspection` está retornando HTTP 500 logo após criar a cotação** (visto nos logs: "Internal Server Error" na consulta de placa). Isso acontece porque o CRM ainda não tem dados suficientes (sem FIPE, sem endereço) na hora que `consulta-placa-crm` tenta abrir a vistoria. Resultado: nenhuma vistoria é aberta de fato no início e `inspection_link` fica `null` (confirmado no DB — todos `has_link = false`).
-
-2. **Vistoria nunca é reaberta depois que os dados ficam completos.** Após `submit-to-crm` rodar com FIPE + endereço, ninguém chama `open-inspection` de novo. Por isso o `inspection_link` nunca chega.
-
-3. **Código duplicado entre `consulta-placa-crm` e `submit-to-crm`** (lógica de criar quotation, add-tag, open-inspection repetida). Difícil de manter.
-
-4. **`get-inspection-link` faz polling sem nunca chamar `open-inspection`**, então mesmo com retry o link nunca aparece se a abertura inicial falhou.
-
-5. **`Result.tsx` espera 3 segundos fixos** antes de buscar planos, e `get-crm-plans` faz 4 retries com delays até 12s — soma pode passar de 50s antes do usuário ver erro. Sem feedback visual durante esse tempo.
-
-6. **`localStorage` em `defaultQuote` quebra SSR-safety** e mistura sessão antiga com nova cotação (`session_id` vem inicializado mesmo após `resetQuote`).
-
-7. **Lookup de cidade/estado em `submit-to-crm`** chama `utilities.powercrm.com.br` toda vez sem cache — desperdício a cada submissão.
-
-8. **`PLACAFIPE_API_TOKEN` não está configurado** mas você já decidiu seguir sem ele — ok, mas ainda há código de import quebrado em `package.json`/`tsconfig` de uma tentativa anterior que não chequei a fundo. Vou validar e remover se sobrar lixo.
-
-9. **Sem rate-limit / sem validação Zod** nas edge functions públicas (`verify_jwt = false`). Qualquer um pode floodar `consulta-placa-crm` e gerar leads falsos no CRM.
-
-10. **Diversos `any` e `console.log` verbosos no frontend**, sem unificação de tipos para a resposta do CRM.
+1. **SINIAV/DENATRAN não diferencia por placa** — mas a **categoria** sim (placas vermelhas = aluguel/táxi, placas pretas = colecionador). Para tipo (carro/moto/caminhão), placa sozinha não basta.
+2. **Solução real**: usar uma **API gratuita de consulta de placa que já retorna o tipo**, antes de chamar o CRM. Já temos a function `consulta-placa` (placas-api / api.invertexto via tokens públicos) que retorna `vehicleType`. Vamos usá-la **como pré-passo** para descobrir o tipo e mandar pro CRM.
+3. **Fallback IA**: se a API pública não responder em 3s, usar **Lovable AI (Gemini Flash)** para classificar o tipo a partir do prefixo da placa + heurísticas do estado/região (baixa confiabilidade, mas evita travar o fluxo).
 
 ## O que será feito
 
-### Edge Functions
+### 1. Frontend (`Quote.tsx` — passo 2)
 
-**a) `consulta-placa-crm`**
-- Remover a chamada `open-inspection` daqui (ela falha cedo demais). Manter apenas: criar quotation + add-tag + polling adaptativo de dados do veículo.
-- Adicionar validação Zod no body (`personal`, `plate`).
+- Adicionar um seletor visual **"Tipo de veículo"** com 3 opções (Carro, Moto, Caminhão) **antes** do campo placa, idêntico ao do CRM.
+- Pré-selecionar **"Carro"** por padrão (cobre ~85% dos casos).
+- Mostrar como `RadioGroup` em cards com ícones (Car, Bike, Truck do lucide-react), no estilo Loovi (verde + glassmorphism).
+- Enviar `vehicleType: "carro" | "moto" | "caminhao"` no body do `consulta-placa-crm`.
 
-**b) `submit-to-crm`**
-- Após o `update` da quotation com FIPE + endereço persistidos (verificado por `verifyUpdate`), **chamar `open-inspection` aqui** — agora sim com dados completos. Salvar `inspection_link` em `quotes` se vier de imediato.
-- Cachear lookup de estado/cidade num `Map` em memória (vida útil do worker) para evitar chamar `utilities.powercrm.com.br` toda vez.
-- Centralizar helpers (`getCityCode`, `openInspection`) em comentários de seção para ficar mais legível.
+### 2. Edge Function `consulta-placa-crm`
 
-**c) `get-inspection-link`**
-- Se o link ainda não existe e a quotation tem FIPE + endereço, chamar `open-inspection` antes do polling (auto-recovery).
+- Aceitar `vehicleType` no schema Zod.
+- **Chamar internamente `consulta-placa`** (API pública) primeiro, em paralelo com a criação da cotação no CRM, para validar/confirmar o tipo escolhido.
+- Se a API pública retornar tipo diferente do escolhido pelo usuário, usar o da API (mais confiável).
+- Mapear tipo → IDs do CRM: buscar `GET /api/quotation/vehicleTypes` (cacheado em memória do worker — só 1x por boot) e fazer o match pelo nome ("Carro ou utilitário pequeno", "Moto", "Caminhão ou micro-ônibus").
 
-**d) `get-crm-plans`**
-- Reduzir delays: 3s → 5s → 7s → 9s (era 5/8/10/12). Total cai de ~35s para ~24s.
-- Devolver o motivo exato no `warning` para o frontend exibir mensagem útil.
+### 3. Atualização da cotação no CRM com o tipo
 
-**e) Validação de input com Zod em todas as functions públicas** (`consulta-placa-crm`, `submit-to-crm`, `consulta-cep`, `consulta-placa`, `update-inspection`, `get-crm-plans`, `get-inspection-link`). Retorna 400 com erro claro se body inválido.
+- O endpoint `quotation/add` aceita `workVehicle: boolean`. Mas o **tipo de veículo em si** (carro/moto/caminhão) é definido por outro endpoint. Investigar 2 opções no swagger:
+  - **Opção A**: passar `vehicleTypeId` no `quotation/update` (algumas versões aceitam mesmo sem documentar).
+  - **Opção B**: chamar `POST /api/quotation/{quotationCode}/vehicle-type` se existir, ou usar `quotation/forceVehicleCityChange` + `update` com o tipo.
+- Vou testar via `supabase--curl_edge_functions` e logs reais qual aceita o campo. Documentar no log o payload aceito.
+- Definir em `consulta-placa-crm` logo após `quotation/add`, antes do polling DENATRAN, **garantindo que o tipo está setado no CRM** — assim o DENATRAN dispara corretamente.
 
-**f) Rate-limiting simples por IP+CPF** em `consulta-placa-crm` e `submit-to-crm` (10 chamadas / 5 min usando `Map` in-memory). Suficiente para barrar flood básico sem complicar.
+### 4. `submit-to-crm`
 
-### Frontend
+- Incluir `vehicleType` no payload de `update` para reforçar (caso o CRM perca entre passos).
 
-**g) `Result.tsx`** — Substituir o `setTimeout(3000)` fixo por polling do `get-crm-plans` com loading visível ("Calculando seu plano..." com 3 dots animados). Mostrar `warning` se vier do edge.
+### 5. Banco
 
-**h) `QuoteContext.tsx`** — Tirar `localStorage.getItem` do `defaultQuote` (resetQuote agora limpa de verdade). Hidratar sessão num `useEffect` no provider em vez do default.
-
-**i) `Quote.tsx`** — Tipar resposta do CRM (`CrmPlateResponse` interface), eliminar `any` dos handlers FIPE.
-
-**j) Limpar lixo** — verificar `package.json`/`tsconfig.json` por dependências/paths órfãos da tentativa de placafipe.com.br e remover o que sobrou.
-
-### Banco
-
-**k) Adicionar índice em `quotes(session_id)` e `quotes(crm_quotation_code)`** — hoje as queries fazem full scan. Migration simples.
-
-**l) Coluna `last_crm_sync_at timestamptz`** em `quotes` para rastrear última sincronização e ajudar debug futuro.
+- Adicionar coluna `vehicle_type text` em `quotes` para auditoria.
 
 ## O que NÃO será feito
 
-- Não vou trocar para placafipe.com.br (você já decidiu).
-- Não vou adicionar autenticação de usuário (fluxo é público por design).
-- Não vou refatorar o layout das páginas.
-- Não vou mexer no `PlanDetails` (acabamos de ajustar).
+- Não vou usar IA para detectar tipo pela placa (placa brasileira não carrega essa informação — daria resultado pior que perguntar ao usuário).
+- Não vou remover o seletor manual: usuário sempre pode corrigir antes de submeter.
+- Não vou mexer no fluxo de FIPE manual fallback (já funciona).
 
 ## Detalhes técnicos
 
 ```text
-Fluxo atual (problema):
-[Quote step 2] → consulta-placa-crm → cria quotation + open-inspection (FALHA 500)
-[Quote step 3] → submit-to-crm → update quotation com FIPE+endereço
-[Result]       → get-crm-plans (planos OK)
-[Inspection]   → get-inspection-link → polling sem reabrir → link NUNCA chega
+Fluxo atual:
+[Quote step 2] usuário digita placa → consulta-placa-crm → CRM cria cotação SEM tipo
+                                                         → DENATRAN não dispara
+                                                         → polling vazio → FIPE manual
 
 Fluxo proposto:
-[Quote step 2] → consulta-placa-crm → cria quotation + tag (sem open-inspection)
-[Quote step 3] → submit-to-crm → update + verify + open-inspection (agora funciona)
-[Result]       → get-crm-plans com polling visível
-[Inspection]   → get-inspection-link → se sem link, tenta open-inspection + polling
+[Quote step 2] usuário escolhe tipo (Carro padrão) + placa
+   → consulta-placa-crm:
+       a) cria cotação no CRM (com workVehicle se Caminhão)
+       b) seta vehicleType via endpoint dedicado
+       c) chama consulta-placa pública em paralelo p/ confirmar tipo
+       d) polling DENATRAN agora retorna dados corretos
+   → frontend recebe vehicle preenchido + fipeValue
+   → fluxo segue normal
+```
+
+Mapeamento tipo → CRM (a confirmar via teste com `vehicleTypes` endpoint):
+```ts
+const TYPE_MAP: Record<string, { name: string; workVehicle: boolean }> = {
+  carro:    { name: "Carro ou utilitário pequeno", workVehicle: false },
+  moto:     { name: "Moto",                         workVehicle: false },
+  caminhao: { name: "Caminhão ou micro-ônibus",     workVehicle: true  },
+};
 ```
 
 Arquivos a modificar:
-- `supabase/functions/consulta-placa-crm/index.ts`
-- `supabase/functions/submit-to-crm/index.ts`
-- `supabase/functions/get-inspection-link/index.ts`
-- `supabase/functions/get-crm-plans/index.ts`
-- `supabase/functions/consulta-cep/index.ts`
-- `supabase/functions/consulta-placa/index.ts`
-- `supabase/functions/update-inspection/index.ts`
-- `src/pages/Result.tsx`
-- `src/pages/Quote.tsx`
-- `src/contexts/QuoteContext.tsx`
-- `package.json` / `tsconfig.json` (limpeza, se houver lixo)
-- Nova migration: índices + coluna `last_crm_sync_at`
+- `src/pages/Quote.tsx` — adicionar seletor tipo de veículo no passo 2
+- `src/contexts/QuoteContext.tsx` — adicionar `vehicleType` ao state
+- `supabase/functions/consulta-placa-crm/index.ts` — aceitar tipo, buscar `vehicleTypes`, setar no CRM
+- `supabase/functions/submit-to-crm/index.ts` — reforçar tipo no update
+- Nova migration: `alter table quotes add column vehicle_type text`
 
-Após aprovação, deploy automático das edge functions modificadas e validação rápida com `supabase--curl_edge_functions` em uma cotação de teste para confirmar que o `inspection_link` agora chega.
+Após aprovação, deploy automático e teste real com uma placa de cada tipo para confirmar que o CRM recebe corretamente e o DENATRAN dispara.

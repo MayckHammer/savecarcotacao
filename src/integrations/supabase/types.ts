@@ -30,6 +30,7 @@ export type Database = {
           session_id: string
           updated_at: string
           vehicle_data: Json
+          vehicle_type: string | null
         }
         Insert: {
           address_data?: Json
@@ -46,6 +47,7 @@ export type Database = {
           session_id: string
           updated_at?: string
           vehicle_data?: Json
+          vehicle_type?: string | null
         }
         Update: {
           address_data?: Json
@@ -62,6 +64,7 @@ export type Database = {
           session_id?: string
           updated_at?: string
           vehicle_data?: Json
+          vehicle_type?: string | null
         }
         Relationships: []
       }
