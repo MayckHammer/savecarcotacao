@@ -1,93 +1,68 @@
-## Diagnóstico
+## Causa raiz confirmada pelo print + swagger
 
-O erro continua porque a automação anterior tentou endpoints que não existem para a ação da lupa no Power CRM:
+O endpoint `GET /api/quotation/quotationFipeApi?quotationCode=...` que aparece no print está sendo chamado corretamente. O problema **não é a "lupa"** — é o **payload do `/quotation/update`**.
 
-```text
-/quotation/getPlate       -> 405
-/quotation/plateConsult   -> 405
-/quotation/consultPlate   -> 405
+O schema oficial `QuotationUpdateRequest` (em `tmp/swagger.json`) aceita **apenas 3 campos** ligados ao veículo/FIPE:
+
+| Campo | Tipo | Significado |
+|---|---|---|
+| `mdl` | integer | ID do modelo no CRM |
+| `mdlYr` | integer | ID do ano no CRM |
+| `protectedValue` | number | **Valor da FIPE (campo oficial)** |
+
+Hoje a função `consulta-placa-crm` envia 9 aliases (`vhclFipeVl`, `vlFipe`, `fipeValue`, `cdFp`, `codFipe`, etc.). O CRM **ignora silenciosamente** todos eles e por isso o card nunca recebe o valor.
+
+## Correção
+
+### 1. `supabase/functions/consulta-placa-crm/index.ts` — limpar payload de update
+
+Substituir o `updateBody` (linhas ~690–740) por **somente os 3 campos do schema oficial**, mais os campos de placa/identificação que a função já usa hoje:
+
+```ts
+const updateBody: Record<string, unknown> = {
+  code: crmQuotationCode,
+  plates: vehicle.plate,
+  mdl: selectedModel.crmModelId,            // ID modelo CRM
+  mdlYr: selectedModel.crmYearId,            // ID ano CRM
+  protectedValue: recomputedFipeValue || 0,  // valor FIPE oficial
+};
 ```
 
-Na documentação local do CRM, os endpoints válidos para este caso são:
+Remover o segundo update "FIPE-only" (com `cdFp`, `codFipe`, `vhclFipeVl`, etc.) — esses campos não existem no schema e poluem logs.
+
+### 2. Sequência correta de chamadas (ordem importa)
+
+Após o `update` enxuto, o CRM precisa calcular o `cdFp` internamente. A sequência válida é:
 
 ```text
-GET  /api/quotation/plates/{plate}              Consulta placa/DETRAN
-GET  /api/quotation/quotationFipeApi?quotationCode=...  Dispara/consulta FIPE da cotação
-POST /api/quotation/update                      Atualiza cotação
-GET  /api/quotation/{quotationCode}             Confere cotação
+1. POST /api/quotation/update    { code, plates, mdl, mdlYr, protectedValue }
+2. GET  /api/quotation/quotationFipeApi?quotationCode={code}   ← dispara cálculo FIPE
+3. GET  /api/quotation/{code}     ← polling até confirmar persistência
 ```
 
-Também identifiquei outro problema: as opções de modelo no app estão sendo montadas com o mesmo código/valor FIPE retornado pela placa (`011117-1 / R$ 38.412,00`). Por isso, quando o usuário escolhe `AIRCROSS Live 1.5`, o app continua exibindo o valor antigo, e o CRM recebe dados inconsistentes.
+### 3. Polling de verificação — ler o campo correto
 
-## Plano de correção
+Em `getQuotation`, ler `protectedValue` (campo oficial) como fonte primária. Manter leitura dos aliases apenas como fallback de exibição:
 
-### 1. Parar de usar endpoints inválidos para a lupa
-
-Remover a tentativa de chamar:
-
-```text
-/quotation/getPlate
-/quotation/plateConsult
-/quotation/consultPlate
+```ts
+crmFipeValue = parseFipeValue(verify.protectedValue ?? verify.vhclFipeVl ?? verify.vlFipe);
 ```
 
-Substituir por uma rotina compatível com a API documentada:
+### 4. `get-crm-plans` — usar `protectedValue` como base de cálculo
 
-1. Atualiza placa/modelo/ano na cotação via `/quotation/update`.
-2. Chama `/quotation/quotationFipeApi?quotationCode=...` para forçar a rotina FIPE interna da cotação.
-3. Reconsulta `/quotation/{quotationCode}` com polling para confirmar persistência.
-4. Se o CRM ainda não preencher, aplica novo `/quotation/update` apenas com `protectedValue` e campos oficiais aceitos.
+Quando o plano vier do CRM, validar consistência com `protectedValue` da cotação em vez de `vhclFipeVl`.
 
-### 2. Buscar a FIPE correta do modelo selecionado, sem reaproveitar o valor antigo
+### 5. Logs
 
-No `consulta-placa-crm`:
-
-- Ao montar `modelOptions`, não copiar cegamente o `fipeCode/fipeValue` da placa para todas as opções.
-- Para cada opção candidata do CRM, tentar resolver o código/valor FIPE do par `crmModelId + crmYearId`.
-- Como o swagger não documenta um endpoint `cmf`, vou implementar uma rotina de fallback robusta:
-  - usar dados do CRM quando vierem em campos como `back`, `text`, `cdFp`, `codFipe`;
-  - se o CRM não trouxer o código, buscar na API FIPE por marca/modelo/ano com matching por nome;
-  - retornar cada opção com seu próprio `fipeCode`, `fipeValue` e `fipeFormatted`.
-
-### 3. Corrigir envio para o card do CRM
-
-No update da cotação, manter apenas os campos aceitos/documentados como base e reforçar aliases que já são usados pelo CRM:
-
-```text
-code
-plates / plts
-mdl / carModel
-mdlYr / carModelYear
-fabricationYear
-protectedValue
-```
-
-E continuar enviando aliases de FIPE quando úteis (`vhclFipeVl`, `vlFipe`, `fipeValue`, `cdFp`, `codFipe`), mas a verificação principal deve considerar que `protectedValue` é o campo documentado e pode ser a fonte para cálculo/plano.
-
-### 4. Corrigir o aviso de “valores estimados” na tela Resultado
-
-No `get-crm-plans`:
-
-- Melhorar o diagnóstico quando `/quotation/{code}` ainda não estiver disponível imediatamente, aguardando/repetindo antes de retornar “Não foi possível conferir a cotação no CRM”.
-- Na tela `/resultado`, só mostrar o aviso amarelo de valores estimados quando realmente não houver planos do CRM após as tentativas.
-- Se houver FIPE oficial no app mas o CRM demorar, mostrar mensagem mais precisa: “Aguardando confirmação do CRM” durante o carregamento, em vez de cair cedo em estimado.
-
-### 5. Verificação final com logs
-
-Após implementar:
-
-- Deploy das funções alteradas.
-- Teste da função com uma placa real e modelo selecionado.
-- Conferência dos logs para confirmar:
-  - nenhum 405 da falsa lupa;
-  - FIPE recalculada para o modelo selecionado;
-  - `/quotation/quotationFipeApi` chamado;
-  - cotação retornando valor FIPE/protectedValue maior que zero;
-  - `/get-crm-plans` não retornando aviso indevido quando a cotação estiver completa.
+Adicionar log explícito antes do update mostrando exatamente os 3 campos enviados, para confirmar nos próximos testes que o CRM agora recebe `protectedValue` corretamente.
 
 ## Arquivos a alterar
 
-- `supabase/functions/consulta-placa-crm/index.ts`
-- `supabase/functions/get-crm-plans/index.ts`
-- `src/pages/Quote.tsx`
-- `src/pages/Result.tsx`
+- `supabase/functions/consulta-placa-crm/index.ts` — payload de update + sequência de chamadas
+- `supabase/functions/get-crm-plans/index.ts` — leitura via `protectedValue`
+
+## Verificação após deploy
+
+1. Refazer cotação com placa real.
+2. Confirmar nos logs: 1 chamada `update` (200), 1 `quotationFipeApi` (200), polling com `protectedValue > 0`.
+3. Abrir o card no Power CRM e confirmar que o campo "Valor FIPE" aparece preenchido.
