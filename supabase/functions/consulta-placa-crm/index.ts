@@ -52,7 +52,7 @@ async function loadVehicleTypes(token: string): Promise<CrmVehicleType[]> {
 function resolveVehicleTypeId(types: CrmVehicleType[], userType: string): number | string | null {
   const keywords = TYPE_KEYWORDS[userType] || TYPE_KEYWORDS.carro;
   for (const t of types) {
-    const label = ((t.name || t.nm || t.description || t.ds || "") + "").toLowerCase();
+    const label = ((t.label || t.name || t.nm || t.description || t.ds || "") + "").toLowerCase();
     if (!label) continue;
     if (keywords.some((kw) => label.includes(kw))) {
       return t.id;
