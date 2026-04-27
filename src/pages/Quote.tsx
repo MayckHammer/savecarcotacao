@@ -185,11 +185,11 @@ const Quote = () => {
           model: v.model || "",
           year: v.year || "",
           color: v.color || "",
-          // Keep user-selected type; only override if CRM disagrees AND user picked default
           ...(fipeValueFromCrm > 0 ? { fipeValue: fipeValueFromCrm, fipeFormatted: fipeFormattedFromCrm } : {}),
         });
-        // Only mark as consulted if CRM actually identified the vehicle
-        if (v.brand && v.model) {
+        // Consider identified if we have brand + model + (fipe value OR year)
+        const isFullyIdentified = !!v.brand && !!v.model && (fipeValueFromCrm > 0 || !!v.year);
+        if (isFullyIdentified) {
           setPlateConsulted(true);
           if (fipeValueFromCrm > 0) {
             toast.success(`Veículo identificado! FIPE: ${fipeFormattedFromCrm}`);
@@ -198,7 +198,11 @@ const Quote = () => {
           }
         } else {
           setPlateConsulted(false);
-          toast.info("Veículo não identificado pelo CRM. Preencha manualmente.");
+          if (v.brand) {
+            toast.info(`Placa encontrada (${v.brand}), mas FIPE/modelo não veio completo. Selecione manualmente abaixo.`);
+          } else {
+            toast.info("Veículo não identificado pelo CRM. Preencha manualmente.");
+          }
         }
       } else {
         setPlateConsulted(false);
