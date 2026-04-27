@@ -22,7 +22,12 @@ serve(async (req) => {
       );
     }
 
-    const { action, brandCode, modelCode, yearCode, vehicleType } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const action = typeof body?.action === 'string' ? body.action : '';
+    const brandCode = typeof body?.brandCode === 'string' ? body.brandCode : '';
+    const modelCode = typeof body?.modelCode === 'string' ? body.modelCode : '';
+    const yearCode = typeof body?.yearCode === 'string' ? body.yearCode : '';
+    const vehicleType = typeof body?.vehicleType === 'string' ? body.vehicleType : '';
     const type = VALID_TYPES.includes(vehicleType) ? vehicleType : 'cars';
     const headers = { 'X-Subscription-Token': token };
 

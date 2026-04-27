@@ -5,7 +5,7 @@ const corsHeaders = {
 };
 
 async function fetchPlansWithRetry(quotationCode: string, token: string, maxAttempts = 4): Promise<{ plans: unknown[]; error?: string }> {
-  const delays = [5000, 8000, 10000, 12000]; // progressive delays in ms
+  const delays = [3000, 5000, 7000, 9000]; // progressive delays in ms (~24s total)
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     console.log(`Fetching plans attempt ${attempt}/${maxAttempts} for ${quotationCode}`);
     
@@ -110,10 +110,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { quotationCode } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const quotationCode = typeof body?.quotationCode === "string" ? body.quotationCode.trim() : "";
 
-    if (!quotationCode) {
-      return new Response(JSON.stringify({ error: "quotationCode required" }), {
+    if (!quotationCode || quotationCode.length > 100) {
+      return new Response(JSON.stringify({ error: "Valid quotationCode required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

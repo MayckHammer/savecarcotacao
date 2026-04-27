@@ -10,16 +10,32 @@ import { supabase } from "@/integrations/supabase/client";
 const Result = () => {
   const navigate = useNavigate();
   const { quote, resetQuote, setCrmPlans } = useQuote();
-  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [loadingPlans, setLoadingPlans] = useState(true);
+  const [planWarning, setPlanWarning] = useState<string | null>(null);
+  const [progressDots, setProgressDots] = useState(".");
+
+  // Animated dots while loading
+  useEffect(() => {
+    if (!loadingPlans) return;
+    const t = setInterval(() => {
+      setProgressDots((d) => (d.length >= 3 ? "." : d + "."));
+    }, 500);
+    return () => clearInterval(t);
+  }, [loadingPlans]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchCrmPlans = async () => {
-      // Get quotationCode from DB using sessionId
-      if (!quote.sessionId) return;
+      if (!quote.sessionId) {
+        setLoadingPlans(false);
+        return;
+      }
 
       try {
-        // Wait for CRM to process the quotation update before fetching plans
-        await new Promise(r => setTimeout(r, 3000));
+        // Short initial wait so the CRM has a chance to process the update
+        await new Promise((r) => setTimeout(r, 1500));
+        if (cancelled) return;
 
         const { data } = await supabase
           .from("quotes")
@@ -27,25 +43,35 @@ const Result = () => {
           .eq("session_id", quote.sessionId)
           .single();
 
-        if (!data?.crm_quotation_code) return;
+        if (!data?.crm_quotation_code) {
+          setLoadingPlans(false);
+          return;
+        }
 
-        setLoadingPlans(true);
         const { data: plansData, error } = await supabase.functions.invoke("get-crm-plans", {
           body: { quotationCode: data.crm_quotation_code },
         });
 
+        if (cancelled) return;
+
         if (!error && plansData?.plans?.length > 0) {
           setCrmPlans(plansData.plans);
           console.log("CRM plans loaded:", plansData.plans);
+        } else if (plansData?.warning) {
+          setPlanWarning(plansData.warning);
+          console.warn("CRM plans warning:", plansData.warning);
         }
       } catch (err) {
         console.error("Error fetching CRM plans:", err);
       } finally {
-        setLoadingPlans(false);
+        if (!cancelled) setLoadingPlans(false);
       }
     };
 
     fetchCrmPlans();
+    return () => {
+      cancelled = true;
+    };
   }, [quote.sessionId, setCrmPlans]);
 
   return (
@@ -69,6 +95,26 @@ const Result = () => {
           </CardContent>
         </Card>
 
+        {loadingPlans && (
+          <div className="rounded-xl border border-border bg-card p-4 mb-4 flex items-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-foreground">Calculando seu plano{progressDots}</p>
+              <p className="text-xs text-muted-foreground">
+                Estamos consultando os melhores valores para o seu veículo.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {!loadingPlans && planWarning && (
+          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 mb-4">
+            <p className="text-xs text-yellow-700">
+              Usando valores estimados — {planWarning}
+            </p>
+          </div>
+        )}
+
         <div className="space-y-3 mt-6">
           <Button
             onClick={() => navigate("/detalhes")}
@@ -78,7 +124,7 @@ const Result = () => {
             {loadingPlans ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Carregando planos...
+                Carregando planos{progressDots}
               </>
             ) : (
               <>

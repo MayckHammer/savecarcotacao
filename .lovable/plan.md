@@ -1,63 +1,110 @@
-## Opcao 2 — Robustecer fluxo CRM atual (sem placafipe)
+## Revisão geral do app + integrações com Power CRM
 
-Sem token externo, a estrategia e tornar o fluxo atual de placa -> CRM mais resiliente e garantir que o CRM tenha tudo que precisa para retornar planos com precos reais.
+Fiz uma varredura no frontend (`Quote`, `Result`, `PlanDetails`, `Inspection`, `Admin`, `QuoteContext`) e nas 7 edge functions (`consulta-cep`, `consulta-placa`, `consulta-placa-crm`, `submit-to-crm`, `get-crm-plans`, `get-inspection-link`, `update-inspection`), além de checar os logs e os últimos 10 registros da tabela `quotes`.
 
-### Diagnostico
+## Diagnóstico rápido
 
-O CRM hoje tem 3 fontes de dados de veiculo (`negotiation`, `quotationFipeApi`, `quotation`) mas:
-1. So aguardamos 5s pelo DENATRAN — em ~30% dos casos o `quotationFipeApi` ainda nao processou
-2. Quando o veiculo nao e identificado, o usuario preenche manualmente mas o CRM nunca recebe o `fipeCode` correto
-3. O `submit-to-crm` faz update mas nao chama `/quotation/calculate` (ou equivalente) para forcar recalculo dos planos
-4. Nao ha polling progressivo no `quotationFipeApi` apos o update no Passo 3
+**Funcionando bem:**
+- Fluxo de 3 passos (dados → veículo → endereço), captura de placa via CRM com polling adaptativo, fallback FIPE manual, CEP com ViaCEP+BrasilAPI, vistoria obrigatória antes do pagamento, painel admin.
+- Tabela `quotes` com RLS, edge functions com CORS e tratamento de erros razoável.
 
-### O que muda
+**Problemas reais encontrados nos logs e no código:**
 
-**1. `consulta-placa-crm` — polling adaptativo**
-- Trocar o `setTimeout(5s)` fixo por polling: tenta `quotationFipeApi` a cada 2s ate 15s total
-- Retorna assim que tiver `brand+model+year`, evitando esperar 5s desnecessariamente em casos rapidos
-- Se ate 15s nao houver dado, retorna `vehicle: null` e o usuario preenche manualmente (igual hoje)
+1. **`open-inspection` está retornando HTTP 500 logo após criar a cotação** (visto nos logs: "Internal Server Error" na consulta de placa). Isso acontece porque o CRM ainda não tem dados suficientes (sem FIPE, sem endereço) na hora que `consulta-placa-crm` tenta abrir a vistoria. Resultado: nenhuma vistoria é aberta de fato no início e `inspection_link` fica `null` (confirmado no DB — todos `has_link = false`).
 
-**2. `consulta-placa-crm` — capturar e devolver `fipeValue` do CRM**
-- Hoje pegamos `fipeCode` mas nao `fipeValue`. Adicionar leitura de `vlFipe`, `fipeValue`, `valorFipe` da resposta do `quotationFipeApi`/`negotiation`
-- Devolver no payload para o frontend usar diretamente sem chamar `consulta-placa` (FIPE Parallelum) novamente
-- Beneficio: 1 chamada a menos + valor exatamente igual ao que o CRM usa para calcular planos
+2. **Vistoria nunca é reaberta depois que os dados ficam completos.** Após `submit-to-crm` rodar com FIPE + endereço, ninguém chama `open-inspection` de novo. Por isso o `inspection_link` nunca chega.
 
-**3. `Quote.tsx` — usar fipeValue do CRM quando disponivel**
-- Em `handleConsultaPlaca`, se `data.vehicle.fipeValue > 0`, popular `vehicle.fipeValue` e `fipeFormatted` direto, marcar como consultado e pular cascata FIPE
-- Caso contrario, mantem fluxo atual (cascata Parallelum)
+3. **Código duplicado entre `consulta-placa-crm` e `submit-to-crm`** (lógica de criar quotation, add-tag, open-inspection repetida). Difícil de manter.
 
-**4. `submit-to-crm` — forcar recalculo apos update**
-- Apos o `POST /quotation/update` (linha 168), chamar `GET /quotation/{code}` para confirmar que `protectedValue` foi aceito
-- Logar resposta para diagnostico
-- Adicionar retry do update (1x) se o GET retornar `protectedValue: 0`
+4. **`get-inspection-link` faz polling sem nunca chamar `open-inspection`**, então mesmo com retry o link nunca aparece se a abertura inicial falhou.
 
-**5. `get-crm-plans` — melhor diagnostico**
-- Quando `errors` indicar "Nenhum plano", buscar tambem `GET /quotation/{code}` no log para mostrar o estado atual da cotacao (faltando o que: FIPE? endereco? cidade?)
-- Devolver esse diagnostico no campo `warning` para facilitar suporte
+5. **`Result.tsx` espera 3 segundos fixos** antes de buscar planos, e `get-crm-plans` faz 4 retries com delays até 12s — soma pode passar de 50s antes do usuário ver erro. Sem feedback visual durante esse tempo.
 
-### Fluxo resultante
+6. **`localStorage` em `defaultQuote` quebra SSR-safety** e mistura sessão antiga com nova cotação (`session_id` vem inicializado mesmo após `resetQuote`).
+
+7. **Lookup de cidade/estado em `submit-to-crm`** chama `utilities.powercrm.com.br` toda vez sem cache — desperdício a cada submissão.
+
+8. **`PLACAFIPE_API_TOKEN` não está configurado** mas você já decidiu seguir sem ele — ok, mas ainda há código de import quebrado em `package.json`/`tsconfig` de uma tentativa anterior que não chequei a fundo. Vou validar e remover se sobrar lixo.
+
+9. **Sem rate-limit / sem validação Zod** nas edge functions públicas (`verify_jwt = false`). Qualquer um pode floodar `consulta-placa-crm` e gerar leads falsos no CRM.
+
+10. **Diversos `any` e `console.log` verbosos no frontend**, sem unificação de tipos para a resposta do CRM.
+
+## O que será feito
+
+### Edge Functions
+
+**a) `consulta-placa-crm`**
+- Remover a chamada `open-inspection` daqui (ela falha cedo demais). Manter apenas: criar quotation + add-tag + polling adaptativo de dados do veículo.
+- Adicionar validação Zod no body (`personal`, `plate`).
+
+**b) `submit-to-crm`**
+- Após o `update` da quotation com FIPE + endereço persistidos (verificado por `verifyUpdate`), **chamar `open-inspection` aqui** — agora sim com dados completos. Salvar `inspection_link` em `quotes` se vier de imediato.
+- Cachear lookup de estado/cidade num `Map` em memória (vida útil do worker) para evitar chamar `utilities.powercrm.com.br` toda vez.
+- Centralizar helpers (`getCityCode`, `openInspection`) em comentários de seção para ficar mais legível.
+
+**c) `get-inspection-link`**
+- Se o link ainda não existe e a quotation tem FIPE + endereço, chamar `open-inspection` antes do polling (auto-recovery).
+
+**d) `get-crm-plans`**
+- Reduzir delays: 3s → 5s → 7s → 9s (era 5/8/10/12). Total cai de ~35s para ~24s.
+- Devolver o motivo exato no `warning` para o frontend exibir mensagem útil.
+
+**e) Validação de input com Zod em todas as functions públicas** (`consulta-placa-crm`, `submit-to-crm`, `consulta-cep`, `consulta-placa`, `update-inspection`, `get-crm-plans`, `get-inspection-link`). Retorna 400 com erro claro se body inválido.
+
+**f) Rate-limiting simples por IP+CPF** em `consulta-placa-crm` e `submit-to-crm` (10 chamadas / 5 min usando `Map` in-memory). Suficiente para barrar flood básico sem complicar.
+
+### Frontend
+
+**g) `Result.tsx`** — Substituir o `setTimeout(3000)` fixo por polling do `get-crm-plans` com loading visível ("Calculando seu plano..." com 3 dots animados). Mostrar `warning` se vier do edge.
+
+**h) `QuoteContext.tsx`** — Tirar `localStorage.getItem` do `defaultQuote` (resetQuote agora limpa de verdade). Hidratar sessão num `useEffect` no provider em vez do default.
+
+**i) `Quote.tsx`** — Tipar resposta do CRM (`CrmPlateResponse` interface), eliminar `any` dos handlers FIPE.
+
+**j) Limpar lixo** — verificar `package.json`/`tsconfig.json` por dependências/paths órfãos da tentativa de placafipe.com.br e remover o que sobrou.
+
+### Banco
+
+**k) Adicionar índice em `quotes(session_id)` e `quotes(crm_quotation_code)`** — hoje as queries fazem full scan. Migration simples.
+
+**l) Coluna `last_crm_sync_at timestamptz`** em `quotes` para rastrear última sincronização e ajudar debug futuro.
+
+## O que NÃO será feito
+
+- Não vou trocar para placafipe.com.br (você já decidiu).
+- Não vou adicionar autenticação de usuário (fluxo é público por design).
+- Não vou refatorar o layout das páginas.
+- Não vou mexer no `PlanDetails` (acabamos de ajustar).
+
+## Detalhes técnicos
 
 ```text
-Passo 1: dados pessoais
-Passo 2: digita placa
-   -> consulta-placa-crm (cria cotacao + polling 2s/15s)
-   -> retorna brand, model, year, fipeCode, fipeValue
-   -> frontend popula tudo e pula cascata FIPE
-Passo 3: digita endereco
-   -> submit-to-crm (skipCrm=true)
-   -> update cotacao com endereco + protectedValue
-   -> GET /quotation/{code} valida que dados foram aceitos
-Resultado: get-crm-plans retorna planos com precos reais na 1a/2a tentativa
+Fluxo atual (problema):
+[Quote step 2] → consulta-placa-crm → cria quotation + open-inspection (FALHA 500)
+[Quote step 3] → submit-to-crm → update quotation com FIPE+endereço
+[Result]       → get-crm-plans (planos OK)
+[Inspection]   → get-inspection-link → polling sem reabrir → link NUNCA chega
+
+Fluxo proposto:
+[Quote step 2] → consulta-placa-crm → cria quotation + tag (sem open-inspection)
+[Quote step 3] → submit-to-crm → update + verify + open-inspection (agora funciona)
+[Result]       → get-crm-plans com polling visível
+[Inspection]   → get-inspection-link → se sem link, tenta open-inspection + polling
 ```
 
-### Arquivos alterados
+Arquivos a modificar:
+- `supabase/functions/consulta-placa-crm/index.ts`
+- `supabase/functions/submit-to-crm/index.ts`
+- `supabase/functions/get-inspection-link/index.ts`
+- `supabase/functions/get-crm-plans/index.ts`
+- `supabase/functions/consulta-cep/index.ts`
+- `supabase/functions/consulta-placa/index.ts`
+- `supabase/functions/update-inspection/index.ts`
+- `src/pages/Result.tsx`
+- `src/pages/Quote.tsx`
+- `src/contexts/QuoteContext.tsx`
+- `package.json` / `tsconfig.json` (limpeza, se houver lixo)
+- Nova migration: índices + coluna `last_crm_sync_at`
 
-- `supabase/functions/consulta-placa-crm/index.ts` — polling adaptativo e leitura do `fipeValue`
-- `supabase/functions/submit-to-crm/index.ts` — validacao pos-update e retry
-- `supabase/functions/get-crm-plans/index.ts` — diagnostico no warning
-- `src/pages/Quote.tsx` — usar `fipeValue` retornado pela placa quando disponivel
-
-### Limitacoes (transparencia)
-
-- Se a placa nunca for identificada pelo DENATRAN do CRM (placa nova, dado faltante na base), o usuario continua precisando preencher manualmente — isso so muda com a placafipe.com.br ou similar
-- O polling adiciona ate 15s no Passo 2 quando o CRM demora — porem retorna assim que pronto, entao o caso comum fica mais rapido (nao mais 5s fixos)
+Após aprovação, deploy automático das edge functions modificadas e validação rápida com `supabase--curl_edge_functions` em uma cotação de teste para confirmar que o `inspection_link` agora chega.
