@@ -177,8 +177,7 @@ Deno.serve(async (req) => {
     if (cityCode) crmPayload.city = cityCode;
     const vtNew = (vehicle as Record<string, unknown>).vehicleTypeId;
     if (vtNew) {
-      crmPayload.vehicleType = vtNew;
-      crmPayload.vehicleTypeId = vtNew;
+      crmPayload.vhclType = vtNew;
     }
 
     const token = Deno.env.get("POWERCRM_API_TOKEN");
@@ -244,8 +243,7 @@ Deno.serve(async (req) => {
         // Reinforce vehicle type in case it was lost between steps
         const vt = (vehicle as Record<string, unknown>).vehicleTypeId;
         if (vt) {
-          updatePayload.vehicleType = vt;
-          updatePayload.vehicleTypeId = vt;
+          updatePayload.vhclType = vt;
         }
 
         const sendUpdate = async () => {
