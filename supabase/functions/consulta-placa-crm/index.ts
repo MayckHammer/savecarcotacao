@@ -543,13 +543,15 @@ Deno.serve(async (req) => {
     // 7. Resolve internal CRM brand/model/year IDs (so the card and plansQuotation can use them)
     if (vehicle && vehicleTypeId != null && vehicle.brand) {
       try {
-        const ids = await resolveCrmIds(token, vehicleTypeId, vehicle.brand, vehicle.model, vehicle.year);
+        // Use the raw plate name (preserved before FIPE enrichment) for distinctive token matching
+        const rawHint = `${vehicle.brandRaw || ""} ${vehicle.modelRaw || ""}`.trim() || undefined;
+        const ids = await resolveCrmIds(token, vehicleTypeId, vehicle.brand, vehicle.model, vehicle.year, rawHint);
         vehicle.crmBrandId = ids.crmBrandId;
         vehicle.crmModelId = ids.crmModelId;
         vehicle.crmYearId = ids.crmYearId;
 
-        // 8. Push these IDs into the quotation immediately so the CRM card shows the vehicle
-        if (ids.crmModelId || ids.crmYearId) {
+        // 8. Push these IDs + FIPE value into the quotation immediately so the CRM card is populated
+        if (ids.crmModelId || ids.crmYearId || vehicle.fipeValue) {
           const updateBody: Record<string, unknown> = { code: quotationCode };
           if (ids.crmModelId) {
             updateBody.mdl = ids.crmModelId;
@@ -564,7 +566,17 @@ Deno.serve(async (req) => {
             const yr = parseInt(String(vehicle.year).split("/")[0], 10);
             if (yr) updateBody.fabricationYear = yr;
           }
-          if (vehicle.fipeValue) updateBody.protectedValue = vehicle.fipeValue;
+          // Send FIPE value with all known aliases — the card field is `vhclFipeVl`
+          if (vehicle.fipeValue) {
+            updateBody.protectedValue = vehicle.fipeValue;
+            updateBody.vhclFipeVl     = vehicle.fipeValue;
+            updateBody.vlFipe         = vehicle.fipeValue;
+            updateBody.fipeValue      = vehicle.fipeValue;
+          }
+          if (vehicle.fipeCode) {
+            updateBody.cdFp    = vehicle.fipeCode;
+            updateBody.codFipe = vehicle.fipeCode;
+          }
           updateBody.plates = plate;
           updateBody.plts = plate;
           if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
@@ -575,11 +587,17 @@ Deno.serve(async (req) => {
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
               body: JSON.stringify(updateBody),
             });
-            console.log(`Early CRM update with mdl/mdlYr → ${upd.status}`);
+            console.log(`Early CRM update with mdl/mdlYr/FIPE → ${upd.status}`);
+
+            // Verify what actually persisted in the card
+            await new Promise((r) => setTimeout(r, 1200));
+            const verify = await getQuotation(token, quotationCode);
+            if (verify) {
+              const v = verify as Record<string, unknown>;
+              console.log(`Post-update verify — mdl=${v.mdl} mdlYr=${v.mdlYr} vhclFipeVl=${v.vhclFipeVl} protectedValue=${v.protectedValue}`);
+            }
           } catch (e) { console.error("Early CRM update error:", e); }
         }
-      } catch (e) { console.error("resolveCrmIds error:", e); }
-    }
 
     return new Response(JSON.stringify({
       quotationCode,
