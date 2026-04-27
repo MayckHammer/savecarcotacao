@@ -266,6 +266,17 @@ Deno.serve(async (req) => {
           const yr = parseInt(String(vehicle.year).split("/")[0], 10);
           if (yr) updatePayload.fabricationYear = yr;
         }
+        // Send FIPE value with all known aliases — the CRM card field is `vhclFipeVl`
+        if (vehicle.fipeValue) {
+          updatePayload.vhclFipeVl = vehicle.fipeValue;
+          updatePayload.vlFipe     = vehicle.fipeValue;
+          updatePayload.fipeValue  = vehicle.fipeValue;
+        }
+        const fipeCodeAny = (vehicle as Record<string, unknown>).fipeCode as string | undefined;
+        if (fipeCodeAny) {
+          updatePayload.cdFp    = fipeCodeAny;
+          updatePayload.codFipe = fipeCodeAny;
+        }
 
         const sendUpdate = async () => {
           console.log("Updating CRM quotation:", JSON.stringify(updatePayload, null, 2));
