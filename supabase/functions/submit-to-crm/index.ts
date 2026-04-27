@@ -250,6 +250,23 @@ Deno.serve(async (req) => {
           updatePayload.vhclType = vt;
         }
 
+        // CRM internal IDs for the vehicle (resolved by consulta-placa-crm)
+        const crmModelId = Number((vehicle as Record<string, unknown>).crmModelId) || 0;
+        const crmYearId = Number((vehicle as Record<string, unknown>).crmYearId) || 0;
+        if (crmModelId > 0) {
+          updatePayload.mdl = crmModelId;
+          updatePayload.carModel = crmModelId;
+        }
+        if (crmYearId > 0) {
+          updatePayload.mdlYr = crmYearId;
+          updatePayload.carModelYear = crmYearId;
+        }
+        if (vehicle.color) updatePayload.color = vehicle.color;
+        if (vehicle.year) {
+          const yr = parseInt(String(vehicle.year).split("/")[0], 10);
+          if (yr) updatePayload.fabricationYear = yr;
+        }
+
         const sendUpdate = async () => {
           console.log("Updating CRM quotation:", JSON.stringify(updatePayload, null, 2));
           const updateRes = await fetch("https://api.powercrm.com.br/api/quotation/update", {
