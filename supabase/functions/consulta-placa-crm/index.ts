@@ -172,6 +172,7 @@ export async function resolveCrmIds(
   brand: string,
   model: string,
   year: string,
+  rawPlateName?: string,  // e.g. "CITROEN C3 AIRC TENDANCE" — has distinctive tokens
 ): Promise<{ crmBrandId: number | null; crmModelId: number | null; crmYearId: number | null }> {
   const out = { crmBrandId: null as number | null, crmModelId: null as number | null, crmYearId: null as number | null };
   if (!brand) return out;
@@ -190,19 +191,41 @@ export async function resolveCrmIds(
   out.crmBrandId = brandMatch.id;
   console.log(`CRM brand matched: "${brand}" → ${labelOf(brandMatch)} (id=${brandMatch.id})`);
 
-  if (!model) return out;
+  if (!model && !rawPlateName) return out;
   const models = await fetchCrmModels(token, brandMatch.id);
-  const modelMatch = pickBestMatch(models, model);
-  if (!modelMatch) {
-    console.log(`CRM model not found for "${model}" under brand ${labelOf(brandMatch)}`);
+
+  // Extract distinctive tokens from raw plate name (e.g. "AIRC", "AIRCROSS", "CROSS")
+  // and use them to bias the match. Skip the brand word itself.
+  const brandTokens = new Set(normalize(brandMatch.name || brandMatch.nm || "").split(" "));
+  const rawTokens = rawPlateName
+    ? normalize(rawPlateName).split(" ").filter((t) => t.length >= 3 && !brandTokens.has(t))
+    : [];
+  // Expand AIRC -> AIRCROSS etc. Common Citroën abbreviation
+  const expandedTokens = new Set<string>(rawTokens);
+  if (rawTokens.includes("airc")) expandedTokens.add("aircross");
+
+  let bestModel: { item: CrmItem; score: number } | null = null;
+  for (const m of models) {
+    const label = labelOf(m);
+    const baseScore = matchScore(model || rawPlateName || "", label);
+    let bonus = 0;
+    const labelNorm = normalize(label);
+    for (const tok of expandedTokens) {
+      if (labelNorm.includes(tok)) bonus += 250;
+    }
+    const total = baseScore + bonus;
+    if (total > 0 && (!bestModel || total > bestModel.score)) bestModel = { item: m, score: total };
+  }
+  if (!bestModel) {
+    console.log(`CRM model not found for "${model}" (raw="${rawPlateName ?? ""}") under brand ${labelOf(brandMatch)}`);
     return out;
   }
-  out.crmModelId = modelMatch.id;
-  console.log(`CRM model matched: "${model}" → ${labelOf(modelMatch)} (id=${modelMatch.id})`);
+  out.crmModelId = bestModel.item.id;
+  console.log(`CRM model matched: "${model}" raw="${rawPlateName ?? ""}" → ${labelOf(bestModel.item)} (id=${bestModel.item.id}, score=${bestModel.score})`);
 
   if (!year) return out;
   const targetYear = String(year).split("/")[0].trim();
-  const years = await fetchCrmYears(token, modelMatch.id);
+  const years = await fetchCrmYears(token, bestModel.item.id);
   // year items typically have label like "2025" or "2025 Gasolina"
   let yearMatch = years.find((y) => normalize(labelOf(y)).startsWith(targetYear));
   if (!yearMatch) yearMatch = years.find((y) => normalize(labelOf(y)).includes(targetYear));
