@@ -15,6 +15,15 @@ const BodySchema = z.object({
   }),
   plate: z.string().trim().min(6).max(10),
   vehicleType: z.enum(["carro", "moto", "caminhao"]).optional().default("carro"),
+  crmQuotationCode: z.string().trim().max(100).optional().or(z.literal("")),
+  selectedModel: z.object({
+    name: z.string().trim().max(255),
+    year: z.string().trim().max(30).optional().default(""),
+    fipeCode: z.string().trim().max(30).optional().default(""),
+    fipeValue: z.number().optional().default(0),
+    crmModelId: z.number(),
+    crmYearId: z.number().optional().nullable(),
+  }).optional(),
 });
 
 const CRM_BASE = "https://api.powercrm.com.br/api";
