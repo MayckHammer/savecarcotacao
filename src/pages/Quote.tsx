@@ -362,7 +362,43 @@ const Quote = () => {
         {step === 2 && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-foreground">Dados do Veículo</h2>
-            
+
+            {/* Tipo do veículo — primeiro campo, igual ao CRM */}
+            <div>
+              <Label>Tipo do veículo</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Selecione antes de consultar a placa para que o sistema busque os dados corretos.
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: "carro", label: "Carro", icon: Car },
+                  { value: "moto", label: "Moto", icon: Bike },
+                  { value: "caminhao", label: "Caminhão", icon: Truck },
+                ].map(({ value, label, icon: Icon }) => {
+                  const selected = quote.vehicle.type === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        handleTypeChange(value);
+                        setPlateConsulted(false);
+                      }}
+                      className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 p-3 transition-all ${
+                        selected
+                          ? "border-primary bg-primary/10 text-primary shadow-sm"
+                          : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                      }`}
+                    >
+                      <Icon className="h-6 w-6" />
+                      <span className="text-xs font-medium">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <ErrorMsg field="type" />
+            </div>
+
             <div>
               <Label>Placa do veículo</Label>
               <div className="flex gap-2">
@@ -378,7 +414,7 @@ const Quote = () => {
                 <Button
                   type="button"
                   onClick={handleConsultaPlaca}
-                  disabled={plateLoading || quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").length < 7}
+                  disabled={plateLoading || quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").length < 7 || !quote.vehicle.type}
                   className="shrink-0"
                 >
                   {plateLoading ? (
