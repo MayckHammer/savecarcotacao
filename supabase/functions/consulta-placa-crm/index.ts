@@ -571,16 +571,36 @@ Deno.serve(async (req) => {
     console.log(`Resolved vehicleType="${vehicleType}" → id=${vehicleTypeId}`);
 
     if (crmQuotationCode && selectedModel) {
+      // 1. Recalcular FIPE para o modelo+ano realmente selecionado.
+      //    Tenta CRM primeiro (cmf), depois FIPE Parallelum se vier código.
+      let recomputedFipeCode = String(selectedModel.fipeCode || "").trim();
+      let recomputedFipeValue = Number(selectedModel.fipeValue || 0);
+
+      const crmFipe = await fetchFipeCodeFromCrm(token, selectedModel.crmModelId, selectedModel.crmYearId ?? null);
+      if (crmFipe) {
+        if (crmFipe.fipeCode) recomputedFipeCode = crmFipe.fipeCode;
+        if (crmFipe.fipeValue > 0) recomputedFipeValue = crmFipe.fipeValue;
+      }
+
+      // Se ainda não temos valor (ou o CRM só devolveu o código), bate na FIPE Parallelum
+      if (recomputedFipeCode && (!recomputedFipeValue || crmFipe?.fipeValue === 0)) {
+        const enriched = await enrichFromFipeByCode(recomputedFipeCode, vehicleType, String(selectedModel.year || ""));
+        if (enriched?.fipeValue) recomputedFipeValue = enriched.fipeValue;
+        if (enriched?.fipeCode && !recomputedFipeCode) recomputedFipeCode = enriched.fipeCode;
+      }
+
+      console.log(`Recomputed FIPE for selected model: code=${recomputedFipeCode} value=${recomputedFipeValue}`);
+
       const updateBody: Record<string, unknown> = {
         code: crmQuotationCode,
         plates: plate,
         plts: plate,
         mdl: selectedModel.crmModelId,
         carModel: selectedModel.crmModelId,
-        protectedValue: selectedModel.fipeValue || 0,
-        vhclFipeVl: selectedModel.fipeValue || 0,
-        vlFipe: selectedModel.fipeValue || 0,
-        fipeValue: selectedModel.fipeValue || 0,
+        protectedValue: recomputedFipeValue || 0,
+        vhclFipeVl: recomputedFipeValue || 0,
+        vlFipe: recomputedFipeValue || 0,
+        fipeValue: recomputedFipeValue || 0,
         workVehicle,
       };
       if (selectedModel.crmYearId) {
@@ -591,9 +611,9 @@ Deno.serve(async (req) => {
         const yr = parseInt(String(selectedModel.year).split("/")[0], 10);
         if (yr) updateBody.fabricationYear = yr;
       }
-      if (selectedModel.fipeCode) {
-        updateBody.cdFp = selectedModel.fipeCode;
-        updateBody.codFipe = selectedModel.fipeCode;
+      if (recomputedFipeCode) {
+        updateBody.cdFp = recomputedFipeCode;
+        updateBody.codFipe = recomputedFipeCode;
       }
       if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
 
@@ -603,28 +623,57 @@ Deno.serve(async (req) => {
         body: JSON.stringify(updateBody),
       });
       const updText = await upd.text();
-      console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 300));
-      await getQuotationFipe(token, crmQuotationCode);
-      await new Promise((r) => setTimeout(r, 1200));
-      const verify = await getQuotation(token, crmQuotationCode) as Record<string, unknown> | null;
+      console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 200));
 
-      // ===== FIPE divergence check =====
-      const sentFipeValue = Number(selectedModel.fipeValue || 0);
-      const sentFipeCode = String(selectedModel.fipeCode || "").trim();
+      // 2. Disparar a "lupa" do CRM para forçar persistência do FIPE no card
+      await triggerCrmPlateLookup(token, crmQuotationCode, plate);
+      await getQuotationFipe(token, crmQuotationCode);
+
+      // 3. Segundo update isolado só com FIPE (alguns ambientes só persistem assim)
+      if (recomputedFipeValue > 0 || recomputedFipeCode) {
+        try {
+          await fetch(`${CRM_BASE}/quotation/update`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({
+              code: crmQuotationCode,
+              cdFp: recomputedFipeCode,
+              codFipe: recomputedFipeCode,
+              vhclFipeVl: recomputedFipeValue,
+              vlFipe: recomputedFipeValue,
+              protectedValue: recomputedFipeValue,
+              fipeValue: recomputedFipeValue,
+            }),
+          });
+        } catch (e) { console.error("FIPE-only update error:", e); }
+      }
+
+      // 4. Polling de verificação (até ~6s) para evitar falso negativo
+      const sentFipeValue = recomputedFipeValue;
+      const sentFipeCode = recomputedFipeCode;
       const sentModelId = Number(selectedModel.crmModelId || 0);
       const sentYearId = selectedModel.crmYearId != null ? Number(selectedModel.crmYearId) : null;
 
-      const crmFipeValue = verify
-        ? parseFipeValue(verify.vhclFipeVl ?? verify.vlFipe ?? verify.protectedValue ?? verify.fipeValue)
-        : 0;
-      const crmFipeCode = verify
-        ? String(verify.cdFp ?? verify.codFipe ?? "").trim()
-        : "";
-      const crmModelId = verify ? Number(verify.mdl ?? verify.carModel ?? 0) : 0;
-      const crmYearId = verify ? Number(verify.mdlYr ?? verify.carModelYear ?? 0) : 0;
+      let verify: Record<string, unknown> | null = null;
+      let crmFipeValue = 0;
+      let crmFipeCode = "";
+      let crmModelId = 0;
+      let crmYearId = 0;
+      const intervals = [1200, 2000, 2500];
+      for (let i = 0; i < intervals.length; i++) {
+        await new Promise((r) => setTimeout(r, intervals[i]));
+        verify = await getQuotation(token, crmQuotationCode) as Record<string, unknown> | null;
+        if (!verify) continue;
+        crmFipeValue = parseFipeValue(verify.vhclFipeVl ?? verify.vlFipe ?? verify.protectedValue ?? verify.fipeValue);
+        crmFipeCode = String(verify.cdFp ?? verify.codFipe ?? "").trim();
+        crmModelId = Number(verify.mdl ?? verify.carModel ?? 0);
+        crmYearId = Number(verify.mdlYr ?? verify.carModelYear ?? 0);
+        // Stop early if FIPE persisted and IDs match
+        if (crmFipeValue > 0 && (!sentModelId || crmModelId === sentModelId)) break;
+      }
 
       const valueDiff = Math.abs(crmFipeValue - sentFipeValue);
-      const valueTolerance = Math.max(1, sentFipeValue * 0.01); // 1% tolerance
+      const valueTolerance = Math.max(1, sentFipeValue * 0.01);
       const mismatches: string[] = [];
       if (sentFipeValue > 0 && crmFipeValue > 0 && valueDiff > valueTolerance) {
         mismatches.push(`Valor FIPE diverge (enviado R$ ${sentFipeValue.toFixed(2)} × CRM R$ ${crmFipeValue.toFixed(2)})`);
@@ -649,7 +698,17 @@ Deno.serve(async (req) => {
       };
       console.log("FIPE check:", JSON.stringify(fipeCheck));
 
-      return new Response(JSON.stringify({ ok: upd.ok, quotationCode: crmQuotationCode, verify, fipeCheck }), {
+      const fipeFormatted = recomputedFipeValue > 0
+        ? `R$ ${recomputedFipeValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : "";
+
+      return new Response(JSON.stringify({
+        ok: upd.ok,
+        quotationCode: crmQuotationCode,
+        verify,
+        fipeCheck,
+        recomputed: { fipeCode: recomputedFipeCode, fipeValue: recomputedFipeValue, fipeFormatted },
+      }), {
         status: upd.ok ? 200 : 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
