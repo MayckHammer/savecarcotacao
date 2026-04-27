@@ -686,31 +686,20 @@ Deno.serve(async (req) => {
 
       console.log(`Recomputed FIPE for selected model: code=${recomputedFipeCode} value=${recomputedFipeValue}`);
 
+      // Payload enxuto: apenas os campos documentados no QuotationUpdateRequest
+      // (swagger oficial) — mdl, mdlYr, protectedValue. Aliases não-documentados
+      // são ignorados silenciosamente pelo CRM e poluem os logs.
       const updateBody: Record<string, unknown> = {
         code: crmQuotationCode,
         plates: plate,
-        plts: plate,
-        mdl: selectedModel.crmModelId,
-        carModel: selectedModel.crmModelId,
+        mdl: Number(selectedModel.crmModelId),
         protectedValue: recomputedFipeValue || 0,
-        vhclFipeVl: recomputedFipeValue || 0,
-        vlFipe: recomputedFipeValue || 0,
-        fipeValue: recomputedFipeValue || 0,
-        workVehicle,
       };
       if (selectedModel.crmYearId) {
-        updateBody.mdlYr = selectedModel.crmYearId;
-        updateBody.carModelYear = selectedModel.crmYearId;
+        updateBody.mdlYr = Number(selectedModel.crmYearId);
       }
-      if (selectedModel.year) {
-        const yr = parseInt(String(selectedModel.year).split("/")[0], 10);
-        if (yr) updateBody.fabricationYear = yr;
-      }
-      if (recomputedFipeCode) {
-        updateBody.cdFp = recomputedFipeCode;
-        updateBody.codFipe = recomputedFipeCode;
-      }
-      if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
+
+      console.log("CRM update payload (schema-only):", JSON.stringify(updateBody));
 
       const upd = await fetch(`${CRM_BASE}/quotation/update`, {
         method: "POST",
@@ -720,27 +709,10 @@ Deno.serve(async (req) => {
       const updText = await upd.text();
       console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 200));
 
-      // 2. Disparar a rotina FIPE oficial da cotação para simular o refresh da lupa sem endpoints inválidos
+      // 2. Disparar a rotina FIPE oficial (a "lupa" do card). O CRM agora tem
+      // mdl + mdlYr + protectedValue persistidos, então este endpoint calcula
+      // e grava o cdFp internamente.
       await triggerCrmFipeRefresh(token, crmQuotationCode);
-
-      // 3. Segundo update isolado só com FIPE (alguns ambientes só persistem assim)
-      if (recomputedFipeValue > 0 || recomputedFipeCode) {
-        try {
-          await fetch(`${CRM_BASE}/quotation/update`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-            body: JSON.stringify({
-              code: crmQuotationCode,
-              cdFp: recomputedFipeCode,
-              codFipe: recomputedFipeCode,
-              vhclFipeVl: recomputedFipeValue,
-              vlFipe: recomputedFipeValue,
-              protectedValue: recomputedFipeValue,
-              fipeValue: recomputedFipeValue,
-            }),
-          });
-        } catch (e) { console.error("FIPE-only update error:", e); }
-      }
 
       // 4. Polling de verificação (até ~6s) para evitar falso negativo
       const sentFipeValue = recomputedFipeValue;
