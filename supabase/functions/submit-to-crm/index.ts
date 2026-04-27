@@ -66,6 +66,7 @@ const BodySchema = z.object({
     usage: z.string().optional().default(""),
     fipeValue: z.number().optional().default(0),
     fipeFormatted: z.string().optional().default(""),
+    vehicleTypeId: z.union([z.string(), z.number()]).optional().nullable(),
   }).passthrough(),
   address: z.object({
     cep: z.string().optional().default(""),
