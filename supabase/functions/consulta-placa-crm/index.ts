@@ -438,9 +438,15 @@ const parsePriceBrl = (raw: string): number => {
   return parseFipeValue(raw);
 };
 
-const fipeBrandCache = new Map<string, { code: string; name: string }[]>();
-const fipeModelCache = new Map<string, { code: string; name: string }[]>();
-const fipeYearCache = new Map<string, { code: string; name: string }[]>();
+// TTL de 10 min nos caches FIPE para evitar servir tabela vencida quando a
+// instância do edge function fica viva por horas. FIPE atualiza mensalmente.
+const FIPE_CACHE_TTL_MS = 10 * 60 * 1000;
+type FipeCacheEntry<T> = { at: number; data: T };
+const fipeBrandCache = new Map<string, FipeCacheEntry<{ code: string; name: string }[]>>();
+const fipeModelCache = new Map<string, FipeCacheEntry<{ code: string; name: string }[]>>();
+const fipeYearCache = new Map<string, FipeCacheEntry<{ code: string; name: string }[]>>();
+const fipeFresh = <T,>(entry: FipeCacheEntry<T> | undefined): T | null =>
+  entry && Date.now() - entry.at < FIPE_CACHE_TTL_MS ? entry.data : null;
 
 const fipeHeaders = (): HeadersInit => {
   const token = Deno.env.get("FIPE_ONLINE_TOKEN");
