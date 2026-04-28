@@ -25,7 +25,7 @@ const Landing = () => {
           className="w-full max-w-xs h-14 text-base font-bold rounded-xl shadow-lg"
           size="lg">
 
-          Já tenho a placa em mãos
+          Cotação com Placa
           <ArrowRight className="ml-2 h-5 w-5" />
         </Button>
 
