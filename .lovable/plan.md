@@ -1,100 +1,76 @@
-# Correção do preenchimento FIPE no card do PowerCRM
 
-Aplicar as descobertas validadas via DevTools do CRM (imagens 94–97) no fluxo `consulta-placa-crm`, sem mexer no contrato com o frontend nem na lógica de planos.
+# Tornar placa opcional quando o usuário preenche modelo manualmente
+
+## Problema atual
+
+Hoje a placa é obrigatória para avançar do Step 2:
+- `validateStep2` exige `plate.length >= 7`.
+- A criação da cotação no CRM (`consulta-placa-crm`) só acontece se o usuário clicar em "Consultar" com placa válida.
+- Se a placa do CRM/SINESP não retorna o veículo (caso comum em motos, veículos novos, ou plate não cadastrada), o usuário fica preso — mesmo que ele consiga preencher Marca/Modelo/Ano via FIPE manualmente.
+
+O CRM aceita criar cotação sem placa (`plts` pode ir vazio) — campos obrigatórios reais são `name`, `phone`, `email`, `registration` e `vhclType`.
 
 ## O que muda
 
-### 1. Trocar endpoint de modelos por `cmby` (marca + ano juntos)
-- Em `fetchCrmModels`, passar a aceitar `year` e chamar `GET /quotation/cmby?cb={brandId}&cy={year}` quando o ano estiver disponível.
-- Manter fallback para `/quotation/cm?cb={brandId}` se o `cmby` retornar vazio.
-- Em `buildCrmModelOptions`, passar `targetYear` para `fetchCrmModels` antes de pontuar candidatos.
-- Ajustar a chave de cache de modelos para incluir o ano (`${brandId}:${year}`).
+### 1. Frontend (`src/pages/Quote.tsx`)
 
-**Por quê:** o Network do CRM mostra que o painel oficial usa `cmby` para listar modelos filtrados por marca + ano, retornando uma lista curta e precisa. Hoje usamos `cm` (só marca) e filtramos ano em JS, gerando lista enorme e matches imprecisos.
+**Validação Step 2 — placa não obrigatória:**
+- Remover a checagem `plate.length < 7` de `validateStep2`. Aceitar placa vazia.
+- Manter exigência de `type`, `usage`, e (no modo manual) `brandCode + modelCode + yearCode`.
+- Se o usuário digitou algo na placa, validar formato; se vazio, pular.
 
-### 2. Update enxuto: `mdl` + `mdlYr` + `protectedValue` + `cdFp`
-- No bloco `if (crmQuotationCode && selectedModel)`, manter o payload já enxuto e adicionar `cdFp` (código FIPE resolvido) quando disponível.
-- Continua sem aliases poluídos (`vhclFipeVl`, `vlFipe`, etc.).
+**Botão "Consultar" continua existindo, mas opcional:**
+- Mostrar um texto auxiliar abaixo da placa: *"Não tem a placa? Pode pular e preencher abaixo."*
+- O bloco de seleção manual (Marca/Modelo/Ano FIPE) já aparece quando `!plateConsulted` — basta funcionar também sem placa digitada.
 
-**Por quê:** o campo `vhclFipeVl` é `disabled` no card e calculado pelo backend do CRM a partir de `mdl + mdlYr`. Enviar `cdFp` ajuda o backend a fechar a conta sem precisar adivinhar.
+**Avançar do Step 2 sem cotação CRM criada:**
+- Hoje o fluxo principal é: clica em "Consultar" → cria cotação → guarda `crmQuotationCode`.
+- Novo: se ao clicar "Avançar" não houver `crmQuotationCode` E o usuário tiver preenchido manualmente, criar a cotação no CRM nesse momento, enviando os dados manuais (placa pode ir vazia).
 
-### 3. Remover `triggerCrmFipeRefresh` e `fetchFipeCodeFromCrm`
-- Apagar a chamada a `triggerCrmFipeRefresh` em duas posições (linhas ~715 e ~949).
-- Apagar a função `triggerCrmFipeRefresh` (~linha 576) e a função `fetchFipeCodeFromCrm` (~linha 600).
-- Remover `quotationFipeApi` de qualquer outra referência.
+### 2. Edge function `consulta-placa-crm`
 
-**Por quê:** o ícone que parecia ser "lupa do FIPE" é apenas um tooltip decorativo (`<i id="tooltipFipeUpdate" aria-hidden="true">`). Não existe gatilho manual de refresh FIPE no CRM. O endpoint `quotationFipeApi` não é o correto e está "atirando no escuro". Remover elimina ruído nos logs e latência inútil (~6s).
+**Tornar `plate` opcional no Zod schema:**
+- `plate: z.string().trim().max(10).optional().default("")`.
+- Quando `plate` está vazia, pular `fetchPlateFromCrm` (não chamar `/plates/`) e ir direto para criar a cotação.
 
-### 4. Manter o que já funciona
-- Polling `getQuotation` após o update (até ~6s) — necessário para esperar o CRM calcular `vhclFipeVl`.
-- Validação Zod do body.
-- CORS, vehicleType resolution, `resolveCrmIds`.
-- Enriquecimento via Parallelum (`fetchFipeByModelLabel`, `enrichFromFipeByCode`) para popular as opções de modelo apresentadas ao usuário.
-- `get-crm-plans` permanece intocado (já lê `protectedValue` com fallback para `vhclFipeVl`).
+**Aceitar dados manuais do veículo no body:**
+- Adicionar bloco opcional `manualVehicle` ao schema:
+  ```ts
+  manualVehicle: z.object({
+    brand: z.string(),
+    model: z.string(),
+    year: z.string(),
+    fipeCode: z.string().optional(),
+    fipeValue: z.number().optional(),
+    crmBrandId: z.number().optional(),
+    crmModelId: z.number().optional(),
+    crmYearId: z.number().optional(),
+  }).optional()
+  ```
+- Quando `manualVehicle` vier preenchido, usar esses dados para resolver IDs CRM (via `resolveCrmIds` por nome) e disparar o mesmo "early update" com `mdl`, `mdlYr`, `protectedValue`, `cdFp` que hoje só roda no fluxo de placa.
+
+**Payload de criação:**
+- Manter `plts` e `plates` apenas se a placa existir; caso contrário, enviar string vazia (CRM aceita).
+
+### 3. Edge function `submit-to-crm`
+
+- `plate` já é `optional().default("")` — sem mudanças no schema.
+- Garantir que, quando `crmQuotationCode` já vier do passo anterior (criado via fluxo manual), o `submit-to-crm` apenas atualize o lead com endereço, sem tentar recriar.
 
 ## O que NÃO muda
 
-- Frontend (`Quote.tsx`, `Result.tsx`, `QuoteContext`) — contrato preservado.
-- `get-crm-plans` — sem alterações.
-- Outras edge functions.
-- Schema do banco.
-
-## Arquivo modificado
-
-- `supabase/functions/consulta-placa-crm/index.ts`
-
-## Detalhes técnicos
-
-```ts
-// fetchCrmModels com cmby (marca + ano)
-async function fetchCrmModels(token: string, brandId: number, year?: string): Promise<CrmItem[]> {
-  const cacheKey = `${brandId}:${year || ""}`;
-  if (modelsCache.has(cacheKey)) return modelsCache.get(cacheKey)!;
-  try {
-    const url = year
-      ? `${CRM_BASE}/quotation/cmby?cb=${brandId}&cy=${encodeURIComponent(year)}`
-      : `${CRM_BASE}/quotation/cm?cb=${brandId}`;
-    const r = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
-    if (!r.ok) return [];
-    const data = await r.json();
-    let arr: CrmItem[] = Array.isArray(data) ? data : (data?.data || []);
-    // Fallback se cmby vier vazio
-    if (year && arr.length === 0) {
-      const r2 = await fetch(`${CRM_BASE}/quotation/cm?cb=${brandId}`, {
-        headers: { "Authorization": `Bearer ${token}` },
-      });
-      if (r2.ok) {
-        const d2 = await r2.json();
-        arr = Array.isArray(d2) ? d2 : (d2?.data || []);
-      }
-    }
-    modelsCache.set(cacheKey, arr);
-    return arr;
-  } catch (e) { console.error("fetchCrmModels error:", e); return []; }
-}
-
-// buildCrmModelOptions passa o ano
-const targetYear = String(vehicle.year || "").split("/")[0].trim();
-const models = await fetchCrmModels(token, brandMatch.id, targetYear);
-
-// Update payload com cdFp
-const updateBody: Record<string, unknown> = {
-  code: crmQuotationCode,
-  plates: plate,
-  mdl: Number(selectedModel.crmModelId),
-  protectedValue: recomputedFipeValue || 0,
-};
-if (selectedModel.crmYearId) updateBody.mdlYr = Number(selectedModel.crmYearId);
-if (recomputedFipeCode) updateBody.cdFp = recomputedFipeCode;
-```
+- Schema do banco (`quotes.vehicle_data` já é JSON livre).
+- Frontend de Step 1, Step 3, Result, Payment.
+- `get-crm-plans`, `consulta-placa`, `consulta-cep`.
+- Lógica de planos, polling FIPE, enriquecimento Parallelum.
 
 ## Resultado esperado
 
-- Card do CRM passa a mostrar `vhclFipeVl` preenchido após confirmação do modelo (CRM calcula sozinho com `mdl` + `mdlYr` + `cdFp` corretos).
-- Lista de modelos candidatos fica menor e mais precisa graças ao `cmby`.
-- Logs mais limpos (sem 404 de `quotationFipeApi`, sem aliases ignorados).
-- Latência da confirmação reduzida (~3–6s a menos).
+- Usuário pode pular completamente a placa, escolher Marca/Modelo/Ano via FIPE, e avançar normalmente.
+- O lead é criado no CRM com os dados manuais preenchidos (`mdl`, `mdlYr`, FIPE) — mesmo sem placa.
+- Quem tem a placa continua usando o fluxo automático (sem regressão).
 
-## Não resolvido neste plano
+## Arquivos modificados
 
-- Problema do `city` exigido pelo `get-crm-plans` quando o usuário ainda não preencheu o endereço (Step 3). É ortogonal e fica para outra rodada.
+- `src/pages/Quote.tsx` — validação + criação da cotação no "Avançar" quando manual.
+- `supabase/functions/consulta-placa-crm/index.ts` — placa opcional + suporte a `manualVehicle`.

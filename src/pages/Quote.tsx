@@ -304,7 +304,9 @@ const Quote = () => {
 
   const validateStep2 = () => {
     const e: Record<string, string> = {};
-    if (quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").length < 7) e.plate = "Placa inválida";
+    const plateClean = quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "");
+    // Placa é opcional. Se preenchida, valida formato; se vazia, segue.
+    if (plateClean.length > 0 && plateClean.length < 7) e.plate = "Placa inválida";
     if (!plateConsulted) {
       if (!quote.vehicle.brandCode) e.brand = "Selecione a marca";
       if (!quote.vehicle.modelCode) e.model = "Selecione o modelo";
@@ -332,9 +334,53 @@ const Quote = () => {
     return Object.keys(e).length === 0;
   };
 
+  const ensureCrmQuotationFromManual = async () => {
+    if (quote.crmQuotationCode) return;
+    // Cria a cotação no CRM com os dados manuais (placa pode ir vazia)
+    try {
+      const { data, error } = await supabase.functions.invoke("consulta-placa-crm", {
+        body: {
+          personal: quote.personal,
+          plate: quote.vehicle.plate || "",
+          vehicleType: quote.vehicle.type,
+          manualVehicle: {
+            brand: quote.vehicle.brand,
+            model: quote.vehicle.model,
+            year: quote.vehicle.year,
+            fipeCode: quote.vehicle.fipeCode || "",
+            fipeValue: quote.vehicle.fipeValue || 0,
+            color: quote.vehicle.color || "",
+          },
+        },
+      });
+      if (error || data?.error) throw error || new Error(data?.error);
+      if (data?.quotationCode) {
+        setCrmQuotationCode(data.quotationCode);
+        if (data.negotiationCode) setCrmNegotiationCode(data.negotiationCode);
+      }
+      if (data?.vehicleTypeId) {
+        updateVehicle({ vehicleTypeId: data.vehicleTypeId } as Partial<typeof quote.vehicle>);
+      }
+    } catch (e) {
+      console.error("ensureCrmQuotationFromManual error:", e);
+      // Não bloqueia o avanço — submit-to-crm cria depois.
+    }
+  };
+
   const handleNext = async () => {
     if (step === 1 && validateStep1()) setStep(2);
-    else if (step === 2 && validateStep2()) setStep(3);
+    else if (step === 2 && validateStep2()) {
+      // Se ainda não temos cotação CRM (usuário pulou a placa ou preencheu manual), cria agora.
+      if (!quote.crmQuotationCode) {
+        setSubmitting(true);
+        try {
+          await ensureCrmQuotationFromManual();
+        } finally {
+          setSubmitting(false);
+        }
+      }
+      setStep(3);
+    }
     else if (step === 3 && validateStep3()) {
       setSubmitting(true);
       try {
@@ -508,6 +554,9 @@ const Quote = () => {
                   )}
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Não tem a placa em mãos? Pode pular essa etapa e preencher os dados do veículo abaixo.
+              </p>
               <ErrorMsg field="plate" />
             </div>
 

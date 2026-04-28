@@ -13,7 +13,7 @@ const BodySchema = z.object({
     phone: z.string().trim().max(20).optional().or(z.literal("")),
     cpf: z.string().trim().max(20).optional().or(z.literal("")),
   }),
-  plate: z.string().trim().min(6).max(10),
+  plate: z.string().trim().max(10).optional().default(""),
   vehicleType: z.enum(["carro", "moto", "caminhao"]).optional().default("carro"),
   crmQuotationCode: z.string().trim().max(100).optional().or(z.literal("")),
   selectedModel: z.object({
@@ -24,6 +24,14 @@ const BodySchema = z.object({
     fipeValue: z.number().optional().default(0),
     crmModelId: z.number(),
     crmYearId: z.number().optional().nullable(),
+  }).optional(),
+  manualVehicle: z.object({
+    brand: z.string().trim().max(255),
+    model: z.string().trim().max(255),
+    year: z.string().trim().max(30),
+    fipeCode: z.string().trim().max(30).optional().default(""),
+    fipeValue: z.number().optional().default(0),
+    color: z.string().trim().max(60).optional().default(""),
   }).optional(),
 });
 
@@ -604,7 +612,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const { personal, plate, vehicleType, crmQuotationCode, selectedModel } = parsed.data;
+    const { personal, plate, vehicleType, crmQuotationCode, selectedModel, manualVehicle } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     if (!token) {
       return new Response(JSON.stringify({ error: "POWERCRM_API_TOKEN not configured" }), {
@@ -650,10 +658,10 @@ Deno.serve(async (req) => {
       // Payload enxuto + cdFp — campos que o CRM realmente usa para preencher o card.
       const updateBody: Record<string, unknown> = {
         code: crmQuotationCode,
-        plates: plate,
         mdl: Number(selectedModel.crmModelId),
         protectedValue: recomputedFipeValue || 0,
       };
+      if (plate) updateBody.plates = plate;
       if (selectedModel.crmYearId) updateBody.mdlYr = Number(selectedModel.crmYearId);
       if (recomputedFipeCode) updateBody.cdFp = recomputedFipeCode;
 
@@ -737,10 +745,27 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 1. Try to fetch the vehicle by plate FIRST (independent of any quotation)
-    let vehicle: Vehicle | null = await fetchPlateFromCrm(token, plate, vehicleType);
+    // 1. Try to fetch the vehicle by plate FIRST (independent of any quotation).
+    //    If no plate provided, skip — manualVehicle (if any) will fill the gap below.
+    let vehicle: Vehicle | null = plate ? await fetchPlateFromCrm(token, plate, vehicleType) : null;
     if (vehicle) {
       console.log("Vehicle resolved from /plates endpoint:", JSON.stringify(vehicle));
+    }
+
+    // If user filled the vehicle manually (no plate or plate not found), seed `vehicle` from it.
+    if (!vehicle && manualVehicle) {
+      vehicle = {
+        brand: manualVehicle.brand,
+        model: manualVehicle.model,
+        year: manualVehicle.year,
+        color: manualVehicle.color || "",
+        fipeCode: manualVehicle.fipeCode || "",
+        fipeValue: Number(manualVehicle.fipeValue || 0),
+        type: vehicleType,
+        brandRaw: manualVehicle.brand,
+        modelRaw: manualVehicle.model,
+      } as Vehicle;
+      console.log("Vehicle seeded from manual input:", JSON.stringify(vehicle));
     }
 
     // 2. Create quotation in CRM (always, so we get a card to follow up with)
@@ -788,7 +813,7 @@ Deno.serve(async (req) => {
         await fetch(`${CRM_BASE}/quotation/update`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ code: quotationCode, workVehicle, vhclType: vehicleTypeId, plates: plate, plts: plate }),
+          body: JSON.stringify({ code: quotationCode, workVehicle, vhclType: vehicleTypeId, ...(plate ? { plates: plate, plts: plate } : {}) }),
         });
       } catch (e) { console.error("update vhclType error:", e); }
     }
@@ -804,7 +829,7 @@ Deno.serve(async (req) => {
 
     // 5. If we don't have vehicle data yet, poll the quotation/negotiation endpoints (data may arrive
     //    after CRM's internal DENATRAN/FIPE lookup completes).
-    if (!vehicle) {
+    if (!vehicle && plate) {
       const intervals = [1500, 2000, 2500, 3500, 4500, 6000];
       for (let i = 0; i < intervals.length; i++) {
         await new Promise((r) => setTimeout(r, intervals[i]));
@@ -879,7 +904,7 @@ Deno.serve(async (req) => {
           }
           if (vehicle.fipeValue) updateBody.protectedValue = vehicle.fipeValue;
           if (vehicle.fipeCode) updateBody.cdFp = vehicle.fipeCode;
-          updateBody.plates = plate;
+          if (plate) updateBody.plates = plate;
           if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
 
 
