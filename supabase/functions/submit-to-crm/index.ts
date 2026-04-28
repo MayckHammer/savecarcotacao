@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
           addressNeighborhood: address.neighborhood,
           protectedValue: vehicle.fipeValue || 0,
           observation,
-          noteContractInternal: internalNote,
+          noteContract: internalNote,
         };
         if (cityCode) updatePayload.city = cityCode;
         // Reinforce vehicle type in case it was lost between steps
