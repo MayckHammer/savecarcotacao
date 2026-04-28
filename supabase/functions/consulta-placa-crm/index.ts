@@ -185,16 +185,33 @@ async function fetchCrmBrands(token: string, vehicleTypeId: string | number): Pr
   } catch (e) { console.error("fetchCrmBrands error:", e); return []; }
 }
 
-async function fetchCrmModels(token: string, brandId: number): Promise<CrmItem[]> {
-  if (modelsCache.has(brandId)) return modelsCache.get(brandId)!;
+async function fetchCrmModels(token: string, brandId: number, year?: string): Promise<CrmItem[]> {
+  // Prefer cmby (brand + year) — same endpoint the CRM panel uses; returns a much
+  // shorter, more accurate list. Falls back to cm (brand only) if cmby is empty.
+  const cleanYear = (year || "").trim();
+  const cacheKey = `${brandId}:${cleanYear}` as unknown as number;
+  if (modelsCache.has(cacheKey)) return modelsCache.get(cacheKey)!;
   try {
-    const r = await fetch(`${CRM_BASE}/quotation/cm?cb=${brandId}`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    if (!r.ok) return [];
-    const data = await r.json();
-    const arr: CrmItem[] = Array.isArray(data) ? data : (data?.data || []);
-    modelsCache.set(brandId, arr);
+    const url = cleanYear
+      ? `${CRM_BASE}/quotation/cmby?cb=${brandId}&cy=${encodeURIComponent(cleanYear)}`
+      : `${CRM_BASE}/quotation/cm?cb=${brandId}`;
+    const r = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+    let arr: CrmItem[] = [];
+    if (r.ok) {
+      const data = await r.json();
+      arr = Array.isArray(data) ? data : (data?.data || []);
+    }
+    if (cleanYear && arr.length === 0) {
+      // Fallback: brand-only listing
+      const r2 = await fetch(`${CRM_BASE}/quotation/cm?cb=${brandId}`, {
+        headers: { "Authorization": `Bearer ${token}` },
+      });
+      if (r2.ok) {
+        const d2 = await r2.json();
+        arr = Array.isArray(d2) ? d2 : (d2?.data || []);
+      }
+    }
+    modelsCache.set(cacheKey, arr);
     return arr;
   } catch (e) { console.error("fetchCrmModels error:", e); return []; }
 }
