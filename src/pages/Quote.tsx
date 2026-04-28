@@ -304,7 +304,9 @@ const Quote = () => {
 
   const validateStep2 = () => {
     const e: Record<string, string> = {};
-    if (quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").length < 7) e.plate = "Placa inválida";
+    const plateClean = quote.vehicle.plate.replace(/[^A-Za-z0-9]/g, "");
+    // Placa é opcional. Se preenchida, valida formato; se vazia, segue.
+    if (plateClean.length > 0 && plateClean.length < 7) e.plate = "Placa inválida";
     if (!plateConsulted) {
       if (!quote.vehicle.brandCode) e.brand = "Selecione a marca";
       if (!quote.vehicle.modelCode) e.model = "Selecione o modelo";
