@@ -594,15 +594,131 @@ async function getNegotiation(token: string, code: string): Promise<Record<strin
   } catch { return null; }
 }
 
-// NOTE: triggerCrmFipeRefresh / fetchFipeCodeFromCrm / getQuotationFipe foram
-// removidos. Investigação no DevTools do PowerCRM (cards reais) mostrou que:
-//   1. O ícone "lupa FIPE" do card é apenas um tooltip decorativo
-//      (`<i id="tooltipFipeUpdate" aria-hidden="true">`), não um botão.
-//   2. O campo `vhclFipeVl` é `disabled`, calculado pelo backend do CRM a partir
-//      de `mdl + mdlYr` (e opcionalmente `cdFp`) enviados via /quotation/update.
-//   3. Os endpoints /quotation/cmf, /cf, /fipe e /quotationFipeApi retornavam
-//      404 silenciosamente (eram especulativos).
-// Basta enviar o update enxuto e aguardar o CRM processar (polling em getQuotation).
+// ===== CRM "lupa FIPE" + "Salvar" — replicates manual operator flow =====
+// Discovered via DevTools network tab on a real PowerCRM card:
+//   1. Click "lupa" (search icon next to plate) → GET /quotation/pltVrfyQttn?plates=XXX
+//      → CRM lê DENATRAN, retorna brand/year/chassi/fipeCode candidato
+//   2. CRM auto-roda /cmby?cb=&cy= e popula dropdown de modelos
+//   3. Operador escolhe modelo + clica "Salvar" → POST /quotation/updateQuotationVehicleData
+//      com { quotationCode, vhclBrand, vhclModel, vhclModelYear, vhclFabricationYear,
+//             vhclFipeCd, vhclFipeVl, vhclChassi, vhclColor }
+//   4. Backend recalcula vhclFipeVl/protectedValue → exibe na UI
+//
+// O endpoint /quotation/update enxuto NÃO dispara esse cálculo (testado).
+// Precisamos chamar updateQuotationVehicleData com as chaves vhcl* exatas.
+
+async function triggerCrmPlateLookup(
+  token: string,
+  quotationCode: string,
+  plate: string,
+): Promise<Record<string, unknown> | null> {
+  // Reproduz o clique na "lupa" do card. Tenta variações de query string
+  // observadas no DevTools (?plates=XXX e ?plates=XXX&qttn=CODE).
+  const variants = [
+    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}&qttn=${encodeURIComponent(quotationCode)}`,
+    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}`,
+  ];
+  for (const url of variants) {
+    try {
+      const r = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+      const text = await r.text();
+      console.log(`pltVrfyQttn ${url.includes("qttn=") ? "(with qttn)" : "(plates only)"} → ${r.status} ${text.substring(0, 300)}`);
+      if (r.ok) {
+        try { return JSON.parse(text); } catch { return { raw: text }; }
+      }
+    } catch (e) {
+      console.error("pltVrfyQttn error:", e);
+    }
+  }
+  return null;
+}
+
+async function saveCrmVehicleData(
+  token: string,
+  quotationCode: string,
+  vehicle: Vehicle,
+  ids: { crmBrandId?: number | null; crmModelId?: number | null; crmYearId?: number | null },
+  plate: string,
+  vehicleTypeId: number | string | null,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  // Replica o clique no botão "Salvar" do form#vehicleEditForm.
+  // Endpoint descoberto via DevTools: POST /quotation/updateQuotationVehicleData
+  // O CRM aceita tanto vhcl* (UI form) quanto aliases curtos (mdl/mdlYr/cdFp).
+  // Mandamos AMBOS para maximizar compatibilidade — o backend ignora os que não conhece.
+  const fabYr = (() => {
+    const yr = parseInt(String(vehicle.year || "").split("/")[0], 10);
+    return Number.isFinite(yr) ? yr : undefined;
+  })();
+
+  const body: Record<string, unknown> = {
+    code: quotationCode,
+    quotationCode,
+    // vhcl* keys (form#vehicleEditForm) — botão Salvar real
+    vhclBrand: ids.crmBrandId ?? undefined,
+    vhclModel: ids.crmModelId ?? undefined,
+    vhclModelYear: ids.crmYearId ?? undefined,
+    vhclFabricationYear: fabYr,
+    vhclFipeCd: vehicle.fipeCode || undefined,
+    vhclFipeVl: vehicle.fipeValue || undefined,
+    vhclChassi: undefined, // CRM lê do DENATRAN; não temos no app
+    vhclColor: vehicle.color || undefined,
+    vhclPlates: plate || undefined,
+    vhclType: vehicleTypeId ?? undefined,
+    // aliases curtos — backup
+    mdl: ids.crmModelId ?? undefined,
+    mdlYr: ids.crmYearId ?? undefined,
+    cdFp: vehicle.fipeCode || undefined,
+    plates: plate || undefined,
+    plts: plate || undefined,
+    color: vehicle.color || undefined,
+    fabricationYear: fabYr,
+    protectedValue: vehicle.fipeValue || undefined,
+  };
+  // Remove undefineds
+  Object.keys(body).forEach((k) => body[k] === undefined && delete body[k]);
+
+  console.log("updateQuotationVehicleData payload:", JSON.stringify(body));
+  try {
+    const r = await fetch(`${CRM_BASE}/quotation/updateQuotationVehicleData`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    const text = await r.text();
+    console.log(`updateQuotationVehicleData → ${r.status} ${text.substring(0, 300)}`);
+    return { ok: r.ok, status: r.status, body: text };
+  } catch (e) {
+    console.error("updateQuotationVehicleData error:", e);
+    return { ok: false, status: 0, body: String(e) };
+  }
+}
+
+async function pollCrmFipeValue(
+  token: string,
+  quotationCode: string,
+  expectedValue: number,
+  maxAttempts = 4,
+): Promise<{ confirmed: boolean; crmFipeValue: number; crmFipeCode: string; verify: Record<string, unknown> | null }> {
+  // Polling até vhclFipeVl > 0 (ou expectedValue dentro de 1% de tolerância).
+  const intervals = [1500, 2000, 2500, 2500];
+  let verify: Record<string, unknown> | null = null;
+  let crmFipeValue = 0;
+  let crmFipeCode = "";
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, intervals[i] ?? 2000));
+    verify = await getQuotation(token, quotationCode);
+    if (!verify) continue;
+    crmFipeValue = parseFipeValue(
+      verify.vhclFipeVl ?? verify.protectedValue ?? verify.vlFipe ?? verify.fipeValue,
+    );
+    crmFipeCode = String(verify.vhclFipeCd ?? verify.cdFp ?? verify.codFipe ?? "").trim();
+    console.log(`pollCrmFipeValue attempt ${i + 1}: vhclFipeVl=${crmFipeValue} cdFp=${crmFipeCode}`);
+    if (crmFipeValue > 0) break;
+  }
+  const tolerance = Math.max(1, expectedValue * 0.01);
+  const confirmed = crmFipeValue > 0 && (expectedValue === 0 || Math.abs(crmFipeValue - expectedValue) <= Math.max(tolerance, expectedValue * 0.15));
+  return { confirmed, crmFipeValue, crmFipeCode, verify };
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
