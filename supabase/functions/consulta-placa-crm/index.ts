@@ -297,7 +297,8 @@ export async function resolveCrmIds(
   console.log(`CRM brand matched: "${brand}" → ${labelOf(brandMatch)} (id=${brandMatch.id})`);
 
   if (!model && !rawPlateName) return out;
-  const models = await fetchCrmModels(token, brandMatch.id);
+  const yearForLookup = String(year || "").split("/")[0].trim();
+  const models = await fetchCrmModels(token, brandMatch.id, yearForLookup);
 
   // Extract distinctive tokens from raw plate name (e.g. "AIRC", "AIRCROSS", "CROSS")
   // and use them to bias the match. Skip the brand word itself.
