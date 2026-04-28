@@ -1,76 +1,87 @@
+# Adicionar página de simulação rápida sem placa
 
-# Tornar placa opcional quando o usuário preenche modelo manualmente
+## Objetivo
 
-## Problema atual
+Criar uma nova rota `/simulacao` (componente `QuickQuote`) que permite ao usuário ver preços estimados informando apenas:
+- Tipo de veículo (carro / moto / caminhão)
+- UF (estado de circulação)
+- Faixa de valor FIPE (5 faixas pré-definidas)
 
-Hoje a placa é obrigatória para avançar do Step 2:
-- `validateStep2` exige `plate.length >= 7`.
-- A criação da cotação no CRM (`consulta-placa-crm`) só acontece se o usuário clicar em "Consultar" com placa válida.
-- Se a placa do CRM/SINESP não retorna o veículo (caso comum em motos, veículos novos, ou plate não cadastrada), o usuário fica preso — mesmo que ele consiga preencher Marca/Modelo/Ano via FIPE manualmente.
-
-O CRM aceita criar cotação sem placa (`plts` pode ir vazio) — campos obrigatórios reais são `name`, `phone`, `email`, `registration` e `vhclType`.
+E atualizar a Landing para direcionar o CTA principal para essa nova página, mantendo um link secundário "Já tenho a placa" apontando para `/cotacao`.
 
 ## O que muda
 
-### 1. Frontend (`src/pages/Quote.tsx`)
+### 1. Novo arquivo `src/pages/QuickQuote.tsx`
 
-**Validação Step 2 — placa não obrigatória:**
-- Remover a checagem `plate.length < 7` de `validateStep2`. Aceitar placa vazia.
-- Manter exigência de `type`, `usage`, e (no modo manual) `brandCode + modelCode + yearCode`.
-- Se o usuário digitou algo na placa, validar formato; se vazio, pular.
+Página standalone com:
 
-**Botão "Consultar" continua existindo, mas opcional:**
-- Mostrar um texto auxiliar abaixo da placa: *"Não tem a placa? Pode pular e preencher abaixo."*
-- O bloco de seleção manual (Marca/Modelo/Ano FIPE) já aparece quando `!plateConsulted` — basta funcionar também sem placa digitada.
+- **Header** com logo (clica e volta para `/`) e botão "Falar com consultor" (WhatsApp).
+- **Hero** com título "Veja o preço agora. Sem precisar da placa." + badge "Cotação em 30 segundos".
+- **Formulário de simulação:**
+  - Tipo de veículo: 3 botões com ícones (Car / Bike / Truck).
+  - UF: `<select>` com 27 estados.
+  - Faixa FIPE: 5 botões empilhados (`0-25`, `25-50`, `50-80`, `80-120`, `120+`).
+  - Botão "Ver meus preços agora" — habilitado quando UF + faixa FIPE selecionados.
+  - Trust badges: "Sem análise de perfil" / "100% da FIPE".
+- **Seção de planos** (só aparece após simular, com scroll suave):
+  - Card **COMPLETO** com preço mensal, 4 coberturas + "Ver todas", preço anual com 10% off, botão "Contratar Completo".
+  - Card **PREMIUM** com badge "MAIS COMPLETO", mesma estrutura.
+  - CTA WhatsApp "Ficou com dúvidas?".
+  - Disclaimer sobre valores estimados.
+  - Link "Prefiro informar a placa agora" → `/cotacao`.
+- **Footer mínimo** quando ainda não simulou: link "Consultar pela placa diretamente" → `/cotacao`.
 
-**Avançar do Step 2 sem cotação CRM criada:**
-- Hoje o fluxo principal é: clica em "Consultar" → cria cotação → guarda `crmQuotationCode`.
-- Novo: se ao clicar "Avançar" não houver `crmQuotationCode` E o usuário tiver preenchido manualmente, criar a cotação no CRM nesse momento, enviando os dados manuais (placa pode ir vazia).
+### Lógica de cálculo (client-side, sem chamada ao CRM)
 
-### 2. Edge function `consulta-placa-crm`
+Tabela base por faixa FIPE × multiplicador por tipo de veículo:
 
-**Tornar `plate` opcional no Zod schema:**
-- `plate: z.string().trim().max(10).optional().default("")`.
-- Quando `plate` está vazia, pular `fetchPlateFromCrm` (não chamar `/plates/`) e ir direto para criar a cotação.
+```text
+PRICE_TABLE (mensal):
+  0-25   → completo R$ 89.90  / premium R$ 119.90
+  25-50  → completo R$ 139.90 / premium R$ 189.90
+  50-80  → completo R$ 189.90 / premium R$ 259.90
+  80-120 → completo R$ 249.90 / premium R$ 339.90
+  120+   → completo R$ 329.90 / premium R$ 449.90
 
-**Aceitar dados manuais do veículo no body:**
-- Adicionar bloco opcional `manualVehicle` ao schema:
-  ```ts
-  manualVehicle: z.object({
-    brand: z.string(),
-    model: z.string(),
-    year: z.string(),
-    fipeCode: z.string().optional(),
-    fipeValue: z.number().optional(),
-    crmBrandId: z.number().optional(),
-    crmModelId: z.number().optional(),
-    crmYearId: z.number().optional(),
-  }).optional()
-  ```
-- Quando `manualVehicle` vier preenchido, usar esses dados para resolver IDs CRM (via `resolveCrmIds` por nome) e disparar o mesmo "early update" com `mdl`, `mdlYr`, `protectedValue`, `cdFp` que hoje só roda no fluxo de placa.
+TYPE_MULT: carro 1.0  /  moto 0.78  /  caminhão 1.32
+Anual = mensal × 12 × 0.9 (10% desconto)
+```
 
-**Payload de criação:**
-- Manter `plts` e `plates` apenas se a placa existir; caso contrário, enviar string vazia (CRM aceita).
+### Ao clicar "Contratar COMPLETO/PREMIUM"
 
-### 3. Edge function `submit-to-crm`
+- Salva `vehicleType` no `QuoteContext` via `updateVehicle({ type })`.
+- Navega para `/cotacao` passando `state: { quickPlan, quickUf, quickFipeRange }`.
+- (O `Quote.tsx` atual ignora esse `state` — ele continuará funcionando normalmente. Pré-preenchimento opcional pode ser adicionado depois sem afetar este plano.)
 
-- `plate` já é `optional().default("")` — sem mudanças no schema.
-- Garantir que, quando `crmQuotationCode` já vier do passo anterior (criado via fluxo manual), o `submit-to-crm` apenas atualize o lead com endereço, sem tentar recriar.
+### 2. `src/App.tsx`
+
+Adicionar:
+```tsx
+import QuickQuote from "./pages/QuickQuote";
+// ...
+<Route path="/simulacao" element={<QuickQuote />} />
+```
+
+### 3. `src/pages/Landing.tsx`
+
+Trocar o CTA principal:
+- Antes: `navigate("/cotacao")` com texto "Cotação em menos de 30 segundos".
+- Depois: `navigate("/simulacao")` com texto "Ver preço sem informar a placa".
+- Adicionar link secundário discreto abaixo do botão: "Já tenho a placa em mãos" → `/cotacao`.
 
 ## O que NÃO muda
 
-- Schema do banco (`quotes.vehicle_data` já é JSON livre).
-- Frontend de Step 1, Step 3, Result, Payment.
-- `get-crm-plans`, `consulta-placa`, `consulta-cep`.
-- Lógica de planos, polling FIPE, enriquecimento Parallelum.
+- `Quote.tsx`, `Result.tsx`, `Payment.tsx`, edge functions, schema do banco — nenhum impacto.
+- `QuoteContext` — usado apenas para `updateVehicle({ type })`, sem novos campos.
+- Fluxo completo via placa continua intacto (`/cotacao`).
 
 ## Resultado esperado
 
-- Usuário pode pular completamente a placa, escolher Marca/Modelo/Ano via FIPE, e avançar normalmente.
-- O lead é criado no CRM com os dados manuais preenchidos (`mdl`, `mdlYr`, FIPE) — mesmo sem placa.
-- Quem tem a placa continua usando o fluxo automático (sem regressão).
+- Usuário entra no site → vê CTA "Ver preço sem informar a placa" → escolhe tipo + UF + faixa FIPE → vê dois cards de preço → clica "Contratar" e cai no fluxo `/cotacao` normalmente.
+- Quem prefere começar pela placa usa o link secundário.
 
 ## Arquivos modificados
 
-- `src/pages/Quote.tsx` — validação + criação da cotação no "Avançar" quando manual.
-- `supabase/functions/consulta-placa-crm/index.ts` — placa opcional + suporte a `manualVehicle`.
+- **Novo:** `src/pages/QuickQuote.tsx`
+- `src/App.tsx` — registrar rota `/simulacao`
+- `src/pages/Landing.tsx` — novo CTA + link secundário

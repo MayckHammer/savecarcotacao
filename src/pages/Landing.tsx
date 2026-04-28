@@ -21,13 +21,21 @@ const Landing = () => {
         </p>
 
         <Button
-          onClick={() => navigate("/cotacao")}
+          onClick={() => navigate("/simulacao")}
           className="w-full max-w-xs h-14 text-base font-bold rounded-xl shadow-lg"
           size="lg">
 
-          Cotação em menos de 30 segundos
+          Ver preço sem informar a placa
           <ArrowRight className="ml-2 h-5 w-5" />
         </Button>
+
+        <button
+          onClick={() => navigate("/cotacao")}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors mt-3 flex items-center gap-1"
+        >
+          Já tenho a placa em mãos
+          <ArrowRight className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {/* Links Section */}

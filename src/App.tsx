@@ -14,6 +14,7 @@ import Admin from "./pages/Admin";
 import Confirmation from "./pages/Confirmation";
 import NotFound from "./pages/NotFound";
 import Codebase from "./pages/Codebase";
+import QuickQuote from "./pages/QuickQuote";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/admin" element={<Admin />} />
             <Route path="/confirmacao" element={<Confirmation />} />
             <Route path="/codebase" element={<Codebase />} />
+            <Route path="/simulacao" element={<QuickQuote />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
