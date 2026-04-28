@@ -115,7 +115,7 @@ const Landing = () => {
         variants={container}
         initial="hidden"
         animate="show"
-        className="px-6 pb-8 space-y-3 max-w-xs mx-auto w-full"
+        className="relative z-10 px-6 pb-8 space-y-3 max-w-xs mx-auto w-full"
       >
         <motion.a
           variants={item}
@@ -148,7 +148,7 @@ const Landing = () => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.6, duration: 0.6 }}
-        className="px-6 pb-6 text-center"
+        className="relative z-10 px-6 pb-6 text-center"
       >
         <div className="flex items-center justify-center gap-4 mb-4">
           <motion.a
