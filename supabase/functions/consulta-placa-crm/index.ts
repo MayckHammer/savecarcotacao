@@ -13,7 +13,7 @@ const BodySchema = z.object({
     phone: z.string().trim().max(20).optional().or(z.literal("")),
     cpf: z.string().trim().max(20).optional().or(z.literal("")),
   }),
-  plate: z.string().trim().min(6).max(10),
+  plate: z.string().trim().max(10).optional().default(""),
   vehicleType: z.enum(["carro", "moto", "caminhao"]).optional().default("carro"),
   crmQuotationCode: z.string().trim().max(100).optional().or(z.literal("")),
   selectedModel: z.object({
@@ -24,6 +24,14 @@ const BodySchema = z.object({
     fipeValue: z.number().optional().default(0),
     crmModelId: z.number(),
     crmYearId: z.number().optional().nullable(),
+  }).optional(),
+  manualVehicle: z.object({
+    brand: z.string().trim().max(255),
+    model: z.string().trim().max(255),
+    year: z.string().trim().max(30),
+    fipeCode: z.string().trim().max(30).optional().default(""),
+    fipeValue: z.number().optional().default(0),
+    color: z.string().trim().max(60).optional().default(""),
   }).optional(),
 });
 
