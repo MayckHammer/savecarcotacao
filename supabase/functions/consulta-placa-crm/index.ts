@@ -239,15 +239,15 @@ async function buildCrmModelOptions(
   const brandMatch = pickBestMatch(brands, vehicle.brand) || pickBestMatch(brands, vehicle.brandRaw?.split(/\s+/)[0] || "");
   if (!brandMatch) return [];
 
+  const targetYear = String(vehicle.year || "").split("/")[0].trim();
   const rawHint = `${vehicle.brandRaw || ""} ${vehicle.modelRaw || ""}`.trim();
-  const models = await fetchCrmModels(token, brandMatch.id);
+  const models = await fetchCrmModels(token, brandMatch.id, targetYear);
   const candidates = models
     .map((item) => ({ item, score: optionScore(labelOf(item), vehicle.model, rawHint) }))
     .filter((x) => x.score >= 250)
     .sort((a, b) => b.score - a.score)
     .slice(0, 8);
 
-  const targetYear = String(vehicle.year || "").split("/")[0].trim();
   const out: CrmModelOption[] = [];
   for (const candidate of candidates) {
     const years = await fetchCrmYears(token, candidate.item.id);
