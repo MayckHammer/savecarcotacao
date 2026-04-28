@@ -1127,10 +1127,11 @@ Deno.serve(async (req) => {
           const saveRes = await saveCrmVehicleData(
             token,
             quotationCode,
+            quotationId,
             vehicle,
             { crmBrandId: ids.crmBrandId, crmModelId: ids.crmModelId, crmYearId: ids.crmYearId },
             plate,
-            vehicleTypeId,
+            lupaData,
           );
 
           // Fallback: se o updateQuotationVehicleData falhar, tenta o /quotation/update antigo
