@@ -55,25 +55,50 @@ function parseBrlToCents(brl: string): number {
 async function triggerCrmFipeCalculation(
   token: string,
   quotationCode: string,
+  maxAttempts = 3,
 ): Promise<{ ok: boolean; fipeValue: number; fipeCode: string; raw?: unknown }> {
   const url = `${CRM_BASE}/quotation/quotationFipeApi?quotationCode=${encodeURIComponent(quotationCode)}`;
-  try {
-    const r = await fetch(url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    });
-    const text = await r.text();
-    let data: Record<string, unknown> = {};
-    try { data = JSON.parse(text); } catch { /* keep empty */ }
-    console.log(`quotationFipeApi(${quotationCode}) → ${r.status} ${text.substring(0, 300)}`);
-    if (!r.ok) return { ok: false, fipeValue: 0, fipeCode: "" };
-    const fipeValue = parseBrlToCents(String(data.fipeValueQuoted ?? data.fipeValue ?? ""));
-    const fipeCode = String(data.fipeRealCode ?? "");
-    return { ok: true, fipeValue, fipeCode, raw: data };
-  } catch (e) {
-    console.error(`quotationFipeApi(${quotationCode}) error:`, e);
-    return { ok: false, fipeValue: 0, fipeCode: "" };
+  // Backoff: 2s, 4s, 8s entre tentativas (PowerCRM tem hiccups intermitentes — 502/500)
+  const delays = [2000, 4000, 8000];
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const r = await fetch(url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      });
+      const text = await r.text();
+      let data: Record<string, unknown> = {};
+      try { data = JSON.parse(text); } catch { /* keep empty */ }
+      console.log(`quotationFipeApi(${quotationCode}) attempt ${attempt}/${maxAttempts} → ${r.status} ${text.substring(0, 300)}`);
+
+      // Retry em 5xx ou 429 (problemas transitórios do servidor)
+      const isTransient = r.status >= 500 || r.status === 429;
+      if (r.ok) {
+        const fipeValue = parseBrlToCents(String(data.fipeValueQuoted ?? data.fipeValue ?? ""));
+        const fipeCode = String(data.fipeRealCode ?? "");
+        return { ok: true, fipeValue, fipeCode, raw: data };
+      }
+      if (!isTransient) {
+        // 4xx (exceto 429): erro definitivo, não adianta repetir
+        return { ok: false, fipeValue: 0, fipeCode: "" };
+      }
+      // Transitório: espera e tenta de novo (se não for última tentativa)
+      if (attempt < maxAttempts) {
+        const wait = delays[attempt - 1] ?? 8000;
+        console.log(`quotationFipeApi(${quotationCode}) transitório (${r.status}), aguardando ${wait}ms…`);
+        await new Promise((res) => setTimeout(res, wait));
+      }
+    } catch (e) {
+      console.error(`quotationFipeApi(${quotationCode}) attempt ${attempt}/${maxAttempts} error:`, e);
+      if (attempt < maxAttempts) {
+        const wait = delays[attempt - 1] ?? 8000;
+        await new Promise((res) => setTimeout(res, wait));
+      }
+    }
   }
+  console.warn(`quotationFipeApi(${quotationCode}) esgotou ${maxAttempts} tentativas`);
+  return { ok: false, fipeValue: 0, fipeCode: "" };
 }
 
 // ===== Vehicle type → CRM mapping =====
