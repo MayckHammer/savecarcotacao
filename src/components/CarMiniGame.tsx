@@ -49,17 +49,23 @@ const CarMiniGame = () => {
     if (stored) setBest(parseInt(stored, 10) || 0);
   }, []);
 
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const baseSpeed = isMobile ? 4.5 : 3;
+  const startSpeed = isMobile ? 5.8 : 4.2;
+  const maxSpeed = isMobile ? 15 : 12;
+  const speedRamp = isMobile ? 200 : 280;
+
   const reset = useCallback(() => {
     carXRef.current = LANES[1] - CAR_W / 2;
     targetXRef.current = LANES[1] - CAR_W / 2;
     obstaclesRef.current = [];
     dashOffsetRef.current = 0;
-    speedRef.current = 3;
+    speedRef.current = baseSpeed;
     spawnTimerRef.current = 0;
     scoreRef.current = 0;
     setScore(0);
     setGameOver(false);
-  }, []);
+  }, [baseSpeed]);
 
   const start = useCallback(() => {
     reset();
