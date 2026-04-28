@@ -580,66 +580,15 @@ async function getNegotiation(token: string, code: string): Promise<Record<strin
   } catch { return null; }
 }
 
-async function getQuotationFipe(token: string, code: string): Promise<unknown | null> {
-  try {
-    const r = await fetch(`${CRM_BASE}/quotation/quotationFipeApi?quotationCode=${code}`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    if (!r.ok) return null;
-    const t = await r.text();
-    try { return JSON.parse(t); } catch { return null; }
-  } catch { return null; }
-}
-
-async function triggerCrmFipeRefresh(token: string, quotationCode: string): Promise<unknown | null> {
-  const queries = [`quotationCode=${encodeURIComponent(quotationCode)}`, `h=${encodeURIComponent(quotationCode)}`];
-  const delays = [1200, 1800];
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    for (const query of queries) {
-      try {
-        const r = await fetch(`${CRM_BASE}/quotation/quotationFipeApi?${query}`, {
-          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-        });
-        const text = await r.text();
-        console.log(`triggerCrmFipeRefresh quotationFipeApi(${query}) attempt ${attempt} → ${r.status} ${text.substring(0, 300)}`);
-        if (r.ok) {
-          try { return JSON.parse(text); } catch { return text; }
-        }
-      } catch (e) {
-        console.error(`triggerCrmFipeRefresh error attempt ${attempt}:`, e);
-      }
-    }
-    if (attempt < 3) await new Promise((r) => setTimeout(r, delays[attempt - 1] || 1500));
-  }
-  return null;
-}
-
-// Resolve FIPE code/value for a specific CRM model+year via CRM internal endpoint
-async function fetchFipeCodeFromCrm(token: string, crmModelId: number, crmYearId: number | null): Promise<{ fipeCode: string; fipeValue: number } | null> {
-  if (!crmModelId) return null;
-  const tries = [
-    `${CRM_BASE}/quotation/cmf?cm=${crmModelId}${crmYearId ? `&cmy=${crmYearId}` : ""}`,
-    `${CRM_BASE}/quotation/cf?cm=${crmModelId}${crmYearId ? `&cmy=${crmYearId}` : ""}`,
-    `${CRM_BASE}/quotation/fipe?cm=${crmModelId}${crmYearId ? `&cmy=${crmYearId}` : ""}`,
-  ];
-  for (const url of tries) {
-    try {
-      const r = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
-      if (!r.ok) continue;
-      const data = await r.json().catch(() => null);
-      if (!data) continue;
-      const arr = Array.isArray(data) ? data : (data?.data || [data]);
-      const first = arr[0] || {};
-      const code = String(first.cdFp || first.codFipe || first.fipeCode || first.codigoFipe || first.code || "").trim();
-      const value = parseFipeValue(first.vlFipe ?? first.fipeValue ?? first.valorFipe ?? first.value ?? first.price);
-      if (code || value > 0) {
-        console.log(`fetchFipeCodeFromCrm ${url} → code=${code} value=${value}`);
-        return { fipeCode: code, fipeValue: value };
-      }
-    } catch (e) { console.error(`fetchFipeCodeFromCrm ${url} error:`, e); }
-  }
-  return null;
-}
+// NOTE: triggerCrmFipeRefresh / fetchFipeCodeFromCrm / getQuotationFipe foram
+// removidos. Investigação no DevTools do PowerCRM (cards reais) mostrou que:
+//   1. O ícone "lupa FIPE" do card é apenas um tooltip decorativo
+//      (`<i id="tooltipFipeUpdate" aria-hidden="true">`), não um botão.
+//   2. O campo `vhclFipeVl` é `disabled`, calculado pelo backend do CRM a partir
+//      de `mdl + mdlYr` (e opcionalmente `cdFp`) enviados via /quotation/update.
+//   3. Os endpoints /quotation/cmf, /cf, /fipe e /quotationFipeApi retornavam
+//      404 silenciosamente (eram especulativos).
+// Basta enviar o update enxuto e aguardar o CRM processar (polling em getQuotation).
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
