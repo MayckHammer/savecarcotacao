@@ -478,34 +478,34 @@ async function fetchFipeByModelLabel(
 ): Promise<{ fipeCode: string; fipeValue: number; fipeFormatted: string; year: string } | null> {
   const typePath = FIPE_TYPE_PATH[vehicleType] || "cars";
   try {
-    let brands = fipeBrandCache.get(typePath);
+    let brands = fipeFresh(fipeBrandCache.get(typePath));
     if (!brands) {
       const r = await fetch(`${FIPE_BASE}/${typePath}/brands`, { headers: fipeHeaders() });
       if (!r.ok) return null;
       brands = await r.json();
-      fipeBrandCache.set(typePath, brands);
+      fipeBrandCache.set(typePath, { at: Date.now(), data: brands });
     }
     const brand = pickBestMatch(brands.map((b) => ({ id: Number(b.code), name: b.name })), brandLabel);
     if (!brand) return null;
 
     const modelKey = `${typePath}:${brand.id}`;
-    let models = fipeModelCache.get(modelKey);
+    let models = fipeFresh(fipeModelCache.get(modelKey));
     if (!models) {
       const r = await fetch(`${FIPE_BASE}/${typePath}/brands/${brand.id}/models`, { headers: fipeHeaders() });
       if (!r.ok) return null;
       models = await r.json();
-      fipeModelCache.set(modelKey, models);
+      fipeModelCache.set(modelKey, { at: Date.now(), data: models });
     }
     const model = pickBestMatch(models.map((m) => ({ id: Number(m.code), name: m.name })), modelLabel);
     if (!model) return null;
 
     const yearKey = `${typePath}:${brand.id}:${model.id}`;
-    let years = fipeYearCache.get(yearKey);
+    let years = fipeFresh(fipeYearCache.get(yearKey));
     if (!years) {
       const r = await fetch(`${FIPE_BASE}/${typePath}/brands/${brand.id}/models/${model.id}/years`, { headers: fipeHeaders() });
       if (!r.ok) return null;
       years = await r.json();
-      fipeYearCache.set(yearKey, years);
+      fipeYearCache.set(yearKey, { at: Date.now(), data: years });
     }
     const yearCode = chooseClosestFipeYear(years, yearLabel);
     if (!yearCode) return null;
