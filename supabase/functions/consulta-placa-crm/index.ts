@@ -902,27 +902,8 @@ Deno.serve(async (req) => {
             });
             console.log(`Early CRM update with mdl/mdlYr/FIPE → ${upd.status}`);
 
-            // Trigger official FIPE refresh for the quotation; avoids invalid 405 endpoints
-            await triggerCrmFipeRefresh(token, quotationCode);
-
-            // Second isolated FIPE-only update — forces persistence on stricter tenants
-            if (vehicle.fipeValue || vehicle.fipeCode) {
-              try {
-                await fetch(`${CRM_BASE}/quotation/update`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                  body: JSON.stringify({
-                    code: quotationCode,
-                    cdFp: vehicle.fipeCode,
-                    codFipe: vehicle.fipeCode,
-                    vhclFipeVl: vehicle.fipeValue,
-                    vlFipe: vehicle.fipeValue,
-                    protectedValue: vehicle.fipeValue,
-                    fipeValue: vehicle.fipeValue,
-                  }),
-                });
-              } catch (e) { console.error("FIPE-only update error:", e); }
-            }
+            // CRM calcula vhclFipeVl sozinho a partir de mdl + mdlYr + cdFp.
+            // Sem necessidade de trigger manual nem de "FIPE-only update" com aliases ignorados.
 
             await new Promise((r) => setTimeout(r, 1500));
             const verify = await getQuotation(token, quotationCode);
