@@ -718,9 +718,10 @@ async function pollCrmFipeValue(
   const tolerance = Math.max(1, expectedValue * 0.01);
   const confirmed = crmFipeValue > 0 && (expectedValue === 0 || Math.abs(crmFipeValue - expectedValue) <= Math.max(tolerance, expectedValue * 0.15));
   return { confirmed, crmFipeValue, crmFipeCode, verify };
-
+}
 
 Deno.serve(async (req) => {
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
