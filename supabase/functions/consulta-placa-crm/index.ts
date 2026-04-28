@@ -594,17 +594,153 @@ async function getNegotiation(token: string, code: string): Promise<Record<strin
   } catch { return null; }
 }
 
-// NOTE: triggerCrmFipeRefresh / fetchFipeCodeFromCrm / getQuotationFipe foram
-// removidos. Investigação no DevTools do PowerCRM (cards reais) mostrou que:
-//   1. O ícone "lupa FIPE" do card é apenas um tooltip decorativo
-//      (`<i id="tooltipFipeUpdate" aria-hidden="true">`), não um botão.
-//   2. O campo `vhclFipeVl` é `disabled`, calculado pelo backend do CRM a partir
-//      de `mdl + mdlYr` (e opcionalmente `cdFp`) enviados via /quotation/update.
-//   3. Os endpoints /quotation/cmf, /cf, /fipe e /quotationFipeApi retornavam
-//      404 silenciosamente (eram especulativos).
-// Basta enviar o update enxuto e aguardar o CRM processar (polling em getQuotation).
+// ===== CRM "lupa FIPE" + "Salvar" — replicates manual operator flow =====
+// Discovered via DevTools network tab on a real PowerCRM card:
+//   1. Click "lupa" (search icon next to plate) → GET /quotation/pltVrfyQttn?plates=XXX
+//      → CRM lê DENATRAN, retorna brand/year/chassi/fipeCode candidato
+//   2. CRM auto-roda /cmby?cb=&cy= e popula dropdown de modelos
+//   3. Operador escolhe modelo + clica "Salvar" → POST /quotation/updateQuotationVehicleData
+//      com { quotationCode, vhclBrand, vhclModel, vhclModelYear, vhclFabricationYear,
+//             vhclFipeCd, vhclFipeVl, vhclChassi, vhclColor }
+//   4. Backend recalcula vhclFipeVl/protectedValue → exibe na UI
+//
+// O endpoint /quotation/update enxuto NÃO dispara esse cálculo (testado).
+// Precisamos chamar updateQuotationVehicleData com as chaves vhcl* exatas.
+
+async function triggerCrmPlateLookup(
+  token: string,
+  quotationCode: string,
+  plate: string,
+): Promise<Record<string, unknown> | null> {
+  // Reproduz o clique na "lupa" do card. O CRM exige que a cotação já exista —
+  // damos um pequeno delay para garantir indexação interna antes de chamar.
+  await new Promise((r) => setTimeout(r, 800));
+
+  // Tenta múltiplas variações de nome do parâmetro de cotação observadas no DevTools
+  const variants = [
+    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}&qttn=${encodeURIComponent(quotationCode)}`,
+    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}&code=${encodeURIComponent(quotationCode)}`,
+    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}&quotationCode=${encodeURIComponent(quotationCode)}`,
+    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}`,
+  ];
+  for (const url of variants) {
+    try {
+      const r = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+      const text = await r.text();
+      const tag = url.match(/&(\w+)=/)?.[1] || "plates-only";
+      console.log(`pltVrfyQttn (${tag}) → ${r.status} ${text.substring(0, 250)}`);
+      if (r.ok) {
+        try { return JSON.parse(text); } catch { return { raw: text }; }
+      }
+    } catch (e) {
+      console.error("pltVrfyQttn error:", e);
+    }
+  }
+  return null;
+}
+
+
+async function saveCrmVehicleData(
+  token: string,
+  quotationCode: string,
+  vehicle: Vehicle,
+  ids: { crmBrandId?: number | null; crmModelId?: number | null; crmYearId?: number | null },
+  plate: string,
+  vehicleTypeId: number | string | null,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  // Replica o clique no botão "Salvar" do form#vehicleEditForm.
+  // Endpoint descoberto via DevTools: POST /quotation/updateQuotationVehicleData
+  // O CRM aceita tanto vhcl* (UI form) quanto aliases curtos (mdl/mdlYr/cdFp).
+  // Mandamos AMBOS para maximizar compatibilidade — o backend ignora os que não conhece.
+  const fabYr = (() => {
+    const yr = parseInt(String(vehicle.year || "").split("/")[0], 10);
+    return Number.isFinite(yr) ? yr : undefined;
+  })();
+
+  const body: Record<string, unknown> = {
+    code: quotationCode,
+    quotationCode,
+    // vhcl* keys (form#vehicleEditForm) — botão Salvar real
+    vhclBrand: ids.crmBrandId ?? undefined,
+    vhclModel: ids.crmModelId ?? undefined,
+    vhclModelYear: ids.crmYearId ?? undefined,
+    vhclFabricationYear: fabYr,
+    vhclFipeCd: vehicle.fipeCode || undefined,
+    vhclFipeVl: vehicle.fipeValue || undefined,
+    vhclChassi: undefined, // CRM lê do DENATRAN; não temos no app
+    vhclColor: vehicle.color || undefined,
+    vhclPlates: plate || undefined,
+    vhclType: vehicleTypeId ?? undefined,
+    // aliases curtos — backup
+    mdl: ids.crmModelId ?? undefined,
+    mdlYr: ids.crmYearId ?? undefined,
+    cdFp: vehicle.fipeCode || undefined,
+    plates: plate || undefined,
+    plts: plate || undefined,
+    color: vehicle.color || undefined,
+    fabricationYear: fabYr,
+    protectedValue: vehicle.fipeValue || undefined,
+  };
+  // Remove undefineds
+  Object.keys(body).forEach((k) => body[k] === undefined && delete body[k]);
+
+  console.log("updateQuotationVehicleData payload:", JSON.stringify(body));
+  // POST retornou 405 Method Not Allowed em testes — tenta PUT primeiro,
+  // depois variantes do path observadas no DevTools.
+  const attempts: Array<{ url: string; method: string }> = [
+    { url: `${CRM_BASE}/quotation/updateQuotationVehicleData`, method: "PUT" },
+    { url: `${CRM_BASE}/quotation/updateVehicleData`, method: "POST" },
+    { url: `${CRM_BASE}/quotation/updateVehicleData`, method: "PUT" },
+    { url: `${CRM_BASE}/quotation/vehicleData`, method: "PUT" },
+    { url: `${CRM_BASE}/quotation/updateQuotationVehicleData`, method: "POST" },
+  ];
+  for (const { url, method } of attempts) {
+    try {
+      const r = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const text = await r.text();
+      console.log(`${method} ${url.split("/").pop()} → ${r.status} ${text.substring(0, 250)}`);
+      if (r.ok) return { ok: true, status: r.status, body: text };
+    } catch (e) {
+      console.error(`${method} ${url} error:`, e);
+    }
+  }
+  return { ok: false, status: 0, body: "all variants failed" };
+}
+
+
+async function pollCrmFipeValue(
+  token: string,
+  quotationCode: string,
+  expectedValue: number,
+  maxAttempts = 4,
+): Promise<{ confirmed: boolean; crmFipeValue: number; crmFipeCode: string; verify: Record<string, unknown> | null }> {
+  // Polling até vhclFipeVl > 0 (ou expectedValue dentro de 1% de tolerância).
+  const intervals = [1500, 2000, 2500, 2500];
+  let verify: Record<string, unknown> | null = null;
+  let crmFipeValue = 0;
+  let crmFipeCode = "";
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, intervals[i] ?? 2000));
+    verify = await getQuotation(token, quotationCode);
+    if (!verify) continue;
+    crmFipeValue = parseFipeValue(
+      verify.vhclFipeVl ?? verify.protectedValue ?? verify.vlFipe ?? verify.fipeValue,
+    );
+    crmFipeCode = String(verify.vhclFipeCd ?? verify.cdFp ?? verify.codFipe ?? "").trim();
+    console.log(`pollCrmFipeValue attempt ${i + 1}: vhclFipeVl=${crmFipeValue} cdFp=${crmFipeCode}`);
+    if (crmFipeValue > 0) break;
+  }
+  const tolerance = Math.max(1, expectedValue * 0.01);
+  const confirmed = crmFipeValue > 0 && (expectedValue === 0 || Math.abs(crmFipeValue - expectedValue) <= Math.max(tolerance, expectedValue * 0.15));
+  return { confirmed, crmFipeValue, crmFipeCode, verify };
+}
 
 Deno.serve(async (req) => {
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -833,6 +969,22 @@ Deno.serve(async (req) => {
       });
     } catch (e) { console.error("Error adding tag:", e); }
 
+    // 4b. "LUPA FIPE" — replica o clique no botão lupa do card.
+    //     Faz o CRM ler DENATRAN do lado dele e popular brand/year internamente,
+    //     o que melhora o /plates polling abaixo e prepara o terreno para o save.
+    if (plate) {
+      const lookup = await triggerCrmPlateLookup(token, quotationCode, plate);
+      if (lookup) {
+        // Se a lupa devolveu vehicle data e ainda não temos vehicle do /plates, usa
+        const lookupVehicle = extractVehicleFromAny(lookup, vehicleType);
+        if (lookupVehicle && !vehicle) {
+          vehicle = lookupVehicle;
+          console.log("Vehicle resolved from pltVrfyQttn (lupa):", JSON.stringify(vehicle));
+        }
+      }
+    }
+
+
     // 5. If we don't have vehicle data yet, poll the quotation/negotiation endpoints (data may arrive
     //    after CRM's internal DENATRAN/FIPE lookup completes).
     if (!vehicle && plate) {
@@ -933,50 +1085,73 @@ Deno.serve(async (req) => {
           modelOptions = [...modelOptions].sort((a, b) => (b.score || 0) - (a.score || 0));
         }
 
-        // 8. Push these IDs + FIPE value into the quotation immediately so the CRM card is populated
+        // 8. SALVAR no CRM via updateQuotationVehicleData (replica clique em "Salvar")
+        //    Esse é o endpoint que dispara o cálculo de vhclFipeVl no backend.
+
+        let crmFipeConfirmed = false;
+        let crmFipeValueFinal = 0;
+        let crmFipeCodeFinal = "";
         if (ids.crmModelId || ids.crmYearId || vehicle.fipeValue) {
-          const updateBody: Record<string, unknown> = { code: quotationCode };
-          if (ids.crmModelId) updateBody.mdl = ids.crmModelId;
-          if (ids.crmYearId) updateBody.mdlYr = ids.crmYearId;
-          if (vehicle.color) updateBody.color = vehicle.color;
-          if (vehicle.year) {
-            const yr = parseInt(String(vehicle.year).split("/")[0], 10);
-            if (yr) updateBody.fabricationYear = yr;
-          }
-          if (vehicle.fipeValue) updateBody.protectedValue = vehicle.fipeValue;
-          if (vehicle.fipeCode) updateBody.cdFp = vehicle.fipeCode;
-          if (plate) updateBody.plates = plate;
-          if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
+          const saveRes = await saveCrmVehicleData(
+            token,
+            quotationCode,
+            vehicle,
+            { crmBrandId: ids.crmBrandId, crmModelId: ids.crmModelId, crmYearId: ids.crmYearId },
+            plate,
+            vehicleTypeId,
+          );
 
-
-          try {
-            const upd = await fetch(`${CRM_BASE}/quotation/update`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-              body: JSON.stringify(updateBody),
-            });
-            console.log(`Early CRM update with mdl/mdlYr/FIPE → ${upd.status}`);
-
-            // CRM calcula vhclFipeVl sozinho a partir de mdl + mdlYr + cdFp.
-            // Sem necessidade de trigger manual nem de "FIPE-only update" com aliases ignorados.
-
-            await new Promise((r) => setTimeout(r, 1500));
-            const verify = await getQuotation(token, quotationCode);
-            if (verify) {
-              const v = verify as Record<string, unknown>;
-              console.log(`Post-update verify — mdl=${v.mdl} mdlYr=${v.mdlYr} vhclFipeVl=${v.vhclFipeVl} protectedValue=${v.protectedValue}`);
+          // Fallback: se o updateQuotationVehicleData falhar, tenta o /quotation/update antigo
+          if (!saveRes.ok) {
+            console.log("updateQuotationVehicleData falhou, tentando /quotation/update fallback");
+            const updateBody: Record<string, unknown> = { code: quotationCode };
+            if (ids.crmModelId) updateBody.mdl = ids.crmModelId;
+            if (ids.crmYearId) updateBody.mdlYr = ids.crmYearId;
+            if (vehicle.color) updateBody.color = vehicle.color;
+            if (vehicle.year) {
+              const yr = parseInt(String(vehicle.year).split("/")[0], 10);
+              if (yr) updateBody.fabricationYear = yr;
             }
-          } catch (e) { console.error("Early CRM update error:", e); }
+            if (vehicle.fipeValue) updateBody.protectedValue = vehicle.fipeValue;
+            if (vehicle.fipeCode) updateBody.cdFp = vehicle.fipeCode;
+            if (plate) updateBody.plates = plate;
+            if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
+            try {
+              const upd = await fetch(`${CRM_BASE}/quotation/update`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify(updateBody),
+              });
+              console.log(`Fallback /quotation/update → ${upd.status}`);
+            } catch (e) { console.error("Fallback update error:", e); }
+          }
+
+          // Polling: aguarda CRM persistir vhclFipeVl
+          const polled = await pollCrmFipeValue(token, quotationCode, vehicle.fipeValue);
+          crmFipeConfirmed = polled.confirmed;
+          crmFipeValueFinal = polled.crmFipeValue;
+          crmFipeCodeFinal = polled.crmFipeCode;
+          console.log(`CRM FIPE confirm result: confirmed=${crmFipeConfirmed} crmValue=${crmFipeValueFinal} crmCode=${crmFipeCodeFinal}`);
         }
-      } catch (e) { console.error("resolveCrmIds error:", e); }
+
+        // Anexa info de confirmação ao vehicle para o response
+        (vehicle as Vehicle & { crmFipeConfirmed?: boolean; crmFipeValueFinal?: number; crmFipeCodeFinal?: string }).crmFipeConfirmed = crmFipeConfirmed;
+        (vehicle as Vehicle & { crmFipeConfirmed?: boolean; crmFipeValueFinal?: number; crmFipeCodeFinal?: string }).crmFipeValueFinal = crmFipeValueFinal;
+        (vehicle as Vehicle & { crmFipeConfirmed?: boolean; crmFipeValueFinal?: number; crmFipeCodeFinal?: string }).crmFipeCodeFinal = crmFipeCodeFinal;
+      } catch (e) { console.error("resolveCrmIds/saveCrmVehicleData error:", e); }
     }
 
+    const vehicleAny = vehicle as (Vehicle & { crmFipeConfirmed?: boolean; crmFipeValueFinal?: number; crmFipeCodeFinal?: string }) | null;
     return new Response(JSON.stringify({
       quotationCode,
       negotiationCode,
       vehicle: vehicle ? { ...vehicle, modelOptions } : null,
       vehicleType,
       vehicleTypeId,
+      fipeSource,
+      crmFipeConfirmed: vehicleAny?.crmFipeConfirmed ?? false,
+      crmFipeValue: vehicleAny?.crmFipeValueFinal ?? 0,
+      crmFipeCode: vehicleAny?.crmFipeCodeFinal ?? "",
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -986,4 +1161,5 @@ Deno.serve(async (req) => {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
 });
