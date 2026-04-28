@@ -109,17 +109,28 @@ const CarMiniGame = () => {
         }
       }
 
-      // spawn obstacles
+      // spawn obstacles (sometimes 2 lanes at once for extra challenge)
       spawnTimerRef.current -= 1;
       if (spawnTimerRef.current <= 0) {
-        const lane = LANES[Math.floor(Math.random() * LANES.length)];
+        const laneIdxA = Math.floor(Math.random() * LANES.length);
         obstaclesRef.current.push({
-          x: lane - 14,
+          x: LANES[laneIdxA] - 14,
           y: -40,
           w: 28,
           h: 36,
         });
-        spawnTimerRef.current = Math.max(28, 70 - Math.floor(scoreRef.current / 80));
+        // After 600 pts, chance to spawn a second cone in a different lane
+        if (scoreRef.current > 600 && Math.random() < 0.35) {
+          let laneIdxB = Math.floor(Math.random() * LANES.length);
+          if (laneIdxB === laneIdxA) laneIdxB = (laneIdxB + 1) % LANES.length;
+          obstaclesRef.current.push({
+            x: LANES[laneIdxB] - 14,
+            y: -40 - 20,
+            w: 28,
+            h: 36,
+          });
+        }
+        spawnTimerRef.current = Math.max(18, 55 - Math.floor(scoreRef.current / 60));
       }
 
       // update + draw obstacles (cones)
@@ -196,8 +207,8 @@ const CarMiniGame = () => {
       // score
       scoreRef.current += 1;
       if (scoreRef.current % 30 === 0) setScore(scoreRef.current);
-      // speed up
-      speedRef.current = Math.min(8.5, 3 + scoreRef.current / 500);
+      // speed up — mais rápido e teto maior para virar desafio real
+      speedRef.current = Math.min(12, 4.2 + scoreRef.current / 280);
 
       rafRef.current = requestAnimationFrame(draw);
     };
