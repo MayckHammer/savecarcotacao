@@ -16,7 +16,7 @@ const Result = () => {
   const [progressDots, setProgressDots] = useState(".");
 
   const warningText = planWarning?.toLowerCase().includes("processando")
-    ? `FIPE oficial: ${quote.vehicle.fipeFormatted}. O CRM ainda está processando a cotação; tente continuar novamente em instantes.`
+    ? `FIPE oficial: ${quote.vehicle.fipeFormatted}. Ainda estamos processando sua cotação; tente continuar novamente em instantes.`
     : quote.vehicle.fipeFormatted
       ? `FIPE oficial: ${quote.vehicle.fipeFormatted}. Usando valores estimados — ${planWarning}`
       : `Usando valores estimados — ${planWarning}`;
@@ -112,7 +112,7 @@ const Result = () => {
               <p className="text-sm font-semibold text-foreground">Calculando seu plano{progressDots}</p>
               <p className="text-xs text-muted-foreground">
                 {quote.vehicle.fipeFormatted
-                  ? `FIPE oficial encontrada (${quote.vehicle.fipeFormatted}); aguardando cálculo do CRM.`
+                  ? `FIPE oficial encontrada (${quote.vehicle.fipeFormatted}); finalizando o cálculo do seu plano.`
                   : "Estamos consultando os melhores valores para o seu veículo."}
               </p>
             </div>

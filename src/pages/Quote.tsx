@@ -194,16 +194,16 @@ const Quote = () => {
       if (check && !check.match) {
         const detail = Array.isArray(check.mismatches) && check.mismatches.length > 0
           ? check.mismatches.join(" • ")
-          : "Os dados enviados não foram totalmente persistidos no CRM.";
+          : "Os dados enviados não foram totalmente confirmados.";
         toast.warning(`Atenção: divergência FIPE detectada — ${detail}`, { duration: 8000 });
       } else if (check && check.match) {
-        toast.success("Modelo confirmado e FIPE conferida com o CRM.");
+        toast.success("Modelo confirmado e FIPE conferida com sucesso.");
       } else {
-        toast.success("Modelo confirmado e enviado ao CRM.");
+        toast.success("Modelo confirmado com sucesso.");
       }
     } catch (e) {
       console.error("Confirm model error:", e);
-      toast.warning("Modelo confirmado no app, mas o CRM pode demorar para atualizar.");
+      toast.warning("Modelo confirmado, mas a atualização pode demorar alguns instantes.");
     } finally {
       setConfirmingModel(false);
     }
@@ -277,12 +277,12 @@ const Quote = () => {
           if (v.brand) {
             toast.info(`Placa encontrada (${v.brand}), mas FIPE/modelo não veio completo. Selecione manualmente abaixo.`);
           } else {
-            toast.info("Veículo não identificado pelo CRM. Preencha manualmente.");
+            toast.info("Veículo não identificado. Preencha manualmente.");
           }
         }
       } else {
         setPlateConsulted(false);
-        toast.info("Não foi possível buscar automaticamente os dados dessa placa no CRM. Preencha manualmente.");
+        toast.info("Não foi possível buscar automaticamente os dados dessa placa. Preencha manualmente.");
       }
     } catch (e: unknown) {
       console.error("Consulta placa error:", e);
@@ -566,7 +566,7 @@ const Quote = () => {
             {plateLoading && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground p-3">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Consultando veículo no CRM...</span>
+                <span>Consultando dados do veículo...</span>
               </div>
             )}
 
@@ -617,7 +617,7 @@ const Quote = () => {
                   searchPlaceholder="Buscar modelo..."
                   emptyMessage="Nenhum modelo encontrado."
                   loading={confirmingModel}
-                  loadingMessage="Atualizando CRM..."
+                  loadingMessage="Atualizando dados..."
                 />
                 {quote.vehicle.fipeFormatted && (
                   <p className="text-xs text-muted-foreground mt-2">

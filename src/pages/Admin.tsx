@@ -113,7 +113,7 @@ const Admin = () => {
                     {new Date(q.created_at).toLocaleDateString("pt-BR")} {new Date(q.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                   </p>
                   {q.crm_submitted && (
-                    <p className="text-xs text-green-600 mt-1">✓ Enviado ao CRM {q.crm_quotation_code ? `(${q.crm_quotation_code})` : ""}</p>
+                    <p className="text-xs text-green-600 mt-1">✓ Cotação registrada {q.crm_quotation_code ? `(${q.crm_quotation_code})` : ""}</p>
                   )}
                 </div>
                 {statusBadge(q.inspection_status)}
