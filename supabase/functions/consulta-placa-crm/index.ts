@@ -1066,24 +1066,9 @@ Deno.serve(async (req) => {
           modelOptions = [...modelOptions].sort((a, b) => (b.score || 0) - (a.score || 0));
         }
 
-        // 8. Push these IDs + FIPE value into the quotation immediately so the CRM card is populated
-        if (ids.crmModelId || ids.crmYearId || vehicle.fipeValue) {
-          const updateBody: Record<string, unknown> = { code: quotationCode };
-          if (ids.crmModelId) updateBody.mdl = ids.crmModelId;
-          if (ids.crmYearId) updateBody.mdlYr = ids.crmYearId;
-          if (vehicle.color) updateBody.color = vehicle.color;
-          if (vehicle.year) {
-            const yr = parseInt(String(vehicle.year).split("/")[0], 10);
-            if (yr) updateBody.fabricationYear = yr;
-          }
-          if (vehicle.fipeValue) updateBody.protectedValue = vehicle.fipeValue;
-          if (vehicle.fipeCode) updateBody.cdFp = vehicle.fipeCode;
-          if (plate) updateBody.plates = plate;
-          if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
-
-
         // 8. SALVAR no CRM via updateQuotationVehicleData (replica clique em "Salvar")
         //    Esse é o endpoint que dispara o cálculo de vhclFipeVl no backend.
+
         let crmFipeConfirmed = false;
         let crmFipeValueFinal = 0;
         let crmFipeCodeFinal = "";
