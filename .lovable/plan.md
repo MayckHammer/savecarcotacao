@@ -1,129 +1,100 @@
-## Resumo dos achados pelos prints
+## Objetivo
 
-Os prints confirmaram URLs, método e payload exatos das duas ações que precisamos replicar. Mas mostraram coisas diferentes do que eu tinha planejado antes:
+Descobrir o formato exato da resposta do endpoint `GET /api/quotation/quotationFipeApi?quotationCode=XXX` da PowerCRM (que dispara o cálculo FIPE — equivalente API ao botão "Salvar"), pra depois integrar na `consulta-placa-crm` e finalizar o fluxo automatizado.
 
-### Lupa — `GET /company/pltVrfyQttn?plates=XXX`
-- Não recebe `quotationCode`, só placa.
-- Devolve DENATRAN + `brandId` (CRM) + `codFipe` (formato CRM "011117-1").
-- **Não devolve valor FIPE** — quem dispara o cálculo é o Salvar.
+## Como vou fazer
 
-### Salvar — `POST /company/updateQuotationVehicleData`
-Payload real (campos EXATOS, nada de `vhclBrand`/`vhclModel` como eu havia escrito antes):
-```json
-{
-  "quotationId": 41315826,        // ID numérico
-  "plates": "PAI0F65",
-  "chassi": "935SUNFNWFB511454",
-  "renavam": "",
-  "carModel": "603",              // ID interno CRM do modelo
-  "carModelYear": "2015",
-  "fabricationYear": "2014",
-  "color": "",
-  "engineNumber": "10DE090038668",
-  "depreciationId": "0",
-  "expirationDay": 0,
-  "kmtr": "", "noteContract": "", "noteContractInternal": "",
-  "protectedValue": null,         // null — CRM calcula sozinho
-  "shift": null, "fuel": null, "city": null,
-  "workVehicle": false
-}
-```
+### Passo 1 — Criar edge function temporária `test-crm-fipe-api`
 
-**Descobertas que mudam tudo:**
-1. Path correto é `/company/...`, não `/api/quotation/...`.
-2. `protectedValue` vai como `null` — o backend do CRM calcula a partir de `carModel`+`carModelYear` (não devemos forçar valor).
-3. `carModel` é o **ID interno do CRM** (ex `"603"`), não o `fipeCode` da Parallelum. Esse ID vem do endpoint `cmby?cb={brandId}&cy={year}` (que já aparece nos prints).
-4. `quotationId` é **numérico** (41315826), não o código alfanumérico que usamos hoje (`DnKN1l8r`). Preciso descobrir onde está esse ID — provavelmente na resposta de `/quotation/add` ou em `getQuotation` há um `id` além do `code`.
+Função única e descartável que:
+1. Lê o secret `POWERCRM_API_TOKEN` (já existe no projeto)
+2. Recebe um `quotationCode` via query param (default: `q11LLmpq`)
+3. Chama `GET https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=XXX` com `Authorization: Bearer ${POWERCRM_API_TOKEN}`
+4. Devolve no response:
+   - `status` HTTP da PowerCRM
+   - `headers` da resposta
+   - `body` completo (JSON ou texto bruto)
+5. Loga tudo para inspeção via `edge_function_logs`
 
-## O que vou fazer
+### Passo 2 — Executar via `curl_edge_functions`
 
-### Passo 1 — Descobrir o `quotationId` numérico
+Vou rodar 2 testes em sequência:
+- `?quotationCode=q11LLmpq` (card recente que sabemos que existe)
+- `?quotationCode=DnKN1l8r` (card de referência da placa `PAI0F65`)
 
-Hoje só guardamos o `code` alfanumérico. Vou:
-- Logar a resposta completa do `quotation/add` para ver se já vem um `id` ou `quotationId` numérico.
-- Se não vier no add, vou logar `getQuotation({code})` para ver se ele devolve `id` numérico no body.
-- Salvar esse ID e usar no `updateQuotationVehicleData`.
+### Passo 3 — Analisar a resposta
 
-### Passo 2 — Reescrever o fluxo da edge function `consulta-placa-crm`
+Procurando no JSON retornado:
+- Onde vem o **valor FIPE calculado** (ex: `vhclFipeVl`, `protectedValue`, `fipeValue`)
+- Onde vem o **código FIPE** confirmado (ex: `codFipe`)
+- Status do cálculo (síncrono ou assíncrono)
+- Se precisa de polling depois
 
-Sequência nova quando o usuário envia placa:
+### Passo 4 — Integrar na `consulta-placa-crm`
+
+Com o formato em mãos, adiciono na sequência atual da edge function principal:
 
 ```text
-1. POST /quotation/add                            → cria card, recebe quotationCode + quotationId
-2. POST /quotation/add-tag (23323)                → tag "30 Seg"
-3. GET  /company/pltVrfyQttn?plates=XXX           → "lupa": pega brandId + codFipe + dados DENATRAN
-4. GET  /company/cmby?cb={brandId}&cy={year}      → lista modelos do ano, pega carModel ID interno
-   (matching por similaridade contra o nome do modelo da Parallelum, igual já fazemos)
-5. POST /company/updateQuotationVehicleData       → "Salvar" oficial, com payload exato dos prints
-   { quotationId, plates, chassi, carModel, carModelYear, fabricationYear,
-     engineNumber, depreciationId:"0", expirationDay:0, protectedValue:null,
-     workVehicle:false, ... }
-6. Polling GET /quotation/{code} (até 8s)         → espera vhclFipeVl > 0
-7. Devolve ao app: vehicle + crmFipeConfirmed + crmFipeValue
+1. POST /quotation/add                      → cria card (já fazemos)
+2. POST /quotation/add-tag                  → tag "30 Seg" (já fazemos)
+3. POST /quotation/update                   → preenche dados (já fazemos)
+4. GET  /quotation/quotationFipeApi?...     ← NOVO: dispara cálculo FIPE
+5. (opcional) polling em /quotation/{code}  → confirma vhclFipeVl > 0
+6. Devolve ao app com crmFipeConfirmed=true
 ```
 
-### Passo 3 — Autenticação
+### Passo 5 — Limpar
 
-Os prints mostram que o navegador usa cookie de sessão (`PWRSESSIONID` + `token` JWT). Nosso `POWERCRM_API_TOKEN` é Bearer. Vou:
-- Primeiro tentar com `Authorization: Bearer ${POWERCRM_API_TOKEN}` (que já funciona nos endpoints `/api/...`).
-- Se der 401/403, logar e ajustar para mandar como `Cookie: token=...` (o token que temos hoje pode ser usado como cookie também).
-- O endpoint `/api/quotation/add` que usamos hoje continua com Bearer normalmente.
-
-### Passo 4 — Resposta ao app
-
-```json
-{
-  "vehicle": { ... },
-  "crmFipeConfirmed": true,
-  "crmFipeValue": 42906,
-  "crmFipeCode": "011117-1",
-  "fipeSource": "parallelum-by-label"
-}
-```
-
-`Quote.tsx` continua confiando no `vehicle.fipeValue` da Parallelum para mostrar ao cliente; os campos novos são opcionais.
-
-### Passo 5 — Tratamento de falha
-
-- Se `pltVrfyQttn` falhar → fallback Parallelum direto (fluxo atual, sem o save).
-- Se `cmby` não achar `carModel` → loga e tenta o save com o `fipeCode` Parallelum no campo `carModel` (palpite, melhor que nada).
-- Se `updateQuotationVehicleData` falhar → loga payload+resposta completos e cai no `/quotation/update` antigo como fallback (não quebra o cliente).
-- Se polling esgotar → devolve `crmFipeConfirmed: false` mas não bloqueia o app.
+Deletar a função `test-crm-fipe-api` após confirmar que tudo funciona.
 
 ## Detalhes técnicos
 
-**Arquivo único editado:** `supabase/functions/consulta-placa-crm/index.ts`
+**Arquivo novo (temporário):** `supabase/functions/test-crm-fipe-api/index.ts`
 
-Funções novas:
-- `triggerCrmPlateLookup(token, plate)` → `GET /company/pltVrfyQttn?plates={plate}`, devolve `{ brandId, codFipe, year, chassi, engineNumber, color, vehicleType }`.
-- `findCrmCarModelId(token, brandId, year, modelLabel)` → `GET /company/cmby?cb={brandId}&cy={year}`, escolhe melhor match contra `modelLabel` (Parallelum) por similaridade. Retorna ID string tipo `"603"`.
-- `saveCrmVehicleData(token, payload)` → `POST /company/updateQuotationVehicleData` com payload EXATO dos prints.
-- `pollCrmFipeValue(token, quotationCode, maxMs=8000)` → polling em `getQuotation`, lê `vhclFipeVl`.
-- `extractQuotationNumericId(addResponse)` → procura `id` / `quotationId` na resposta do `add`.
+```ts
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  
+  const url = new URL(req.url);
+  const quotationCode = url.searchParams.get("quotationCode") || "q11LLmpq";
+  const token = Deno.env.get("POWERCRM_API_TOKEN")!;
+  
+  const crmRes = await fetch(
+    `https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
+    { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
+  );
+  
+  const text = await crmRes.text();
+  let body: unknown;
+  try { body = JSON.parse(text); } catch { body = text; }
+  
+  console.log(`quotationFipeApi(${quotationCode}) → ${crmRes.status}`);
+  console.log("Headers:", JSON.stringify([...crmRes.headers.entries()]));
+  console.log("Body:", text.substring(0, 2000));
+  
+  return new Response(JSON.stringify({
+    status: crmRes.status,
+    headers: Object.fromEntries(crmRes.headers.entries()),
+    body,
+  }, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+});
+```
 
-Mudanças no `Deno.serve`:
-- Após `quotation/add`, capturar `quotationId` numérico.
-- Chamar `triggerCrmPlateLookup` antes do `consulta-placa` Parallelum (ou em paralelo).
-- Combinar dados do CRM (brandId, codFipe) + Parallelum (label exato + valor oficial).
-- Chamar `findCrmCarModelId` → `saveCrmVehicleData` → `pollCrmFipeValue`.
-- Manter `BodySchema` atual (sem mudança de contrato com o frontend).
+**Arquivo a editar depois:** `supabase/functions/consulta-placa-crm/index.ts` — adicionar função `triggerCrmFipeCalculation(token, quotationCode)` e chamar após o `quotation/update`.
 
-Riscos conhecidos:
-1. `quotationId` numérico pode não vir na resposta de `/quotation/add` — vou logar e ver. Se não vier, pode ser necessário um `getQuotation` extra logo após criar.
-2. Header de auth: pode precisar de Cookie em vez de Bearer nos paths `/company/...`. Vou logar a primeira tentativa com Bearer e ajustar conforme a resposta.
-3. Tempo total da chamada vai de ~6s para ~10-12s (lupa + cmby + save + polling). Aceitável.
+**Arquivo a deletar no final:** `supabase/functions/test-crm-fipe-api/` (via `delete_edge_functions`).
 
-**Após editar:**
-1. Deploy da função.
-2. Teste com placa `PAI0F65` (sabemos que existe no card `DnKN1l8r`, quotationId `41315826`).
-3. Logs esperados: `pltVrfyQttn 200`, `cmby 200`, `updateQuotationVehicleData 200`, polling lendo `vhclFipeVl=42906`.
-4. Validar visualmente abrindo o card no CRM — Marca, Modelo, Cód FIPE e Valor Protegido devem aparecer preenchidos sem clique manual.
+## Riscos
+
+- Se o endpoint retornar 401/403, significa que ele também precisa de cookie de sessão (não Bearer) → caímos na Opção A original (você pega o token na PowerCRM e tentamos via "Try It!" ou outro endpoint REST).
+- Se retornar 200 mas vazio, pode ser cálculo assíncrono → adiciono polling.
+- Se retornar HTML (login page), confirma que `/api/...` aceita Bearer mas `/company/...` não — e esse endpoint específico pode estar no path errado.
 
 ## Resultado esperado
 
-Quando o cliente envia a placa pelo app:
-1. Card do CRM é criado com FIPE **já preenchido** (sem precisar de intervenção do atendente).
-2. App recebe confirmação de que o CRM bateu o valor — segue para a tela de planos.
-3. Atendente abre o card e vê tudo completo, exatamente como ficaria após clicar lupa + Salvar manualmente.
+Em 2-3 minutos você recebe:
+1. JSON completo da resposta do endpoint
+2. Confirmação se Bearer funciona nele
+3. Plano final para integrar na `consulta-placa-crm`
 
-Aprovando, eu já implemento, faço deploy e mando os logs do teste com `PAI0F65` para você validar.
+Aprovando, eu já crio a função, deploy, executo e te mando o resultado.
