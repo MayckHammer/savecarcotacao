@@ -207,8 +207,8 @@ const CarMiniGame = () => {
       // score
       scoreRef.current += 1;
       if (scoreRef.current % 30 === 0) setScore(scoreRef.current);
-      // speed up
-      speedRef.current = Math.min(8.5, 3 + scoreRef.current / 500);
+      // speed up — mais rápido e teto maior para virar desafio real
+      speedRef.current = Math.min(12, 4.2 + scoreRef.current / 280);
 
       rafRef.current = requestAnimationFrame(draw);
     };
