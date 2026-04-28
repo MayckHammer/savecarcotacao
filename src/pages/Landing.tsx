@@ -87,7 +87,7 @@ const Landing = () => {
               size="lg"
             >
               <span className="relative z-10 flex items-center justify-center">
-                Cotação com Placa
+                Fazer Cotação
                 <motion.span
                   className="ml-2 inline-flex"
                   initial={{ x: 0 }}
@@ -102,16 +102,6 @@ const Landing = () => {
           </motion.div>
         </motion.div>
 
-        <motion.button
-          variants={item}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => navigate("/simulacao")}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors mt-4 flex items-center gap-1 group"
-        >
-          Cotação sem placa
-          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-        </motion.button>
       </motion.div>
 
       {/* Links Section */}
