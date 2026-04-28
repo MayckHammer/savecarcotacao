@@ -951,6 +951,9 @@ Deno.serve(async (req) => {
         ? `R$ ${recomputedFipeValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : "";
 
+      // Always return 200 when we have a valid recomputed FIPE locally — the CRM update
+      // may fail with transient errors (e.g. 412 "Placa já cadastrada") or simply not
+      // persist the FIPE on its side. The frontend uses `recomputed` as the source of truth.
       return new Response(JSON.stringify({
         ok: upd.ok,
         quotationCode: crmQuotationCode,
@@ -958,7 +961,7 @@ Deno.serve(async (req) => {
         fipeCheck,
         recomputed: { fipeCode: recomputedFipeCode, fipeValue: recomputedFipeValue, fipeFormatted },
       }), {
-        status: upd.ok ? 200 : 400,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
