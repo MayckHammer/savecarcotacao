@@ -619,11 +619,6 @@ const Quote = () => {
                   loading={confirmingModel}
                   loadingMessage="Atualizando dados..."
                 />
-                {quote.vehicle.fipeFormatted && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    FIPE encontrada: {quote.vehicle.fipeFormatted}{quote.vehicle.fipeCode ? ` — código ${quote.vehicle.fipeCode}` : ""}
-                  </p>
-                )}
                 <ErrorMsg field="model" />
               </div>
             )}
