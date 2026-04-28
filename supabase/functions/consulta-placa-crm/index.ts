@@ -950,6 +950,22 @@ Deno.serve(async (req) => {
       });
     } catch (e) { console.error("Error adding tag:", e); }
 
+    // 4b. "LUPA FIPE" — replica o clique no botão lupa do card.
+    //     Faz o CRM ler DENATRAN do lado dele e popular brand/year internamente,
+    //     o que melhora o /plates polling abaixo e prepara o terreno para o save.
+    if (plate) {
+      const lookup = await triggerCrmPlateLookup(token, quotationCode, plate);
+      if (lookup) {
+        // Se a lupa devolveu vehicle data e ainda não temos vehicle do /plates, usa
+        const lookupVehicle = extractVehicleFromAny(lookup, vehicleType);
+        if (lookupVehicle && !vehicle) {
+          vehicle = lookupVehicle;
+          console.log("Vehicle resolved from pltVrfyQttn (lupa):", JSON.stringify(vehicle));
+        }
+      }
+    }
+
+
     // 5. If we don't have vehicle data yet, poll the quotation/negotiation endpoints (data may arrive
     //    after CRM's internal DENATRAN/FIPE lookup completes).
     if (!vehicle && plate) {
