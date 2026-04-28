@@ -1,87 +1,72 @@
-# Adicionar página de simulação rápida sem placa
+## Diagnóstico do problema real
 
-## Objetivo
+Você relatou que **a FIPE exibida no app é diferente da FIPE oficial** quando consulta a placa. Investiguei o edge function `consulta-placa-crm` e o `Quote.tsx` atuais e identifiquei a causa raiz — que **não é o que o código do Claude conserta** (a maioria das melhorias dele já está no seu código: `cmby?cb=&cy=`, recompute FIPE, polling, `cdFp`, fallback `cm`).
 
-Criar uma nova rota `/simulacao` (componente `QuickQuote`) que permite ao usuário ver preços estimados informando apenas:
-- Tipo de veículo (carro / moto / caminhão)
-- UF (estado de circulação)
-- Faixa de valor FIPE (5 faixas pré-definidas)
+### A causa raiz é outra:
 
-E atualizar a Landing para direcionar o CTA principal para essa nova página, mantendo um link secundário "Já tenho a placa" apontando para `/cotacao`.
+No fluxo **com placa**, quando o CRM da PowerCRM devolve um `fipeValue` no endpoint `/plates`, esse valor é tratado como verdade e exibido. Mas o CRM frequentemente retorna um valor **desatualizado ou de uma versão errada do modelo** (ex: confunde "C3 AIRCROSS" com "C3"). O FIPE Parallelum só é consultado como **fallback** quando o CRM não devolve valor — e é aí que aparece a divergência com o site oficial.
 
-## O que muda
+No fluxo **manual** (sem placa), o usuário já escolhe Marca/Modelo/Ano direto na FIPE Parallelum (que é a fonte oficial), mas depois o backend ainda tenta "resolver" no CRM e às vezes o `modelOptions` que retorna confunde o usuário com versões parecidas.
 
-### 1. Novo arquivo `src/pages/QuickQuote.tsx`
+---
 
-Página standalone com:
+## Plano de correção (escolha B aprovada)
 
-- **Header** com logo (clica e volta para `/`) e botão "Falar com consultor" (WhatsApp).
-- **Hero** com título "Veja o preço agora. Sem precisar da placa." + badge "Cotação em 30 segundos".
-- **Formulário de simulação:**
-  - Tipo de veículo: 3 botões com ícones (Car / Bike / Truck).
-  - UF: `<select>` com 27 estados.
-  - Faixa FIPE: 5 botões empilhados (`0-25`, `25-50`, `50-80`, `80-120`, `120+`).
-  - Botão "Ver meus preços agora" — habilitado quando UF + faixa FIPE selecionados.
-  - Trust badges: "Sem análise de perfil" / "100% da FIPE".
-- **Seção de planos** (só aparece após simular, com scroll suave):
-  - Card **COMPLETO** com preço mensal, 4 coberturas + "Ver todas", preço anual com 10% off, botão "Contratar Completo".
-  - Card **PREMIUM** com badge "MAIS COMPLETO", mesma estrutura.
-  - CTA WhatsApp "Ficou com dúvidas?".
-  - Disclaimer sobre valores estimados.
-  - Link "Prefiro informar a placa agora" → `/cotacao`.
-- **Footer mínimo** quando ainda não simulou: link "Consultar pela placa diretamente" → `/cotacao`.
+### 1. Edge function `consulta-placa-crm/index.ts` — tornar FIPE Parallelum a fonte de verdade
 
-### Lógica de cálculo (client-side, sem chamada ao CRM)
+**No fluxo com placa** (após `fetchPlateFromCrm` resolver brand/model/year):
+- Sempre rodar `fetchFipeByModelLabel(brand, model, year, vehicleType)` para obter o valor FIPE oficial via Parallelum
+- **Sobrescrever** `vehicle.fipeValue` e `vehicle.fipeCode` com o resultado da Parallelum quando disponível (hoje só sobrescreve se `fipeValue` estiver zerado)
+- Manter o valor do CRM apenas como fallback se a Parallelum falhar
 
-Tabela base por faixa FIPE × multiplicador por tipo de veículo:
+**No fluxo manual** (`manualVehicle` presente):
+- Confiar 100% no `fipeCode` + `fipeValue` que o frontend já obteve da Parallelum
+- **Pular** o `buildCrmModelOptions` (não devolver `modelOptions`) — o usuário já escolheu na fonte oficial
+- Continuar resolvendo `crmBrandId`/`crmModelId`/`crmYearId` apenas para o CRM aceitar o card, mas sem expor opções alternativas
 
-```text
-PRICE_TABLE (mensal):
-  0-25   → completo R$ 89.90  / premium R$ 119.90
-  25-50  → completo R$ 139.90 / premium R$ 189.90
-  50-80  → completo R$ 189.90 / premium R$ 259.90
-  80-120 → completo R$ 249.90 / premium R$ 339.90
-  120+   → completo R$ 329.90 / premium R$ 449.90
+**Limpar caches em memória do edge function**: os `Map` de `fipeBrandCache`/`fipeModelCache`/`fipeYearCache`/`brandsCache` persistem entre invocações na mesma instância e podem servir dados velhos. Adicionar TTL de 10 min ou remover os caches de FIPE (a Parallelum aguenta o tráfego).
 
-TYPE_MULT: carro 1.0  /  moto 0.78  /  caminhão 1.32
-Anual = mensal × 12 × 0.9 (10% desconto)
-```
+### 2. Frontend `Quote.tsx` — suprimir dropdown de "Confirme o modelo" no fluxo manual
 
-### Ao clicar "Contratar COMPLETO/PREMIUM"
+- Quando `quote.vehicle.modelOptions` vier vazio (caso manual) **não** mostrar o seletor `ModelOptionsField`
+- Quando o usuário pulou a placa e preencheu manual, exibir um badge "FIPE oficial: R$ X.XXX,XX (código YYYYYY-Z)" com link para fipe.org.br para reforçar credibilidade
+- Remover a validação `if ((quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode)` quando estiver no fluxo manual
 
-- Salva `vehicleType` no `QuoteContext` via `updateVehicle({ type })`.
-- Navega para `/cotacao` passando `state: { quickPlan, quickUf, quickFipeRange }`.
-- (O `Quote.tsx` atual ignora esse `state` — ele continuará funcionando normalmente. Pré-preenchimento opcional pode ser adicionado depois sem afetar este plano.)
+### 3. Diagnóstico/observabilidade
 
-### 2. `src/App.tsx`
+- Adicionar log explícito no edge function: `FIPE source: parallelum|crm|none` com brand/model/year + valor final escolhido — facilita debug futuro de divergências
+- No `Result.tsx` (já existente), garantir que o valor exibido vem do `fipeValue` final retornado pelo edge function, não recalculado no cliente
 
-Adicionar:
-```tsx
-import QuickQuote from "./pages/QuickQuote";
-// ...
-<Route path="/simulacao" element={<QuickQuote />} />
-```
+---
 
-### 3. `src/pages/Landing.tsx`
+## Detalhes técnicos
 
-Trocar o CTA principal:
-- Antes: `navigate("/cotacao")` com texto "Cotação em menos de 30 segundos".
-- Depois: `navigate("/simulacao")` com texto "Ver preço sem informar a placa".
-- Adicionar link secundário discreto abaixo do botão: "Já tenho a placa em mãos" → `/cotacao`.
+**Arquivos a editar:**
+- `supabase/functions/consulta-placa-crm/index.ts` — passos 6 e 7 do `Deno.serve` (linhas 859-931) + bloco `manualVehicle` (linhas 756-769) + caches FIPE (linhas 441-443)
+- `src/pages/Quote.tsx` — bloco do `ModelOptionsField` (linha ~607) + validação de modelo (linha ~317) + payload do `manualVehicle` (linha ~346)
 
-## O que NÃO muda
+**O que NÃO vou mexer (já está bom):**
+- `cmby?cb=&cy=` com fallback para `cm` — já implementado
+- Recompute FIPE no `selectedModel` flow — já implementado
+- Polling com tolerância de 1% — já implementado
+- `cdFp` no payload de update — já implementado
+- Bonus/penalty de tokens (AIRC/AIRCROSS) — já implementado
 
-- `Quote.tsx`, `Result.tsx`, `Payment.tsx`, edge functions, schema do banco — nenhum impacto.
-- `QuoteContext` — usado apenas para `updateVehicle({ type })`, sem novos campos.
-- Fluxo completo via placa continua intacto (`/cotacao`).
+**O que NÃO vou substituir do código que você mandou:**
+- O código do Claude removia o suporte a `manualVehicle` e exigia `plate.min(6)` — isso quebraria o fluxo "pular placa" que está em produção
 
-## Resultado esperado
+**Após editar:**
+- Deploy do edge function via `supabase--deploy_edge_functions`
+- Teste com curl em uma placa conhecida que estava divergindo + um caso manual
+- Verificar logs para confirmar `FIPE source: parallelum`
 
-- Usuário entra no site → vê CTA "Ver preço sem informar a placa" → escolhe tipo + UF + faixa FIPE → vê dois cards de preço → clica "Contratar" e cai no fluxo `/cotacao` normalmente.
-- Quem prefere começar pela placa usa o link secundário.
+---
 
-## Arquivos modificados
+## O que você ganha
 
-- **Novo:** `src/pages/QuickQuote.tsx`
-- `src/App.tsx` — registrar rota `/simulacao`
-- `src/pages/Landing.tsx` — novo CTA + link secundário
+1. Valor FIPE no app = valor FIPE oficial (Parallelum, mesma fonte do fipe.org.br)
+2. Fluxo manual mais limpo: usuário escolheu na FIPE → confirma direto, sem dropdown confuso de "qual versão é a sua?"
+3. CRM continua recebendo o card com IDs corretos (`mdl`, `mdlYr`, `cdFp`, `protectedValue`) para o atendente operar normalmente
+4. Logs claros para identificar qualquer divergência futura
+
+Aprovando, eu já implemento e faço o deploy do edge function na sequência.
