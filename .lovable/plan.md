@@ -1,51 +1,59 @@
 ## Objetivo
 
-Fazer com que toda a Landing caiba na viewport sem necessidade de scroll, mantendo o layout responsivo em diferentes tamanhos de tela (de 320px a desktop) e preservando todos os elementos atuais.
+1. Remover o aviso amarelo "Atenção: divergência FIPE detectada — CRM ainda não persistiu o valor FIPE" que aparece na tela de cotação.
+2. Adicionar uma mensagem chamativa no início do mini-game informando que ao chegar a 2000 pontos o cliente ganha um brinde, e exibir destaque ao atingir a marca.
+3. Validar visualmente com print do preview.
 
 ---
 
-## Estratégia
+## 1. Remover o toast de divergência FIPE
 
-Trocar `min-h-screen` por `h-[100dvh]` no container principal (usa altura dinâmica do viewport, ideal em mobile considerando barras do navegador) e reduzir paddings/margens verticais. A logo passa a usar tamanho fluido com `clamp()` para se adaptar à altura disponível.
+**Arquivo:** `src/pages/Quote.tsx` (linhas 193–203)
 
----
+Remover o bloco `if (check && !check.match) { toast.warning(...) }` e manter apenas os toasts de sucesso ("Modelo confirmado e FIPE conferida com sucesso." ou "Modelo confirmado com sucesso."). O cliente não verá mais qualquer aviso de divergência FIPE.
 
-## Alterações em `src/pages/Landing.tsx`
-
-### Container raiz
-- `min-h-screen` → `h-[100dvh]` (com `overflow-hidden` já presente, garante zero scroll)
-
-### Hero (logo + título + botões)
-- Padding vertical: `py-12` → `py-3`
-- Adicionar `min-h-0` para permitir que a seção flexível encolha corretamente
-- Logo: trocar altura fixa `h-56` por `style={{ height: "clamp(7rem, 22vh, 14rem)" }}` — fica grande em telas altas, encolhe em telas pequenas, sem nunca ficar minúscula
-- Margens: `mb-6` → `mb-3` (logo), `mb-10` → `mb-5` (parágrafo), `mb-4` → `mb-2` (badge), `mb-3` → `mb-2` (h1), `mt-4` → `mt-3` (link cotação sem placa)
-- Botão principal: `h-14` → `h-13`
-- Parágrafo descritivo: `text-base` (default) → `text-sm`
-
-### Seção de Links (Dúvidas / WhatsApp)
-- `space-y-3` → `space-y-2`, `pb-8` → `pb-2`
-- Cards: `p-4` → `px-4 py-2.5` (mais compactos)
-- Adicionar `shrink-0` para não comprimir
-
-### Footer (Instagram/Facebook + copyright)
-- `pb-6` → `pb-3 pt-2`, adicionar `shrink-0`
-- `mb-4` → `mb-1.5`
-- Copyright: `text-xs` → `text-[11px]`
-
-### Resultado esperado
-- 390×844 (mobile padrão): tudo visível sem scroll, logo ~14rem
-- 360×640 (mobile pequeno): logo encolhe via clamp, tudo continua visível
-- Desktop: layout idêntico, apenas mais espaço sobrando no centro
+A lógica do backend (`consulta-placa-crm`) continua intacta — só removemos a exibição ao usuário.
 
 ---
 
-## Validação
+## 2. Mensagem do brinde no mini-game
 
-Após aplicar, abrir `/` no preview em 390×844 e tirar screenshot para confirmar que não há scroll e nenhum elemento foi cortado.
+**Arquivo:** `src/components/CarMiniGame.tsx`
+
+### 2.1 Banner chamativo no topo (sempre visível)
+
+Logo acima do canvas, adicionar um banner em destaque com gradiente amarelo Loovi (`#F2B705`) e verde (`#0D5C3E`):
+
+> 🎁 **Chegue a 2000 pontos e ganhe um brinde da SAVE CAR!**
+
+Estilo: card pequeno arredondado, ícone `Gift` (lucide-react), texto bold, leve animação `animate-pulse` no ícone para chamar atenção.
+
+### 2.2 Indicador de progresso durante o jogo
+
+No overlay de score (canto superior do canvas), além de "X pts", mostrar uma barra de progresso fina indo até 2000 pts, na cor amarela Loovi. Quando chegar a 2000+, a barra fica verde e aparece um badge "🎁 BRINDE DESBLOQUEADO".
+
+### 2.3 Tela de Game Over com brinde conquistado
+
+No overlay de "Que pena!", se `finalScore >= 2000`:
+- Trocar título de "Que pena!" para "Parabéns!"
+- Adicionar card amarelo com: "🎁 Você ganhou um brinde! Nosso consultor entrará em contato para combinar a entrega."
+- Mantém o botão "Jogar de novo".
+
+Não precisa de backend — é puramente visual/motivacional. O consultor já entra em contato em até 5 minutos pelo fluxo normal.
+
+---
+
+## 3. Validação visual
+
+Após as edições, usar `browser--navigate_to_sandbox` para abrir `/aguardando` e tirar screenshot mostrando:
+- Banner do brinde no topo do mini-game
+- Barra de progresso até 2000 pts visível ao iniciar o jogo
+
+(O toast de FIPE só aparece no fluxo de cotação após confirmar modelo, então não precisa de print — basta confirmar a remoção no código.)
 
 ---
 
 ## Arquivos afetados
 
-- `src/pages/Landing.tsx` — única alteração
+- `src/pages/Quote.tsx` — remover bloco do toast de divergência FIPE
+- `src/components/CarMiniGame.tsx` — banner do brinde, barra de progresso até 2000 pts, mensagem de parabéns no game over
