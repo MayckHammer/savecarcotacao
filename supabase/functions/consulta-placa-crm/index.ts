@@ -685,20 +685,32 @@ async function saveCrmVehicleData(
   Object.keys(body).forEach((k) => body[k] === undefined && delete body[k]);
 
   console.log("updateQuotationVehicleData payload:", JSON.stringify(body));
-  try {
-    const r = await fetch(`${CRM_BASE}/quotation/updateQuotationVehicleData`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify(body),
-    });
-    const text = await r.text();
-    console.log(`updateQuotationVehicleData → ${r.status} ${text.substring(0, 300)}`);
-    return { ok: r.ok, status: r.status, body: text };
-  } catch (e) {
-    console.error("updateQuotationVehicleData error:", e);
-    return { ok: false, status: 0, body: String(e) };
+  // POST retornou 405 Method Not Allowed em testes — tenta PUT primeiro,
+  // depois variantes do path observadas no DevTools.
+  const attempts: Array<{ url: string; method: string }> = [
+    { url: `${CRM_BASE}/quotation/updateQuotationVehicleData`, method: "PUT" },
+    { url: `${CRM_BASE}/quotation/updateVehicleData`, method: "POST" },
+    { url: `${CRM_BASE}/quotation/updateVehicleData`, method: "PUT" },
+    { url: `${CRM_BASE}/quotation/vehicleData`, method: "PUT" },
+    { url: `${CRM_BASE}/quotation/updateQuotationVehicleData`, method: "POST" },
+  ];
+  for (const { url, method } of attempts) {
+    try {
+      const r = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const text = await r.text();
+      console.log(`${method} ${url.split("/").pop()} → ${r.status} ${text.substring(0, 250)}`);
+      if (r.ok) return { ok: true, status: r.status, body: text };
+    } catch (e) {
+      console.error(`${method} ${url} error:`, e);
+    }
   }
+  return { ok: false, status: 0, body: "all variants failed" };
 }
+
 
 async function pollCrmFipeValue(
   token: string,
