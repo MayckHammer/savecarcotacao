@@ -314,6 +314,8 @@ const Quote = () => {
     } else {
       if (!quote.vehicle.brand) e.brand = "Marca não identificada";
       if (!quote.vehicle.model) e.model = "Modelo não identificado";
+      // Só exige escolha quando há mais de 1 opção do CRM (fluxo placa).
+      // No fluxo manual o backend devolve modelOptions vazio, então essa validação não dispara.
       if ((quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode) e.model = "Confirme o modelo";
     }
     if (!quote.vehicle.type) e.type = "Selecione o tipo";
