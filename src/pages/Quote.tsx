@@ -191,12 +191,7 @@ const Quote = () => {
       }
 
       const check = data?.fipeCheck;
-      if (check && !check.match) {
-        const detail = Array.isArray(check.mismatches) && check.mismatches.length > 0
-          ? check.mismatches.join(" • ")
-          : "Os dados enviados não foram totalmente confirmados.";
-        toast.warning(`Atenção: divergência FIPE detectada — ${detail}`, { duration: 8000 });
-      } else if (check && check.match) {
+      if (check && check.match) {
         toast.success("Modelo confirmado e FIPE conferida com sucesso.");
       } else {
         toast.success("Modelo confirmado com sucesso.");

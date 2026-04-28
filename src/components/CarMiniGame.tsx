@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Gamepad2, RotateCcw } from "lucide-react";
+import { Gamepad2, RotateCcw, Gift } from "lucide-react";
+
+const PRIZE_GOAL = 2000;
 
 /**
  * Mini-game: carrinho amarelo Loovi desviando de cones na estrada.
@@ -254,6 +256,9 @@ const CarMiniGame = () => {
   };
 
   const displayScore = score;
+  const prizeUnlocked = displayScore >= PRIZE_GOAL;
+  const progressPct = Math.min(100, (displayScore / PRIZE_GOAL) * 100);
+  const wonPrize = gameOver && score >= PRIZE_GOAL;
 
   return (
     <div className="space-y-2">
@@ -265,6 +270,16 @@ const CarMiniGame = () => {
           </span>
         </div>
         <span className="text-xs text-muted-foreground">Recorde: {best}</span>
+      </div>
+
+      {/* Prize banner */}
+      <div className="rounded-xl p-3 flex items-center gap-3 bg-gradient-to-r from-[#F2B705] to-[#ffd24a] text-[#0D5C3E] shadow-md border border-[#0D5C3E]/10">
+        <div className="h-9 w-9 rounded-full bg-[#0D5C3E] flex items-center justify-center shrink-0">
+          <Gift className="h-5 w-5 text-[#F2B705] animate-pulse" />
+        </div>
+        <p className="text-sm font-bold leading-tight">
+          Chegue a <span className="underline">2.000 pontos</span> e ganhe um brinde da SAVE CAR! 🎁
+        </p>
       </div>
 
       <div className="relative rounded-2xl overflow-hidden border border-border bg-[#2a2a2a] shadow-md">
@@ -283,13 +298,30 @@ const CarMiniGame = () => {
 
         {/* Score overlay */}
         {running && (
-          <div className="absolute top-2 left-2 right-2 flex justify-between text-xs font-bold">
-            <span className="bg-black/60 text-white px-2 py-1 rounded-md">
-              {displayScore} pts
-            </span>
-            <span className="bg-[#F2B705] text-[#0D5C3E] px-2 py-1 rounded-md">
-              SAVE CAR
-            </span>
+          <div className="absolute top-2 left-2 right-2 space-y-1.5">
+            <div className="flex justify-between text-xs font-bold">
+              <span className="bg-black/60 text-white px-2 py-1 rounded-md">
+                {displayScore} pts
+              </span>
+              {prizeUnlocked ? (
+                <span className="bg-[#0D5C3E] text-[#F2B705] px-2 py-1 rounded-md flex items-center gap-1 animate-pulse">
+                  <Gift className="h-3 w-3" /> BRINDE!
+                </span>
+              ) : (
+                <span className="bg-[#F2B705] text-[#0D5C3E] px-2 py-1 rounded-md">
+                  Meta 2.000 pts 🎁
+                </span>
+              )}
+            </div>
+            {/* Progress bar to prize */}
+            <div className="h-1.5 w-full bg-black/50 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-300 ${
+                  prizeUnlocked ? "bg-[#22c55e]" : "bg-[#F2B705]"
+                }`}
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
           </div>
         )}
 
@@ -298,11 +330,21 @@ const CarMiniGame = () => {
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm text-center px-6">
             {gameOver ? (
               <>
-                <p className="text-white text-lg font-bold mb-1">Que pena!</p>
+                <p className="text-white text-lg font-bold mb-1">
+                  {wonPrize ? "🎉 Parabéns!" : "Que pena!"}
+                </p>
                 <p className="text-white/80 text-sm mb-1">
                   Você fez <span className="font-bold text-[#F2B705]">{displayScore}</span> pontos
                 </p>
-                <p className="text-white/60 text-xs mb-4">Recorde: {best}</p>
+                <p className="text-white/60 text-xs mb-3">Recorde: {best}</p>
+                {wonPrize && (
+                  <div className="mb-4 mx-2 rounded-xl bg-gradient-to-r from-[#F2B705] to-[#ffd24a] text-[#0D5C3E] p-3 shadow-lg flex items-start gap-2 text-left">
+                    <Gift className="h-5 w-5 shrink-0 mt-0.5" />
+                    <p className="text-xs font-bold leading-snug">
+                      Você ganhou um brinde! Nosso consultor vai combinar a entrega no contato.
+                    </p>
+                  </div>
+                )}
                 <button
                   onClick={start}
                   className="inline-flex items-center gap-2 bg-[#F2B705] hover:bg-[#dba503] text-[#0D5C3E] font-bold px-5 py-2.5 rounded-xl transition-colors"
