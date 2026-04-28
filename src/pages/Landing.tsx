@@ -49,7 +49,7 @@ const Landing = () => {
           variants={item}
           src={logo}
           alt="SAVE CAR BRASIL"
-          className="h-44 mb-6 object-contain drop-shadow-sm"
+          className="h-56 mb-6 object-contain drop-shadow-sm"
           whileHover={{ scale: 1.03, rotate: -1 }}
           transition={{ type: "spring", stiffness: 200, damping: 15 }}
         />
