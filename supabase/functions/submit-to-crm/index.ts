@@ -150,6 +150,12 @@ Deno.serve(async (req) => {
     const usageRaw = (vehicle.usage || "").toString().toLowerCase();
     const usageLabel = usageMap[usageRaw] || vehicle.usage || "N/A";
 
+    const internalNote = [
+      `► USO DO VEÍCULO: ${usageLabel}`,
+      `► PLANO SELECIONADO: ${planName}`,
+      `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
+    ].join("\n");
+
     const observation = [
       `[TAG: 30 seg]`,
       ``,
@@ -196,6 +202,7 @@ Deno.serve(async (req) => {
       plts: vehicle.plate || "",
       workVehicle: vehicle.type === "caminhao" || vehicle.usage === "aplicativo",
       observation,
+      noteContractInternal: internalNote,
     };
     if (cityCode) crmPayload.city = cityCode;
     const vtNew = (vehicle as Record<string, unknown>).vehicleTypeId;
@@ -262,6 +269,7 @@ Deno.serve(async (req) => {
           addressNeighborhood: address.neighborhood,
           protectedValue: vehicle.fipeValue || 0,
           observation,
+          noteContractInternal: internalNote,
         };
         if (cityCode) updatePayload.city = cityCode;
         // Reinforce vehicle type in case it was lost between steps
