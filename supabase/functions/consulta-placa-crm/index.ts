@@ -1195,11 +1195,21 @@ Deno.serve(async (req) => {
             } catch (e) { console.error("Fallback update error:", e); }
           }
 
-          // Polling: aguarda CRM persistir vhclFipeVl
-          const polled = await pollCrmFipeValue(token, quotationCode, vehicle.fipeValue);
-          crmFipeConfirmed = polled.confirmed;
-          crmFipeValueFinal = polled.crmFipeValue;
-          crmFipeCodeFinal = polled.crmFipeCode;
+          // 8b. Dispara o cálculo FIPE oficial via /api/quotation/quotationFipeApi
+          //     (equivalente API ao botão "Salvar" — resposta síncrona).
+          const fipeApiRes = await triggerCrmFipeCalculation(token, quotationCode);
+          if (fipeApiRes.ok && fipeApiRes.fipeValue > 0) {
+            crmFipeConfirmed = true;
+            crmFipeValueFinal = fipeApiRes.fipeValue;
+            crmFipeCodeFinal = fipeApiRes.fipeCode || crmFipeCodeFinal;
+            console.log(`quotationFipeApi confirmou: value=${crmFipeValueFinal} code=${crmFipeCodeFinal}`);
+          } else {
+            // Fallback: polling tradicional se quotationFipeApi falhar
+            const polled = await pollCrmFipeValue(token, quotationCode, vehicle.fipeValue);
+            crmFipeConfirmed = polled.confirmed;
+            crmFipeValueFinal = polled.crmFipeValue;
+            crmFipeCodeFinal = polled.crmFipeCode;
+          }
           console.log(`CRM FIPE confirm result: confirmed=${crmFipeConfirmed} crmValue=${crmFipeValueFinal} crmCode=${crmFipeCodeFinal}`);
         }
 
