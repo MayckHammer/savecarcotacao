@@ -338,10 +338,15 @@ const CarMiniGame = () => {
                 </p>
                 <p className="text-white/60 text-xs mb-3">Recorde: {best}</p>
                 {wonPrize && (
-                  <div className="mb-4 mx-2 rounded-xl bg-gradient-to-r from-[#F2B705] to-[#ffd24a] text-[#0D5C3E] p-3 shadow-lg flex items-start gap-2 text-left">
-                    <Gift className="h-5 w-5 shrink-0 mt-0.5" />
-                    <p className="text-xs font-bold leading-snug">
-                      Você ganhou um brinde! Nosso consultor vai combinar a entrega no contato.
+                  <div className="mb-4 mx-2 rounded-xl bg-gradient-to-r from-[#F2B705] to-[#ffd24a] text-[#0D5C3E] p-3 shadow-lg flex flex-col items-start gap-2 text-left">
+                    <div className="flex items-start gap-2">
+                      <Gift className="h-5 w-5 shrink-0 mt-0.5" />
+                      <p className="text-xs font-bold leading-snug">
+                        Você ganhou um brinde! Nosso consultor vai combinar a entrega no contato.
+                      </p>
+                    </div>
+                    <p className="text-[11px] font-extrabold uppercase tracking-wide bg-[#0D5C3E] text-[#F2B705] px-2 py-1 rounded-md w-full text-center">
+                      📸 Tire print e envie ao consultor!
                     </p>
                   </div>
                 )}
