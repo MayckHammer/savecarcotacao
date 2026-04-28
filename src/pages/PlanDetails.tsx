@@ -298,11 +298,21 @@ const PlanDetails = () => {
         {/* Continuar */}
         <motion.div variants={item} className="pt-2">
           <Button
-            onClick={() => navigate("/aguardando")}
+            onClick={handleContinue}
+            disabled={continuing}
             className="w-full h-13 rounded-xl font-bold text-base"
           >
-            Continuar
-            <ArrowRight className="ml-2 h-5 w-5" />
+            {continuing ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Enviando...
+              </>
+            ) : (
+              <>
+                Continuar
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </>
+            )}
           </Button>
         </motion.div>
       </motion.div>
