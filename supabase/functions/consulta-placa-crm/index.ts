@@ -955,6 +955,17 @@ Deno.serve(async (req) => {
 
     const quotationCode = crmData.quotationCode;
     const negotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
+    // Captura o quotationId NUMÉRICO (necessário para /company/updateQuotationVehicleData).
+    // O navegador usa esse ID (ex: 41315826), não o code alfanumérico (ex: "DnKN1l8r").
+    let quotationId: number | null = (() => {
+      const candidates = [crmData.quotationId, crmData.id, crmData.idQuotation, crmData.quotation?.id];
+      for (const c of candidates) {
+        const n = Number(c);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+      return null;
+    })();
+    console.log(`Quotation created: code=${quotationCode} numericId=${quotationId ?? "missing"}`);
 
     // 3. Update with vehicle type explicitly
     if (vehicleTypeId != null) {
@@ -979,17 +990,31 @@ Deno.serve(async (req) => {
     // 4b. "LUPA FIPE" — replica o clique no botão lupa do card.
     //     Faz o CRM ler DENATRAN do lado dele e popular brand/year internamente,
     //     o que melhora o /plates polling abaixo e prepara o terreno para o save.
+    let lupaData: Record<string, unknown> | null = null;
     if (plate) {
-      const lookup = await triggerCrmPlateLookup(token, quotationCode, plate);
-      if (lookup) {
+      lupaData = await triggerCrmPlateLookup(token, plate);
+      if (lupaData) {
         // Se a lupa devolveu vehicle data e ainda não temos vehicle do /plates, usa
-        const lookupVehicle = extractVehicleFromAny(lookup, vehicleType);
+        const lookupVehicle = extractVehicleFromAny(lupaData, vehicleType);
         if (lookupVehicle && !vehicle) {
           vehicle = lookupVehicle;
           console.log("Vehicle resolved from pltVrfyQttn (lupa):", JSON.stringify(vehicle));
         }
       }
     }
+
+    // 4c. Se ainda não temos quotationId numérico, busca via getQuotation
+    if (!quotationId) {
+      const q = await getQuotation(token, quotationCode);
+      if (q) {
+        const n = Number(q.id ?? q.quotationId ?? q.idQuotation);
+        if (Number.isFinite(n) && n > 0) {
+          quotationId = n;
+          console.log(`quotationId resolved via getQuotation: ${quotationId}`);
+        }
+      }
+    }
+
 
 
     // 5. If we don't have vehicle data yet, poll the quotation/negotiation endpoints (data may arrive
