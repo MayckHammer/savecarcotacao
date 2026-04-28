@@ -150,6 +150,12 @@ Deno.serve(async (req) => {
     const usageRaw = (vehicle.usage || "").toString().toLowerCase();
     const usageLabel = usageMap[usageRaw] || vehicle.usage || "N/A";
 
+    const internalNote = [
+      `► USO DO VEÍCULO: ${usageLabel}`,
+      `► PLANO SELECIONADO: ${planName}`,
+      `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
+    ].join("\n");
+
     const observation = [
       `[TAG: 30 seg]`,
       ``,

@@ -1,39 +1,43 @@
 ## Objetivo
 
-Adicionar as duas formas decorativas amarelas (logo "S" estilizado) como elementos de background na tela inicial (`/`), conforme o primeiro print enviado:
-- **Borda superior direita** (`borda_superior.png`) — forma arredondada amarela no canto superior direito.
-- **Borda maior** (`borda_maior.png`) — forma "U" amarela atravessando a parte central/inferior esquerda da tela.
+Fazer com que **USO DO VEÍCULO**, **PLANO SELECIONADO** e **PRETENSÃO DE PAGAMENTO** apareçam no campo amarelo **"Observações internas"** do card no PowerCRM (visível só para a equipe), em vez de ficarem somente no campo "Observação" geral.
 
-Ambas ficam **atrás do conteúdo**, sem interferir nos cliques nem na legibilidade.
+## Causa do problema
 
----
+Hoje a edge function `submit-to-crm` envia toda a informação consolidada apenas no campo `observation`. O campo amarelo "Observações internas" do PowerCRM corresponde a outra propriedade da API: **`noteContractInternal`** (confirmado no swagger do CRM — `QuotationAddRequest` aceita `noteContractInternal` e `QuotationUpdateRequest` aceita `noteContract`/`noteContractInternal`). Como nunca enviamos esse campo, ele aparece em branco.
 
-## Passos
+## Mudanças
 
-### 1. Copiar as imagens para o projeto
-Copiar os dois uploads para `src/assets/`:
-- `user-uploads://borda_superior.png` → `src/assets/borda-superior.png`
-- `user-uploads://borda_maior.png` → `src/assets/borda-maior.png`
+### 1. `supabase/functions/submit-to-crm/index.ts`
 
-### 2. Editar `src/pages/Landing.tsx`
-- Importar as duas imagens como módulos ES6.
-- Dentro do bloco decorativo de background (`pointer-events-none absolute inset-0 -z-10`), **substituir os blobs circulares atuais** (blur verde/amarelo) pelas duas imagens posicionadas:
-  - `borda-superior.png`: posicionada no canto **superior direito** (`top-0 right-0`), largura ~55-60% da tela mobile, sem rotação.
-  - `borda-maior.png`: posicionada **atravessando o meio-inferior esquerdo** (`top-1/2 -left-10`), largura ~90% da tela, leve animação de entrada (fade + slide).
-- Manter `pointer-events-none` e `select-none` para não capturar cliques.
-- Adicionar `aria-hidden="true"` (decorativas).
-- Garantir que o conteúdo principal (logo, título, botão, links) tenha `relative z-10` quando necessário, ou que os cards de links mantenham o fundo `bg-card/80 backdrop-blur` para legibilidade sobre as formas amarelas.
+- Construir uma string `internalNote` curta e direta com o destaque pedido:
+  ```
+  ► USO DO VEÍCULO: Particular
+  ► PLANO SELECIONADO: PREMIUM
+  ► PRETENSÃO DE PAGAMENTO: Cartão de Crédito (Adesão + 11x)
+  ```
+  (usando os mesmos labels já mapeados em `usageMap` e `paymentMethodLabel`).
+- No payload de **criação** (`crmPayload` enviado em `quotation/add`), adicionar:
+  - `noteContractInternal: internalNote`
+- No payload de **atualização** (`updatePayload` enviado em `quotation/update` quando `skipCrm=true`), adicionar:
+  - `noteContractInternal: internalNote`
+- Manter o campo `observation` atual intacto (continua tendo o bloco completo para histórico).
 
-### 3. Validação visual
-Comparar com o print de referência (`save_site.png`) abrindo `/` no preview e tirando screenshot mobile (390x844) para confirmar:
-- Borda superior visível no canto superior direito
-- Borda maior atravessando atrás do botão "Fazer Cotação" e cards
-- Logo, textos e botões permanecem legíveis e clicáveis
+### 2. Sem alterações em frontend
 
----
+Os dados (`usage`, `planName`, `paymentMethod`) já são enviados pelo cliente para a edge function — só precisamos roteá-los para o campo certo no PowerCRM.
 
-## Arquivos afetados
+### 3. Sem alterações de banco
 
-- `src/assets/borda-superior.png` (novo)
-- `src/assets/borda-maior.png` (novo)
-- `src/pages/Landing.tsx` (substituir blobs decorativos pelas duas imagens posicionadas)
+Nenhuma migração necessária — é só campo do CRM externo.
+
+## Validação
+
+Após a alteração:
+1. Fazer uma cotação completa de teste.
+2. Abrir o card no PowerCRM e confirmar que o campo amarelo **"Observações internas"** mostra as 3 linhas do destaque.
+3. O campo "Observação" continuará com o bloco completo (associado, veículo, endereço, coberturas).
+
+## Arquivos a editar
+
+- `supabase/functions/submit-to-crm/index.ts`
