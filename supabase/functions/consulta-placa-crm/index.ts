@@ -813,7 +813,7 @@ Deno.serve(async (req) => {
         await fetch(`${CRM_BASE}/quotation/update`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ code: quotationCode, workVehicle, vhclType: vehicleTypeId, plates: plate, plts: plate }),
+          body: JSON.stringify({ code: quotationCode, workVehicle, vhclType: vehicleTypeId, ...(plate ? { plates: plate, plts: plate } : {}) }),
         });
       } catch (e) { console.error("update vhclType error:", e); }
     }
