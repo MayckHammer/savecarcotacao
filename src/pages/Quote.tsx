@@ -554,6 +554,9 @@ const Quote = () => {
                   )}
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Não tem a placa em mãos? Pode pular essa etapa e preencher os dados do veículo abaixo.
+              </p>
               <ErrorMsg field="plate" />
             </div>
 
