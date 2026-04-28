@@ -111,7 +111,7 @@ type CrmModelOption = {
 // ===== CRM brand/model/year resolution =====
 type CrmItem = { id: number; nm?: string; name?: string; description?: string; ds?: string; text?: string };
 const brandsCache = new Map<string | number, CrmItem[]>(); // key: vehicleTypeId
-const modelsCache = new Map<number, CrmItem[]>(); // key: brandId
+const modelsCache = new Map<string, CrmItem[]>(); // key: `${brandId}:${year}`
 const yearsCache = new Map<number, CrmItem[]>(); // key: modelId
 
 const labelOf = (it: CrmItem): string =>
