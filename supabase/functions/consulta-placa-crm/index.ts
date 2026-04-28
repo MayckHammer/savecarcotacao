@@ -745,10 +745,27 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 1. Try to fetch the vehicle by plate FIRST (independent of any quotation)
-    let vehicle: Vehicle | null = await fetchPlateFromCrm(token, plate, vehicleType);
+    // 1. Try to fetch the vehicle by plate FIRST (independent of any quotation).
+    //    If no plate provided, skip — manualVehicle (if any) will fill the gap below.
+    let vehicle: Vehicle | null = plate ? await fetchPlateFromCrm(token, plate, vehicleType) : null;
     if (vehicle) {
       console.log("Vehicle resolved from /plates endpoint:", JSON.stringify(vehicle));
+    }
+
+    // If user filled the vehicle manually (no plate or plate not found), seed `vehicle` from it.
+    if (!vehicle && manualVehicle) {
+      vehicle = {
+        brand: manualVehicle.brand,
+        model: manualVehicle.model,
+        year: manualVehicle.year,
+        color: manualVehicle.color || "",
+        fipeCode: manualVehicle.fipeCode || "",
+        fipeValue: Number(manualVehicle.fipeValue || 0),
+        type: vehicleType,
+        brandRaw: manualVehicle.brand,
+        modelRaw: manualVehicle.model,
+      } as Vehicle;
+      console.log("Vehicle seeded from manual input:", JSON.stringify(vehicle));
     }
 
     // 2. Create quotation in CRM (always, so we get a card to follow up with)
