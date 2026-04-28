@@ -612,7 +612,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const { personal, plate, vehicleType, crmQuotationCode, selectedModel } = parsed.data;
+    const { personal, plate, vehicleType, crmQuotationCode, selectedModel, manualVehicle } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     if (!token) {
       return new Response(JSON.stringify({ error: "POWERCRM_API_TOKEN not configured" }), {
