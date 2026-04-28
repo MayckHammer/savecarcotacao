@@ -438,9 +438,15 @@ const parsePriceBrl = (raw: string): number => {
   return parseFipeValue(raw);
 };
 
-const fipeBrandCache = new Map<string, { code: string; name: string }[]>();
-const fipeModelCache = new Map<string, { code: string; name: string }[]>();
-const fipeYearCache = new Map<string, { code: string; name: string }[]>();
+// TTL de 10 min nos caches FIPE para evitar servir tabela vencida quando a
+// instância do edge function fica viva por horas. FIPE atualiza mensalmente.
+const FIPE_CACHE_TTL_MS = 10 * 60 * 1000;
+type FipeCacheEntry<T> = { at: number; data: T };
+const fipeBrandCache = new Map<string, FipeCacheEntry<{ code: string; name: string }[]>>();
+const fipeModelCache = new Map<string, FipeCacheEntry<{ code: string; name: string }[]>>();
+const fipeYearCache = new Map<string, FipeCacheEntry<{ code: string; name: string }[]>>();
+const fipeFresh = <T,>(entry: FipeCacheEntry<T> | undefined): T | null =>
+  entry && Date.now() - entry.at < FIPE_CACHE_TTL_MS ? entry.data : null;
 
 const fipeHeaders = (): HeadersInit => {
   const token = Deno.env.get("FIPE_ONLINE_TOKEN");
@@ -472,34 +478,34 @@ async function fetchFipeByModelLabel(
 ): Promise<{ fipeCode: string; fipeValue: number; fipeFormatted: string; year: string } | null> {
   const typePath = FIPE_TYPE_PATH[vehicleType] || "cars";
   try {
-    let brands = fipeBrandCache.get(typePath);
+    let brands = fipeFresh(fipeBrandCache.get(typePath));
     if (!brands) {
       const r = await fetch(`${FIPE_BASE}/${typePath}/brands`, { headers: fipeHeaders() });
       if (!r.ok) return null;
       brands = await r.json();
-      fipeBrandCache.set(typePath, brands);
+      fipeBrandCache.set(typePath, { at: Date.now(), data: brands });
     }
     const brand = pickBestMatch(brands.map((b) => ({ id: Number(b.code), name: b.name })), brandLabel);
     if (!brand) return null;
 
     const modelKey = `${typePath}:${brand.id}`;
-    let models = fipeModelCache.get(modelKey);
+    let models = fipeFresh(fipeModelCache.get(modelKey));
     if (!models) {
       const r = await fetch(`${FIPE_BASE}/${typePath}/brands/${brand.id}/models`, { headers: fipeHeaders() });
       if (!r.ok) return null;
       models = await r.json();
-      fipeModelCache.set(modelKey, models);
+      fipeModelCache.set(modelKey, { at: Date.now(), data: models });
     }
     const model = pickBestMatch(models.map((m) => ({ id: Number(m.code), name: m.name })), modelLabel);
     if (!model) return null;
 
     const yearKey = `${typePath}:${brand.id}:${model.id}`;
-    let years = fipeYearCache.get(yearKey);
+    let years = fipeFresh(fipeYearCache.get(yearKey));
     if (!years) {
       const r = await fetch(`${FIPE_BASE}/${typePath}/brands/${brand.id}/models/${model.id}/years`, { headers: fipeHeaders() });
       if (!r.ok) return null;
       years = await r.json();
-      fipeYearCache.set(yearKey, years);
+      fipeYearCache.set(yearKey, { at: Date.now(), data: years });
     }
     const yearCode = chooseClosestFipeYear(years, yearLabel);
     if (!yearCode) return null;
@@ -856,31 +862,66 @@ Deno.serve(async (req) => {
       if (vehicle) console.log("Vehicle resolved via polling:", JSON.stringify(vehicle));
     }
 
-    // 6. Enrich with FIPE API by code (vehicle.fipeCode) when model/value missing
-    if (vehicle && vehicle.fipeCode && (!vehicle.model || !vehicle.fipeValue)) {
-      console.log(`Enriching via FIPE API by code: ${vehicle.fipeCode}`);
-      const enriched = await enrichFromFipeByCode(vehicle.fipeCode, vehicleType, vehicle.year);
-      if (enriched) {
-        console.log("FIPE enrichment result:", JSON.stringify(enriched));
-        vehicle = {
-          ...vehicle,
-          brand: enriched.brand || vehicle.brand,
-          model: enriched.model || vehicle.model,
-          year: enriched.year || vehicle.year,
-          fipeCode: enriched.fipeCode || vehicle.fipeCode,
-          fipeValue: enriched.fipeValue || vehicle.fipeValue,
-        };
+    // 6. ALWAYS authoritative FIPE source: Parallelum (mesma fonte do fipe.org.br).
+    //    O CRM frequentemente devolve fipeValue desatualizado ou de uma versão
+    //    diferente do modelo (ex: "C3" no lugar de "C3 AIRCROSS"). Usamos
+    //    Parallelum como fonte de verdade e o valor do CRM apenas como fallback.
+    let fipeSource: "parallelum-by-label" | "parallelum-by-code" | "crm" | "none" = "none";
+    if (vehicle) {
+      // 6a. Tenta resolver pelo nome (brand/model/year) — caminho mais preciso
+      if (vehicle.brand && vehicle.model) {
+        const labelFipe = await fetchFipeByModelLabel(vehicle.brand, vehicle.model, vehicle.year, vehicleType);
+        if (labelFipe && (labelFipe.fipeValue > 0 || labelFipe.fipeCode)) {
+          console.log(`FIPE source: parallelum-by-label → code=${labelFipe.fipeCode} value=${labelFipe.fipeValue}`);
+          vehicle = {
+            ...vehicle,
+            year: labelFipe.year || vehicle.year,
+            fipeCode: labelFipe.fipeCode || vehicle.fipeCode,
+            fipeValue: labelFipe.fipeValue || vehicle.fipeValue,
+          };
+          fipeSource = "parallelum-by-label";
+        }
+      }
+      // 6b. Se não achou pelo label, tenta pelo código FIPE que o CRM devolveu
+      if (fipeSource === "none" && vehicle.fipeCode) {
+        const enriched = await enrichFromFipeByCode(vehicle.fipeCode, vehicleType, vehicle.year);
+        if (enriched && (enriched.fipeValue || 0) > 0) {
+          console.log(`FIPE source: parallelum-by-code → code=${enriched.fipeCode} value=${enriched.fipeValue}`);
+          vehicle = {
+            ...vehicle,
+            brand: enriched.brand || vehicle.brand,
+            model: enriched.model || vehicle.model,
+            year: enriched.year || vehicle.year,
+            fipeCode: enriched.fipeCode || vehicle.fipeCode,
+            fipeValue: enriched.fipeValue || vehicle.fipeValue,
+          };
+          fipeSource = "parallelum-by-code";
+        }
+      }
+      // 6c. Fallback: mantém o que o CRM devolveu
+      if (fipeSource === "none" && vehicle.fipeValue > 0) {
+        console.log(`FIPE source: crm → value=${vehicle.fipeValue} (Parallelum lookup falhou)`);
+        fipeSource = "crm";
+      }
+      if (fipeSource === "none") {
+        console.log(`FIPE source: none — brand="${vehicle.brand}" model="${vehicle.model}" year="${vehicle.year}"`);
       }
     }
 
     let modelOptions: CrmModelOption[] = [];
 
     // 7. Resolve internal CRM brand/model/year IDs (so the card and plansQuotation can use them)
+    //    No fluxo manual o usuário já escolheu na FIPE oficial — não precisamos
+    //    expor um dropdown "confirme o modelo" com versões parecidas. Resolvemos os IDs
+    //    para o CRM aceitar o card, mas devolvemos modelOptions vazio.
+    const isManualFlow = !!manualVehicle && !plate;
     if (vehicle && vehicleTypeId != null && vehicle.brand) {
       try {
         // Use the raw plate name (preserved before FIPE enrichment) for distinctive token matching
         const rawHint = `${vehicle.brandRaw || ""} ${vehicle.modelRaw || ""}`.trim() || undefined;
-        modelOptions = await buildCrmModelOptions(token, vehicleTypeId, vehicle);
+        if (!isManualFlow) {
+          modelOptions = await buildCrmModelOptions(token, vehicleTypeId, vehicle);
+        }
         const ids = await resolveCrmIds(token, vehicleTypeId, vehicle.brand, vehicle.model, vehicle.year, rawHint);
         vehicle.crmBrandId = ids.crmBrandId;
         vehicle.crmModelId = ids.crmModelId;
