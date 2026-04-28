@@ -202,6 +202,7 @@ Deno.serve(async (req) => {
       plts: vehicle.plate || "",
       workVehicle: vehicle.type === "caminhao" || vehicle.usage === "aplicativo",
       observation,
+      noteContractInternal: internalNote,
     };
     if (cityCode) crmPayload.city = cityCode;
     const vtNew = (vehicle as Record<string, unknown>).vehicleTypeId;
