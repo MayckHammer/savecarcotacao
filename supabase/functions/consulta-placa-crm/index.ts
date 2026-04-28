@@ -40,6 +40,42 @@ const CRM_BASE = "https://api.powercrm.com.br/api";
 // e pelo botão "Salvar" do form#vehicleEditForm. Confirmados via DevTools.
 const CRM_COMPANY_BASE = "https://app.powercrm.com.br/company";
 
+// ============================================================================
+// quotationFipeApi — endpoint REST oficial que dispara o cálculo FIPE
+// (equivalente API ao botão "Salvar" do card). Confirmado funcionando com Bearer.
+// Resposta síncrona: { fipeRealCode, fipeValue ("R$ X.XXX,XX"), fipeValueQuoted, error }
+// ============================================================================
+function parseBrlToCents(brl: string): number {
+  if (!brl) return 0;
+  const cleaned = brl.replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+async function triggerCrmFipeCalculation(
+  token: string,
+  quotationCode: string,
+): Promise<{ ok: boolean; fipeValue: number; fipeCode: string; raw?: unknown }> {
+  const url = `${CRM_BASE}/quotation/quotationFipeApi?quotationCode=${encodeURIComponent(quotationCode)}`;
+  try {
+    const r = await fetch(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    });
+    const text = await r.text();
+    let data: Record<string, unknown> = {};
+    try { data = JSON.parse(text); } catch { /* keep empty */ }
+    console.log(`quotationFipeApi(${quotationCode}) → ${r.status} ${text.substring(0, 300)}`);
+    if (!r.ok) return { ok: false, fipeValue: 0, fipeCode: "" };
+    const fipeValue = parseBrlToCents(String(data.fipeValueQuoted ?? data.fipeValue ?? ""));
+    const fipeCode = String(data.fipeRealCode ?? "");
+    return { ok: true, fipeValue, fipeCode, raw: data };
+  } catch (e) {
+    console.error(`quotationFipeApi(${quotationCode}) error:`, e);
+    return { ok: false, fipeValue: 0, fipeCode: "" };
+  }
+}
+
 // ===== Vehicle type → CRM mapping =====
 type CrmVehicleType = { id: number | string; name?: string; nm?: string; label?: string; description?: string; ds?: string };
 let vehicleTypesCache: CrmVehicleType[] | null = null;
