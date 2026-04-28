@@ -412,10 +412,10 @@ const Quote = () => {
           if (error) throw error;
           if (data?.session_id) setSessionId(data.session_id);
         }
-        navigate("/resultado");
+        navigate("/detalhes");
       } catch (e) {
         console.error("Submit error:", e);
-        navigate("/resultado");
+        navigate("/detalhes");
       } finally {
         setSubmitting(false);
       }

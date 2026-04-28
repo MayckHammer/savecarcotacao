@@ -7,7 +7,7 @@ const PaymentMethodSelector = () => {
 
   return (
     <div>
-      <h3 className="text-sm font-bold text-foreground mb-2">Forma de pagamento</h3>
+      <h3 className="text-sm font-bold text-foreground mb-2">Pretensão de pagamento</h3>
       <div className="grid grid-cols-2 gap-3">
         <button
           onClick={() => setPaymentMethod("credit")}
