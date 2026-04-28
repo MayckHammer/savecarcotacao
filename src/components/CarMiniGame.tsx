@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Gamepad2, RotateCcw } from "lucide-react";
+import { Gamepad2, RotateCcw, Gift } from "lucide-react";
+
+const PRIZE_GOAL = 2000;
 
 /**
  * Mini-game: carrinho amarelo Loovi desviando de cones na estrada.
