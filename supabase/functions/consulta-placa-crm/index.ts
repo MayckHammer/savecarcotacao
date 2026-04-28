@@ -622,16 +622,10 @@ Deno.serve(async (req) => {
     console.log(`Resolved vehicleType="${vehicleType}" → id=${vehicleTypeId}`);
 
     if (crmQuotationCode && selectedModel) {
-      // 1. Recalcular FIPE para o modelo+ano realmente selecionado.
-      //    Tenta CRM primeiro (cmf), depois FIPE Parallelum se vier código.
+      // 1. Recalcular FIPE para o modelo+ano realmente selecionado via Parallelum.
+      //    O CRM calcula vhclFipeVl no backend a partir de mdl + mdlYr + cdFp.
       let recomputedFipeCode = String(selectedModel.fipeCode || "").trim();
       let recomputedFipeValue = Number(selectedModel.fipeValue || 0);
-
-      const crmFipe = await fetchFipeCodeFromCrm(token, selectedModel.crmModelId, selectedModel.crmYearId ?? null);
-      if (crmFipe) {
-        if (crmFipe.fipeCode) recomputedFipeCode = crmFipe.fipeCode;
-        if (crmFipe.fipeValue > 0) recomputedFipeValue = crmFipe.fipeValue;
-      }
 
       const labelFipe = await fetchFipeByModelLabel(
         selectedModel.brand || "",
@@ -644,8 +638,8 @@ Deno.serve(async (req) => {
         if (labelFipe.fipeValue > 0) recomputedFipeValue = labelFipe.fipeValue;
       }
 
-      // Se ainda não temos valor (ou o CRM só devolveu o código), bate na FIPE Parallelum
-      if (recomputedFipeCode && (!recomputedFipeValue || crmFipe?.fipeValue === 0)) {
+      // Se temos o código mas ainda não temos o valor, busca pelo código FIPE
+      if (recomputedFipeCode && !recomputedFipeValue) {
         const enriched = await enrichFromFipeByCode(recomputedFipeCode, vehicleType, String(selectedModel.year || ""));
         if (enriched?.fipeValue) recomputedFipeValue = enriched.fipeValue;
         if (enriched?.fipeCode && !recomputedFipeCode) recomputedFipeCode = enriched.fipeCode;
@@ -653,20 +647,17 @@ Deno.serve(async (req) => {
 
       console.log(`Recomputed FIPE for selected model: code=${recomputedFipeCode} value=${recomputedFipeValue}`);
 
-      // Payload enxuto: apenas os campos documentados no QuotationUpdateRequest
-      // (swagger oficial) — mdl, mdlYr, protectedValue. Aliases não-documentados
-      // são ignorados silenciosamente pelo CRM e poluem os logs.
+      // Payload enxuto + cdFp — campos que o CRM realmente usa para preencher o card.
       const updateBody: Record<string, unknown> = {
         code: crmQuotationCode,
         plates: plate,
         mdl: Number(selectedModel.crmModelId),
         protectedValue: recomputedFipeValue || 0,
       };
-      if (selectedModel.crmYearId) {
-        updateBody.mdlYr = Number(selectedModel.crmYearId);
-      }
+      if (selectedModel.crmYearId) updateBody.mdlYr = Number(selectedModel.crmYearId);
+      if (recomputedFipeCode) updateBody.cdFp = recomputedFipeCode;
 
-      console.log("CRM update payload (schema-only):", JSON.stringify(updateBody));
+      console.log("CRM update payload (schema-only + cdFp):", JSON.stringify(updateBody));
 
       const upd = await fetch(`${CRM_BASE}/quotation/update`, {
         method: "POST",
@@ -676,10 +667,9 @@ Deno.serve(async (req) => {
       const updText = await upd.text();
       console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 200));
 
-      // 2. Disparar a rotina FIPE oficial (a "lupa" do card). O CRM agora tem
-      // mdl + mdlYr + protectedValue persistidos, então este endpoint calcula
-      // e grava o cdFp internamente.
-      await triggerCrmFipeRefresh(token, crmQuotationCode);
+      // O CRM calcula vhclFipeVl sozinho no backend após receber mdl+mdlYr+cdFp.
+      // Não há endpoint manual de refresh — o polling abaixo aguarda o cálculo.
+
 
       // 4. Polling de verificação (até ~6s) para evitar falso negativo
       const sentFipeValue = recomputedFipeValue;
