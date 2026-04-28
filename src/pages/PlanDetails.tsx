@@ -62,11 +62,43 @@ const CHIPS_PREMIUM: CoverageChip[] = [
 
 const PlanDetails = () => {
   const navigate = useNavigate();
-  const { quote, setPlanName, setCrmPlans } = useQuote();
+  const { quote, crmPlans, setPlanName, setCrmPlans, getTotal } = useQuote();
   const [showUserInfo, setShowUserInfo] = useState(false);
   const [loadingPlans, setLoadingPlans] = useState(true);
+  const [continuing, setContinuing] = useState(false);
 
   const chips = quote.planName === "PREMIUM" ? CHIPS_PREMIUM : CHIPS_COMPLETO;
+
+  const handleContinue = async () => {
+    setContinuing(true);
+    try {
+      const selectedPlan = crmPlans.find((p) =>
+        p.name?.toUpperCase().includes(quote.planName)
+      );
+      await supabase.functions.invoke("submit-to-crm", {
+        body: {
+          personal: quote.personal,
+          vehicle: quote.vehicle,
+          address: quote.address,
+          plan: {
+            planName: quote.planName,
+            paymentMethod: quote.paymentMethod,
+            billingPeriod: quote.billingPeriod,
+            total: getTotal(),
+            coverages: selectedPlan?.coverages || [],
+          },
+          skipCrm: true,
+          crmQuotationCode: quote.crmQuotationCode,
+          crmNegotiationCode: quote.crmNegotiationCode,
+        },
+      });
+    } catch (err) {
+      console.error("Error syncing plan to CRM:", err);
+    } finally {
+      setContinuing(false);
+      navigate("/aguardando");
+    }
+  };
 
   // Fetch CRM plans on mount (silently — keeps prices in context for downstream use)
   useEffect(() => {
@@ -266,11 +298,21 @@ const PlanDetails = () => {
         {/* Continuar */}
         <motion.div variants={item} className="pt-2">
           <Button
-            onClick={() => navigate("/aguardando")}
+            onClick={handleContinue}
+            disabled={continuing}
             className="w-full h-13 rounded-xl font-bold text-base"
           >
-            Continuar
-            <ArrowRight className="ml-2 h-5 w-5" />
+            {continuing ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Enviando...
+              </>
+            ) : (
+              <>
+                Continuar
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </>
+            )}
           </Button>
         </motion.div>
       </motion.div>

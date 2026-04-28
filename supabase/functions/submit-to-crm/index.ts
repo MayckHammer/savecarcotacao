@@ -136,13 +136,32 @@ Deno.serve(async (req) => {
     const planName = (planObj?.planName as string) || "COMPLETO";
     const totalValue = Number(planObj?.total) || 0;
     const billingLabel = planObj?.billingPeriod === "annual" ? "Anual" : "Mensal";
+    const paymentMethodLabel = planObj?.paymentMethod === "credit"
+      ? "Cartão de Crédito (Adesão + 11x)"
+      : "PIX / Boleto (Carnê 11x)";
+
+    const usageMap: Record<string, string> = {
+      particular: "Particular",
+      trabalho: "Trabalho",
+      aplicativo: "Aplicativo (Uber/99/Táxi)",
+      comercial: "Comercial",
+      passeio: "Passeio",
+    };
+    const usageRaw = (vehicle.usage || "").toString().toLowerCase();
+    const usageLabel = usageMap[usageRaw] || vehicle.usage || "N/A";
 
     const observation = [
       `[TAG: 30 seg]`,
       ``,
+      `>>> DESTAQUE — INFORMAÇÕES DO CLIENTE <<<`,
+      `► USO DO VEÍCULO: ${usageLabel}`,
+      `► PLANO SELECIONADO: ${planName}`,
+      `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
+      ``,
       `=== PLANO: ${planName} ===`,
       `Valor: R$ ${totalValue ? totalValue.toFixed(2).replace(".", ",") : "A definir"}/${billingLabel === "Anual" ? "ano" : "mês"}`,
-      `Forma de pagamento: ${planObj?.paymentMethod === "credit" ? "Cartão de Crédito" : "PIX / Boleto"}`,
+      `Periodicidade: ${billingLabel}`,
+      `Forma de pagamento: ${paymentMethodLabel}`,
       ``,
       `=== ASSOCIADO ===`,
       `Nome: ${personal.name || "N/A"}`,
