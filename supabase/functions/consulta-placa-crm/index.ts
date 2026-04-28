@@ -612,17 +612,23 @@ async function triggerCrmPlateLookup(
   quotationCode: string,
   plate: string,
 ): Promise<Record<string, unknown> | null> {
-  // Reproduz o clique na "lupa" do card. Tenta variações de query string
-  // observadas no DevTools (?plates=XXX e ?plates=XXX&qttn=CODE).
+  // Reproduz o clique na "lupa" do card. O CRM exige que a cotação já exista —
+  // damos um pequeno delay para garantir indexação interna antes de chamar.
+  await new Promise((r) => setTimeout(r, 800));
+
+  // Tenta múltiplas variações de nome do parâmetro de cotação observadas no DevTools
   const variants = [
     `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}&qttn=${encodeURIComponent(quotationCode)}`,
+    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}&code=${encodeURIComponent(quotationCode)}`,
+    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}&quotationCode=${encodeURIComponent(quotationCode)}`,
     `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}`,
   ];
   for (const url of variants) {
     try {
       const r = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
       const text = await r.text();
-      console.log(`pltVrfyQttn ${url.includes("qttn=") ? "(with qttn)" : "(plates only)"} → ${r.status} ${text.substring(0, 300)}`);
+      const tag = url.match(/&(\w+)=/)?.[1] || "plates-only";
+      console.log(`pltVrfyQttn (${tag}) → ${r.status} ${text.substring(0, 250)}`);
       if (r.ok) {
         try { return JSON.parse(text); } catch { return { raw: text }; }
       }
@@ -632,6 +638,7 @@ async function triggerCrmPlateLookup(
   }
   return null;
 }
+
 
 async function saveCrmVehicleData(
   token: string,
