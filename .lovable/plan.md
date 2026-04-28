@@ -1,100 +1,94 @@
 ## Objetivo
 
-Descobrir o formato exato da resposta do endpoint `GET /api/quotation/quotationFipeApi?quotationCode=XXX` da PowerCRM (que dispara o cálculo FIPE — equivalente API ao botão "Salvar"), pra depois integrar na `consulta-placa-crm` e finalizar o fluxo automatizado.
+Simplificar drasticamente o fluxo após a cotação: pular a tela intermediária de FIPE e tornar a página de plano mais visual, leve e com um mini-game enquanto o consultor entra em contato.
 
-## Como vou fazer
+---
 
-### Passo 1 — Criar edge function temporária `test-crm-fipe-api`
+## 1. Remover a tela de Resultado (FIPE)
 
-Função única e descartável que:
-1. Lê o secret `POWERCRM_API_TOKEN` (já existe no projeto)
-2. Recebe um `quotationCode` via query param (default: `q11LLmpq`)
-3. Chama `GET https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=XXX` com `Authorization: Bearer ${POWERCRM_API_TOKEN}`
-4. Devolve no response:
-   - `status` HTTP da PowerCRM
-   - `headers` da resposta
-   - `body` completo (JSON ou texto bruto)
-5. Loga tudo para inspeção via `edge_function_logs`
+**Arquivo:** `src/pages/Quote.tsx`
+- No final do Step 3 (`handleNext` → submit), trocar `navigate("/resultado")` por `navigate("/detalhes")`.
+- Manter o `submit-to-crm` como está (ainda precisamos do `session_id`).
 
-### Passo 2 — Executar via `curl_edge_functions`
+**Arquivo:** `src/pages/PlanDetails.tsx`
+- Adicionar no topo o `useEffect` que hoje vive em `Result.tsx` para buscar os planos do CRM (`get-crm-plans`) usando `quote.sessionId`. Mostrar um pequeno skeleton/loader nos cards de plano enquanto carrega.
 
-Vou rodar 2 testes em sequência:
-- `?quotationCode=q11LLmpq` (card recente que sabemos que existe)
-- `?quotationCode=DnKN1l8r` (card de referência da placa `PAI0F65`)
+**Arquivo:** `src/App.tsx` (rota `/resultado`)
+- Manter a rota apontando para `Result` por compatibilidade (não quebrar links antigos), mas ela não será mais usada no fluxo. Opcional: redirecionar `/resultado` → `/detalhes`.
 
-### Passo 3 — Analisar a resposta
+---
 
-Procurando no JSON retornado:
-- Onde vem o **valor FIPE calculado** (ex: `vhclFipeVl`, `protectedValue`, `fipeValue`)
-- Onde vem o **código FIPE** confirmado (ex: `codFipe`)
-- Status do cálculo (síncrono ou assíncrono)
-- Se precisa de polling depois
+## 2. Redesenhar `PlanDetails.tsx` — mais visual, menos texto
 
-### Passo 4 — Integrar na `consulta-placa-crm`
+### 2.1 Cabeçalho do plano (mais visual)
+- Manter o card colapsável do usuário.
+- Substituir a longa lista de coberturas por **chips/ícones visuais**: usar grid 2 colunas com ícones do `lucide-react` (Shield, Car, Wrench, KeyRound, Fuel, Hotel, Phone, Tag) + 2-3 palavras curtas. Nada de frases longas.
+- Manter os 2 cards COMPLETO/PREMIUM como seletor (já estão visuais).
+- Remover o card grande com a lista textual completa de coberturas. Deixar apenas o resumo visual em chips.
 
-Com o formato em mãos, adiciono na sequência atual da edge function principal:
+### 2.2 Renomear "Forma de pagamento" → "Pretensão de pagamento"
+**Arquivo:** `src/components/PaymentMethodSelector.tsx`
+- Trocar o título do componente para **"Pretensão de pagamento"**.
+- Manter os dois cards (Cartão de Crédito / PIX-Boleto) como estão.
+
+### 2.3 Remover toggle Mensal/Anual e bloco de valores
+- Remover o componente `<FinancialSummary />` da página.
+- Remover também o bloco "Primeiro pagamento / Subtotal / Total".
+
+### 2.4 Adicionar bloco informativo de agradecimento
+Logo após o seletor de pretensão de pagamento, inserir um card destacado (verde claro, com ícone CheckCircle):
+
+> **Obrigado por escolher a SAVE CAR BRASIL!**  
+> Em até 5 minutos um de nossos consultores entrará em contato para finalizar seu cadastro e confirmar o pagamento.
+
+### 2.5 Mini-game de carrinho amarelo
+Criar um novo componente `src/components/CarMiniGame.tsx`:
+- Canvas/HTML simples (sem libs novas) onde um **carrinho amarelo** (emoji 🚗 estilizado em amarelo Loovi `#F2B705`, ou SVG inline) corre numa estrada.
+- Controles touch: arrastar lateralmente (esquerda/direita) para desviar de obstáculos (cones laranjas) que descem pela tela.
+- Pontuação no topo, "Game Over" com botão "Jogar de novo".
+- Loop com `requestAnimationFrame`, estado em React com `useRef`/`useState`.
+- Altura ~360px, largura 100% do container, bordas arredondadas, fundo cinza-asfalto com faixas brancas animadas.
+- Texto curto acima: *"Enquanto isso, que tal se divertir? 🎮"*
+
+### 2.6 Cupom + remoção do botão "Contratar"
+- Manter o bloco "Adicionar cupom" + input + botão Aplicar **abaixo do mini-game**.
+- **Remover** o botão "Contratar" e o badge "Compra segura".
+- Manter o disclaimer legal no rodapé.
+
+---
+
+## 3. Estrutura final da página `/detalhes` (de cima para baixo)
 
 ```text
-1. POST /quotation/add                      → cria card (já fazemos)
-2. POST /quotation/add-tag                  → tag "30 Seg" (já fazemos)
-3. POST /quotation/update                   → preenche dados (já fazemos)
-4. GET  /quotation/quotationFipeApi?...     ← NOVO: dispara cálculo FIPE
-5. (opcional) polling em /quotation/{code}  → confirma vhclFipeVl > 0
-6. Devolve ao app com crmFipeConfirmed=true
+[Header]
+[Card colapsável do associado]
+[Meu plano — título]
+[Seletor COMPLETO / PREMIUM]
+[Grid visual de coberturas em ícones + chips]
+[Pretensão de pagamento — Cartão / PIX]
+[Card "Obrigado por escolher..."]
+[Mini-game do carrinho amarelo 🚗]
+[Bloco de cupom]
+[Disclaimer legal]
+[WhatsAppButton]
 ```
 
-### Passo 5 — Limpar
-
-Deletar a função `test-crm-fipe-api` após confirmar que tudo funciona.
+---
 
 ## Detalhes técnicos
 
-**Arquivo novo (temporário):** `supabase/functions/test-crm-fipe-api/index.ts`
+- Não mexer em `QuoteContext` (preserva `billingPeriod` para o caso do CRM precisar).
+- `get-crm-plans` continua sendo chamado, agora dentro de `PlanDetails.tsx` no mount, para popular preços usados internamente (não exibidos).
+- Mini-game 100% client-side, sem novas dependências (apenas React + Tailwind + canvas 2D).
+- Animações de entrada via `framer-motion` (já instalado) para os cards e o bloco de agradecimento.
+- Cores Loovi: verde `#0D5C3E` para o card de agradecimento, amarelo `#F2B705` para o carrinho.
 
-```ts
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  
-  const url = new URL(req.url);
-  const quotationCode = url.searchParams.get("quotationCode") || "q11LLmpq";
-  const token = Deno.env.get("POWERCRM_API_TOKEN")!;
-  
-  const crmRes = await fetch(
-    `https://api.powercrm.com.br/api/quotation/quotationFipeApi?quotationCode=${quotationCode}`,
-    { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } }
-  );
-  
-  const text = await crmRes.text();
-  let body: unknown;
-  try { body = JSON.parse(text); } catch { body = text; }
-  
-  console.log(`quotationFipeApi(${quotationCode}) → ${crmRes.status}`);
-  console.log("Headers:", JSON.stringify([...crmRes.headers.entries()]));
-  console.log("Body:", text.substring(0, 2000));
-  
-  return new Response(JSON.stringify({
-    status: crmRes.status,
-    headers: Object.fromEntries(crmRes.headers.entries()),
-    body,
-  }, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-});
-```
+---
 
-**Arquivo a editar depois:** `supabase/functions/consulta-placa-crm/index.ts` — adicionar função `triggerCrmFipeCalculation(token, quotationCode)` e chamar após o `quotation/update`.
+## Arquivos afetados
 
-**Arquivo a deletar no final:** `supabase/functions/test-crm-fipe-api/` (via `delete_edge_functions`).
-
-## Riscos
-
-- Se o endpoint retornar 401/403, significa que ele também precisa de cookie de sessão (não Bearer) → caímos na Opção A original (você pega o token na PowerCRM e tentamos via "Try It!" ou outro endpoint REST).
-- Se retornar 200 mas vazio, pode ser cálculo assíncrono → adiciono polling.
-- Se retornar HTML (login page), confirma que `/api/...` aceita Bearer mas `/company/...` não — e esse endpoint específico pode estar no path errado.
-
-## Resultado esperado
-
-Em 2-3 minutos você recebe:
-1. JSON completo da resposta do endpoint
-2. Confirmação se Bearer funciona nele
-3. Plano final para integrar na `consulta-placa-crm`
-
-Aprovando, eu já crio a função, deploy, executo e te mando o resultado.
+- `src/pages/Quote.tsx` — redirecionar para `/detalhes`
+- `src/pages/PlanDetails.tsx` — redesign completo conforme acima
+- `src/components/PaymentMethodSelector.tsx` — renomear título
+- `src/components/CarMiniGame.tsx` — **novo**
+- `src/App.tsx` — opcional: redirect de `/resultado` para `/detalhes`
