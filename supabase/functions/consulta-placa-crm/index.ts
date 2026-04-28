@@ -904,7 +904,7 @@ Deno.serve(async (req) => {
           }
           if (vehicle.fipeValue) updateBody.protectedValue = vehicle.fipeValue;
           if (vehicle.fipeCode) updateBody.cdFp = vehicle.fipeCode;
-          updateBody.plates = plate;
+          if (plate) updateBody.plates = plate;
           if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
 
 
