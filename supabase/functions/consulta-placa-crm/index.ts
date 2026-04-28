@@ -867,32 +867,18 @@ Deno.serve(async (req) => {
         if (ids.crmModelId || ids.crmYearId || vehicle.fipeValue) {
           const updateBody: Record<string, unknown> = { code: quotationCode };
           if (ids.crmModelId) {
-            updateBody.mdl = ids.crmModelId;
-            updateBody.carModel = ids.crmModelId;
-          }
-          if (ids.crmYearId) {
-            updateBody.mdlYr = ids.crmYearId;
-            updateBody.carModelYear = ids.crmYearId;
-          }
+          if (ids.crmModelId) updateBody.mdl = ids.crmModelId;
+          if (ids.crmYearId) updateBody.mdlYr = ids.crmYearId;
           if (vehicle.color) updateBody.color = vehicle.color;
           if (vehicle.year) {
             const yr = parseInt(String(vehicle.year).split("/")[0], 10);
             if (yr) updateBody.fabricationYear = yr;
           }
-          // Send FIPE value with all known aliases — the card field is `vhclFipeVl`
-          if (vehicle.fipeValue) {
-            updateBody.protectedValue = vehicle.fipeValue;
-            updateBody.vhclFipeVl     = vehicle.fipeValue;
-            updateBody.vlFipe         = vehicle.fipeValue;
-            updateBody.fipeValue      = vehicle.fipeValue;
-          }
-          if (vehicle.fipeCode) {
-            updateBody.cdFp    = vehicle.fipeCode;
-            updateBody.codFipe = vehicle.fipeCode;
-          }
+          if (vehicle.fipeValue) updateBody.protectedValue = vehicle.fipeValue;
+          if (vehicle.fipeCode) updateBody.cdFp = vehicle.fipeCode;
           updateBody.plates = plate;
-          updateBody.plts = plate;
           if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
+
 
           try {
             const upd = await fetch(`${CRM_BASE}/quotation/update`, {
