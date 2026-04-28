@@ -267,17 +267,11 @@ Deno.serve(async (req) => {
           const yr = parseInt(String(vehicle.year).split("/")[0], 10);
           if (yr) updatePayload.fabricationYear = yr;
         }
-        // Send FIPE value with all known aliases — the CRM card field is `vhclFipeVl`
-        if (vehicle.fipeValue) {
-          updatePayload.vhclFipeVl = vehicle.fipeValue;
-          updatePayload.vlFipe     = vehicle.fipeValue;
-          updatePayload.fipeValue  = vehicle.fipeValue;
-        }
-        const fipeCodeAny = (vehicle as Record<string, unknown>).fipeCode as string | undefined;
-        if (fipeCodeAny) {
-          updatePayload.cdFp    = fipeCodeAny;
-          updatePayload.codFipe = fipeCodeAny;
-        }
+        // CRÍTICO: NÃO enviar cdFp/codFipe nem aliases de valor FIPE calculados localmente.
+        // Mandar cdFp errado corrompe o card no PowerCRM (getQuotation 500, plansQuotation 404).
+        // O cálculo FIPE oficial é feito pelo CRM via /quotation/quotationFipeApi
+        // (já disparado pela consulta-placa-crm). Aqui só mandamos protectedValue acima
+        // como referência inicial — o CRM sobrescreve com o valor correto.
 
         const sendUpdate = async () => {
           console.log("Updating CRM quotation:", JSON.stringify(updatePayload, null, 2));

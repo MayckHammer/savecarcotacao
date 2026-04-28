@@ -865,17 +865,19 @@ Deno.serve(async (req) => {
 
       console.log(`Recomputed FIPE for selected model: code=${recomputedFipeCode} value=${recomputedFipeValue}`);
 
-      // Payload enxuto + cdFp — campos que o CRM realmente usa para preencher o card.
+      // Payload enxuto SEM cdFp/protectedValue calculados localmente.
+      // CRÍTICO: enviar cdFp errado deixa o card em estado inconsistente
+      // (getQuotation retorna 500 e plansQuotation falha). Em vez disso,
+      // mandamos só mdl + mdlYr + plates e deixamos o quotationFipeApi
+      // (chamado abaixo) calcular o cdFp e o valor FIPE corretos.
       const updateBody: Record<string, unknown> = {
         code: crmQuotationCode,
         mdl: Number(selectedModel.crmModelId),
-        protectedValue: recomputedFipeValue || 0,
       };
       if (plate) updateBody.plates = plate;
       if (selectedModel.crmYearId) updateBody.mdlYr = Number(selectedModel.crmYearId);
-      if (recomputedFipeCode) updateBody.cdFp = recomputedFipeCode;
 
-      console.log("CRM update payload (schema-only + cdFp):", JSON.stringify(updateBody));
+      console.log("CRM update payload (mdl+mdlYr only, no cdFp):", JSON.stringify(updateBody));
 
       const upd = await fetch(`${CRM_BASE}/quotation/update`, {
         method: "POST",
@@ -885,8 +887,14 @@ Deno.serve(async (req) => {
       const updText = await upd.text();
       console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 200));
 
-      // O CRM calcula vhclFipeVl sozinho no backend após receber mdl+mdlYr+cdFp.
-      // Não há endpoint manual de refresh — o polling abaixo aguarda o cálculo.
+      // Dispara o cálculo FIPE oficial pelo próprio CRM. Retorna o fipeRealCode
+      // correto e o valor — usamos ESSES valores como verdade absoluta.
+      const fipeApi = await triggerCrmFipeCalculation(token, crmQuotationCode);
+      if (fipeApi.ok) {
+        recomputedFipeCode = fipeApi.fipeCode || recomputedFipeCode;
+        recomputedFipeValue = fipeApi.fipeValue || recomputedFipeValue;
+        console.log(`quotationFipeApi confirmou: code=${recomputedFipeCode} value=${recomputedFipeValue}`);
+      }
 
 
       // 4. Polling de verificação (até ~6s) para evitar falso negativo
@@ -1196,6 +1204,7 @@ Deno.serve(async (req) => {
           );
 
           // Fallback: se o updateQuotationVehicleData falhar, tenta o /quotation/update antigo
+          // SEM cdFp/protectedValue locais — quem calcula é o quotationFipeApi (chamado em seguida).
           if (!saveRes.ok) {
             console.log("updateQuotationVehicleData falhou, tentando /quotation/update fallback");
             const updateBody: Record<string, unknown> = { code: quotationCode };
@@ -1206,8 +1215,6 @@ Deno.serve(async (req) => {
               const yr = parseInt(String(vehicle.year).split("/")[0], 10);
               if (yr) updateBody.fabricationYear = yr;
             }
-            if (vehicle.fipeValue) updateBody.protectedValue = vehicle.fipeValue;
-            if (vehicle.fipeCode) updateBody.cdFp = vehicle.fipeCode;
             if (plate) updateBody.plates = plate;
             if (vehicleTypeId != null) updateBody.vhclType = vehicleTypeId;
             try {
@@ -1216,7 +1223,7 @@ Deno.serve(async (req) => {
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(updateBody),
               });
-              console.log(`Fallback /quotation/update → ${upd.status}`);
+              console.log(`Fallback /quotation/update (no cdFp) → ${upd.status}`);
             } catch (e) { console.error("Fallback update error:", e); }
           }
 
