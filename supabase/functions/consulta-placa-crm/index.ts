@@ -856,20 +856,49 @@ Deno.serve(async (req) => {
       if (vehicle) console.log("Vehicle resolved via polling:", JSON.stringify(vehicle));
     }
 
-    // 6. Enrich with FIPE API by code (vehicle.fipeCode) when model/value missing
-    if (vehicle && vehicle.fipeCode && (!vehicle.model || !vehicle.fipeValue)) {
-      console.log(`Enriching via FIPE API by code: ${vehicle.fipeCode}`);
-      const enriched = await enrichFromFipeByCode(vehicle.fipeCode, vehicleType, vehicle.year);
-      if (enriched) {
-        console.log("FIPE enrichment result:", JSON.stringify(enriched));
-        vehicle = {
-          ...vehicle,
-          brand: enriched.brand || vehicle.brand,
-          model: enriched.model || vehicle.model,
-          year: enriched.year || vehicle.year,
-          fipeCode: enriched.fipeCode || vehicle.fipeCode,
-          fipeValue: enriched.fipeValue || vehicle.fipeValue,
-        };
+    // 6. ALWAYS authoritative FIPE source: Parallelum (mesma fonte do fipe.org.br).
+    //    O CRM frequentemente devolve fipeValue desatualizado ou de uma versão
+    //    diferente do modelo (ex: "C3" no lugar de "C3 AIRCROSS"). Usamos
+    //    Parallelum como fonte de verdade e o valor do CRM apenas como fallback.
+    let fipeSource: "parallelum-by-label" | "parallelum-by-code" | "crm" | "none" = "none";
+    if (vehicle) {
+      // 6a. Tenta resolver pelo nome (brand/model/year) — caminho mais preciso
+      if (vehicle.brand && vehicle.model) {
+        const labelFipe = await fetchFipeByModelLabel(vehicle.brand, vehicle.model, vehicle.year, vehicleType);
+        if (labelFipe && (labelFipe.fipeValue > 0 || labelFipe.fipeCode)) {
+          console.log(`FIPE source: parallelum-by-label → code=${labelFipe.fipeCode} value=${labelFipe.fipeValue}`);
+          vehicle = {
+            ...vehicle,
+            year: labelFipe.year || vehicle.year,
+            fipeCode: labelFipe.fipeCode || vehicle.fipeCode,
+            fipeValue: labelFipe.fipeValue || vehicle.fipeValue,
+          };
+          fipeSource = "parallelum-by-label";
+        }
+      }
+      // 6b. Se não achou pelo label, tenta pelo código FIPE que o CRM devolveu
+      if (fipeSource === "none" && vehicle.fipeCode) {
+        const enriched = await enrichFromFipeByCode(vehicle.fipeCode, vehicleType, vehicle.year);
+        if (enriched && (enriched.fipeValue || 0) > 0) {
+          console.log(`FIPE source: parallelum-by-code → code=${enriched.fipeCode} value=${enriched.fipeValue}`);
+          vehicle = {
+            ...vehicle,
+            brand: enriched.brand || vehicle.brand,
+            model: enriched.model || vehicle.model,
+            year: enriched.year || vehicle.year,
+            fipeCode: enriched.fipeCode || vehicle.fipeCode,
+            fipeValue: enriched.fipeValue || vehicle.fipeValue,
+          };
+          fipeSource = "parallelum-by-code";
+        }
+      }
+      // 6c. Fallback: mantém o que o CRM devolveu
+      if (fipeSource === "none" && vehicle.fipeValue > 0) {
+        console.log(`FIPE source: crm → value=${vehicle.fipeValue} (Parallelum lookup falhou)`);
+        fipeSource = "crm";
+      }
+      if (fipeSource === "none") {
+        console.log(`FIPE source: none — brand="${vehicle.brand}" model="${vehicle.model}" year="${vehicle.year}"`);
       }
     }
 
