@@ -905,11 +905,17 @@ Deno.serve(async (req) => {
     let modelOptions: CrmModelOption[] = [];
 
     // 7. Resolve internal CRM brand/model/year IDs (so the card and plansQuotation can use them)
+    //    No fluxo manual o usuário já escolheu na FIPE oficial — não precisamos
+    //    expor um dropdown "confirme o modelo" com versões parecidas. Resolvemos os IDs
+    //    para o CRM aceitar o card, mas devolvemos modelOptions vazio.
+    const isManualFlow = !!manualVehicle && !plate;
     if (vehicle && vehicleTypeId != null && vehicle.brand) {
       try {
         // Use the raw plate name (preserved before FIPE enrichment) for distinctive token matching
         const rawHint = `${vehicle.brandRaw || ""} ${vehicle.modelRaw || ""}`.trim() || undefined;
-        modelOptions = await buildCrmModelOptions(token, vehicleTypeId, vehicle);
+        if (!isManualFlow) {
+          modelOptions = await buildCrmModelOptions(token, vehicleTypeId, vehicle);
+        }
         const ids = await resolveCrmIds(token, vehicleTypeId, vehicle.brand, vehicle.model, vehicle.year, rawHint);
         vehicle.crmBrandId = ids.crmBrandId;
         vehicle.crmModelId = ids.crmModelId;
