@@ -765,13 +765,17 @@ Deno.serve(async (req) => {
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify(crmPayload),
     });
-    const crmData = await crmRes.json();
-    console.log("CRM quotation response keys:", Object.keys(crmData || {}).slice(0, 20).join(","));
+    const crmRaw = await crmRes.text();
+    let crmData: any = {};
+    try { crmData = JSON.parse(crmRaw); } catch { /* not json */ }
+    console.log("CRM quotation HTTP status:", crmRes.status);
+    console.log("CRM quotation response body:", crmRaw.slice(0, 500));
 
     if (!crmData.quotationCode) {
       return new Response(JSON.stringify({
         error: "Não foi possível criar a cotação no CRM",
-        details: crmData.message || crmData.error || "Unknown error",
+        details: crmData.message || crmData.error || crmRaw.slice(0, 200) || "Unknown error",
+        status: crmRes.status,
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
