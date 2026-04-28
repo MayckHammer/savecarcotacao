@@ -866,7 +866,6 @@ Deno.serve(async (req) => {
         // 8. Push these IDs + FIPE value into the quotation immediately so the CRM card is populated
         if (ids.crmModelId || ids.crmYearId || vehicle.fipeValue) {
           const updateBody: Record<string, unknown> = { code: quotationCode };
-          if (ids.crmModelId) {
           if (ids.crmModelId) updateBody.mdl = ids.crmModelId;
           if (ids.crmYearId) updateBody.mdlYr = ids.crmYearId;
           if (vehicle.color) updateBody.color = vehicle.color;
