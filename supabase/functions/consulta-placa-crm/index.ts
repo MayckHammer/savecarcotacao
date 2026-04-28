@@ -658,10 +658,10 @@ Deno.serve(async (req) => {
       // Payload enxuto + cdFp — campos que o CRM realmente usa para preencher o card.
       const updateBody: Record<string, unknown> = {
         code: crmQuotationCode,
-        plates: plate,
         mdl: Number(selectedModel.crmModelId),
         protectedValue: recomputedFipeValue || 0,
       };
+      if (plate) updateBody.plates = plate;
       if (selectedModel.crmYearId) updateBody.mdlYr = Number(selectedModel.crmYearId);
       if (recomputedFipeCode) updateBody.cdFp = recomputedFipeCode;
 
