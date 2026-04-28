@@ -36,6 +36,9 @@ const BodySchema = z.object({
 });
 
 const CRM_BASE = "https://api.powercrm.com.br/api";
+// Endpoints internos da UI do PowerCRM (path /company/...) — usados pela lupa
+// e pelo botão "Salvar" do form#vehicleEditForm. Confirmados via DevTools.
+const CRM_COMPANY_BASE = "https://app.powercrm.com.br/company";
 
 // ===== Vehicle type → CRM mapping =====
 type CrmVehicleType = { id: number | string; name?: string; nm?: string; label?: string; description?: string; ds?: string };
@@ -609,31 +612,28 @@ async function getNegotiation(token: string, code: string): Promise<Record<strin
 
 async function triggerCrmPlateLookup(
   token: string,
-  quotationCode: string,
   plate: string,
 ): Promise<Record<string, unknown> | null> {
-  // Reproduz o clique na "lupa" do card. O CRM exige que a cotação já exista —
-  // damos um pequeno delay para garantir indexação interna antes de chamar.
-  await new Promise((r) => setTimeout(r, 800));
-
-  // Tenta múltiplas variações de nome do parâmetro de cotação observadas no DevTools
-  const variants = [
-    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}&qttn=${encodeURIComponent(quotationCode)}`,
-    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}&code=${encodeURIComponent(quotationCode)}`,
-    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}&quotationCode=${encodeURIComponent(quotationCode)}`,
-    `${CRM_BASE}/quotation/pltVrfyQttn?plates=${encodeURIComponent(plate)}`,
+  // Reproduz o clique na "lupa" do card. Confirmado via DevTools:
+  //   GET https://app.powercrm.com.br/company/pltVrfyQttn?plates=XXX
+  // Não recebe quotationCode — só placa. Devolve DENATRAN + brandId + codFipe.
+  const url = `${CRM_COMPANY_BASE}/pltVrfyQttn?plates=${encodeURIComponent(plate)}&_=${Date.now()}`;
+  // Tenta Bearer primeiro (mesmo token que funciona no /api). Se falhar com 401/403,
+  // tenta como Cookie (formato que o navegador usa).
+  const attempts: Array<{ label: string; init: RequestInit }> = [
+    { label: "bearer", init: { headers: { "Authorization": `Bearer ${token}`, "Accept": "*/*" } } },
+    { label: "cookie", init: { headers: { "Cookie": `token=${token}`, "Accept": "*/*" } } },
   ];
-  for (const url of variants) {
+  for (const { label, init } of attempts) {
     try {
-      const r = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+      const r = await fetch(url, init);
       const text = await r.text();
-      const tag = url.match(/&(\w+)=/)?.[1] || "plates-only";
-      console.log(`pltVrfyQttn (${tag}) → ${r.status} ${text.substring(0, 250)}`);
+      console.log(`pltVrfyQttn (${label}) → ${r.status} ${text.substring(0, 250)}`);
       if (r.ok) {
         try { return JSON.parse(text); } catch { return { raw: text }; }
       }
     } catch (e) {
-      console.error("pltVrfyQttn error:", e);
+      console.error(`pltVrfyQttn (${label}) error:`, e);
     }
   }
   return null;
@@ -643,72 +643,79 @@ async function triggerCrmPlateLookup(
 async function saveCrmVehicleData(
   token: string,
   quotationCode: string,
+  quotationId: number | null,
   vehicle: Vehicle,
   ids: { crmBrandId?: number | null; crmModelId?: number | null; crmYearId?: number | null },
   plate: string,
-  vehicleTypeId: number | string | null,
+  lookupData: Record<string, unknown> | null,
 ): Promise<{ ok: boolean; status: number; body: string }> {
   // Replica o clique no botão "Salvar" do form#vehicleEditForm.
-  // Endpoint descoberto via DevTools: POST /quotation/updateQuotationVehicleData
-  // O CRM aceita tanto vhcl* (UI form) quanto aliases curtos (mdl/mdlYr/cdFp).
-  // Mandamos AMBOS para maximizar compatibilidade — o backend ignora os que não conhece.
+  // Endpoint REAL confirmado via DevTools (prints):
+  //   POST https://app.powercrm.com.br/company/updateQuotationVehicleData
+  // Payload exato observado:
+  //   { quotationId (numérico), plates, chassi, renavam, carModel (id interno CRM),
+  //     carModelYear, fabricationYear, color, engineNumber, depreciationId, expirationDay,
+  //     kmtr, noteContract, noteContractInternal, protectedValue: null, shift, fuel, city,
+  //     workVehicle: false }
+  if (!quotationId) {
+    console.log("saveCrmVehicleData: sem quotationId numérico, abortando (necessário para /company/updateQuotationVehicleData)");
+    return { ok: false, status: 0, body: "missing quotationId" };
+  }
+
   const fabYr = (() => {
     const yr = parseInt(String(vehicle.year || "").split("/")[0], 10);
-    return Number.isFinite(yr) ? yr : undefined;
+    return Number.isFinite(yr) ? String(yr) : "";
+  })();
+  const modelYr = (() => {
+    const parts = String(vehicle.year || "").split("/");
+    const yr = parseInt(parts[1] || parts[0], 10);
+    return Number.isFinite(yr) ? String(yr) : "";
   })();
 
+  // Dados extras vindos da lupa (chassi, engineNumber) quando disponíveis.
+  const chassi = String((lookupData?.chassi as string) || "").trim();
+  const engineNumber = String((lookupData?.engineNumber as string) || "").trim();
+
   const body: Record<string, unknown> = {
-    code: quotationCode,
-    quotationCode,
-    // vhcl* keys (form#vehicleEditForm) — botão Salvar real
-    vhclBrand: ids.crmBrandId ?? undefined,
-    vhclModel: ids.crmModelId ?? undefined,
-    vhclModelYear: ids.crmYearId ?? undefined,
-    vhclFabricationYear: fabYr,
-    vhclFipeCd: vehicle.fipeCode || undefined,
-    vhclFipeVl: vehicle.fipeValue || undefined,
-    vhclChassi: undefined, // CRM lê do DENATRAN; não temos no app
-    vhclColor: vehicle.color || undefined,
-    vhclPlates: plate || undefined,
-    vhclType: vehicleTypeId ?? undefined,
-    // aliases curtos — backup
-    mdl: ids.crmModelId ?? undefined,
-    mdlYr: ids.crmYearId ?? undefined,
-    cdFp: vehicle.fipeCode || undefined,
-    plates: plate || undefined,
-    plts: plate || undefined,
-    color: vehicle.color || undefined,
+    quotationId,
+    plates: plate || "",
+    chassi,
+    renavam: "",
+    carModel: ids.crmModelId != null ? String(ids.crmModelId) : "",
+    carModelYear: modelYr,
     fabricationYear: fabYr,
-    protectedValue: vehicle.fipeValue || undefined,
+    color: vehicle.color || "",
+    engineNumber,
+    depreciationId: "0",
+    expirationDay: 0,
+    kmtr: "",
+    noteContract: "",
+    noteContractInternal: "",
+    protectedValue: null, // CRM calcula sozinho a partir de carModel + carModelYear
+    shift: null,
+    fuel: null,
+    city: null,
+    workVehicle: false,
   };
-  // Remove undefineds
-  Object.keys(body).forEach((k) => body[k] === undefined && delete body[k]);
 
   console.log("updateQuotationVehicleData payload:", JSON.stringify(body));
-  // POST retornou 405 Method Not Allowed em testes — tenta PUT primeiro,
-  // depois variantes do path observadas no DevTools.
-  const attempts: Array<{ url: string; method: string }> = [
-    { url: `${CRM_BASE}/quotation/updateQuotationVehicleData`, method: "PUT" },
-    { url: `${CRM_BASE}/quotation/updateVehicleData`, method: "POST" },
-    { url: `${CRM_BASE}/quotation/updateVehicleData`, method: "PUT" },
-    { url: `${CRM_BASE}/quotation/vehicleData`, method: "PUT" },
-    { url: `${CRM_BASE}/quotation/updateQuotationVehicleData`, method: "POST" },
+
+  const url = `${CRM_COMPANY_BASE}/updateQuotationVehicleData`;
+  const attempts: Array<{ label: string; headers: HeadersInit }> = [
+    { label: "bearer", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "Accept": "*/*" } },
+    { label: "cookie", headers: { "Content-Type": "application/json", "Cookie": `token=${token}`, "Accept": "*/*" } },
   ];
-  for (const { url, method } of attempts) {
+  for (const { label, headers } of attempts) {
     try {
-      const r = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
+      const r = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
       const text = await r.text();
-      console.log(`${method} ${url.split("/").pop()} → ${r.status} ${text.substring(0, 250)}`);
+      console.log(`updateQuotationVehicleData (${label}) → ${r.status} ${text.substring(0, 250)}`);
       if (r.ok) return { ok: true, status: r.status, body: text };
     } catch (e) {
-      console.error(`${method} ${url} error:`, e);
+      console.error(`updateQuotationVehicleData (${label}) error:`, e);
     }
   }
-  return { ok: false, status: 0, body: "all variants failed" };
+  return { ok: false, status: 0, body: "all auth variants failed" };
 }
 
 
@@ -948,6 +955,17 @@ Deno.serve(async (req) => {
 
     const quotationCode = crmData.quotationCode;
     const negotiationCode = crmData.negotiationCode || crmData.negotationCode || null;
+    // Captura o quotationId NUMÉRICO (necessário para /company/updateQuotationVehicleData).
+    // O navegador usa esse ID (ex: 41315826), não o code alfanumérico (ex: "DnKN1l8r").
+    let quotationId: number | null = (() => {
+      const candidates = [crmData.quotationId, crmData.id, crmData.idQuotation, crmData.quotation?.id];
+      for (const c of candidates) {
+        const n = Number(c);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+      return null;
+    })();
+    console.log(`Quotation created: code=${quotationCode} numericId=${quotationId ?? "missing"}`);
 
     // 3. Update with vehicle type explicitly
     if (vehicleTypeId != null) {
@@ -972,17 +990,31 @@ Deno.serve(async (req) => {
     // 4b. "LUPA FIPE" — replica o clique no botão lupa do card.
     //     Faz o CRM ler DENATRAN do lado dele e popular brand/year internamente,
     //     o que melhora o /plates polling abaixo e prepara o terreno para o save.
+    let lupaData: Record<string, unknown> | null = null;
     if (plate) {
-      const lookup = await triggerCrmPlateLookup(token, quotationCode, plate);
-      if (lookup) {
+      lupaData = await triggerCrmPlateLookup(token, plate);
+      if (lupaData) {
         // Se a lupa devolveu vehicle data e ainda não temos vehicle do /plates, usa
-        const lookupVehicle = extractVehicleFromAny(lookup, vehicleType);
+        const lookupVehicle = extractVehicleFromAny(lupaData, vehicleType);
         if (lookupVehicle && !vehicle) {
           vehicle = lookupVehicle;
           console.log("Vehicle resolved from pltVrfyQttn (lupa):", JSON.stringify(vehicle));
         }
       }
     }
+
+    // 4c. Se ainda não temos quotationId numérico, busca via getQuotation
+    if (!quotationId) {
+      const q = await getQuotation(token, quotationCode);
+      if (q) {
+        const n = Number(q.id ?? q.quotationId ?? q.idQuotation);
+        if (Number.isFinite(n) && n > 0) {
+          quotationId = n;
+          console.log(`quotationId resolved via getQuotation: ${quotationId}`);
+        }
+      }
+    }
+
 
 
     // 5. If we don't have vehicle data yet, poll the quotation/negotiation endpoints (data may arrive
@@ -1095,10 +1127,11 @@ Deno.serve(async (req) => {
           const saveRes = await saveCrmVehicleData(
             token,
             quotationCode,
+            quotationId,
             vehicle,
             { crmBrandId: ids.crmBrandId, crmModelId: ids.crmModelId, crmYearId: ids.crmYearId },
             plate,
-            vehicleTypeId,
+            lupaData,
           );
 
           // Fallback: se o updateQuotationVehicleData falhar, tenta o /quotation/update antigo
