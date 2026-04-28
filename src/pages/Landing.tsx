@@ -21,7 +21,7 @@ const Landing = () => {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
+    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-background">
       {/* Decorative background */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <motion.div
@@ -43,20 +43,21 @@ const Landing = () => {
         variants={container}
         initial="hidden"
         animate="show"
-        className="flex flex-1 flex-col items-center justify-center px-6 py-12"
+        className="flex flex-1 flex-col items-center justify-center px-6 py-3 min-h-0"
       >
         <motion.img
           variants={item}
           src={logo}
           alt="SAVE CAR BRASIL"
-          className="h-56 mb-6 object-contain drop-shadow-sm"
+          className="mb-3 object-contain drop-shadow-sm"
+          style={{ height: "clamp(7rem, 22vh, 14rem)" }}
           whileHover={{ scale: 1.03, rotate: -1 }}
           transition={{ type: "spring", stiffness: 200, damping: 15 }}
         />
 
         <motion.div
           variants={item}
-          className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary"
+          className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary"
         >
           <ShieldCheck className="h-3.5 w-3.5" />
           Proteção 100% confiável
@@ -64,13 +65,13 @@ const Landing = () => {
 
         <motion.h1
           variants={item}
-          className="text-2xl font-bold text-center text-foreground mb-3 tracking-tight"
+          className="text-2xl font-bold text-center text-foreground mb-2 tracking-tight"
         >
           Proteção Veicular <span className="text-primary">de Verdade</span>
         </motion.h1>
         <motion.p
           variants={item}
-          className="text-muted-foreground text-center mb-10 max-w-xs leading-relaxed"
+          className="text-sm text-muted-foreground text-center mb-5 max-w-xs leading-relaxed"
         >
           Proteja seu veículo com as melhores coberturas do mercado. Simples, rápido e seguro.
         </motion.p>
@@ -83,7 +84,7 @@ const Landing = () => {
           >
             <Button
               onClick={() => navigate("/cotacao")}
-              className="group relative w-full h-14 text-base font-bold rounded-xl shadow-lg shadow-primary/25 overflow-hidden"
+              className="group relative w-full h-13 text-base font-bold rounded-xl shadow-lg shadow-primary/25 overflow-hidden"
               size="lg"
             >
               <span className="relative z-10 flex items-center justify-center">
@@ -107,7 +108,7 @@ const Landing = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => navigate("/simulacao")}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors mt-4 flex items-center gap-1 group"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors mt-3 flex items-center gap-1 group"
         >
           Cotação sem placa
           <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
@@ -119,7 +120,7 @@ const Landing = () => {
         variants={container}
         initial="hidden"
         animate="show"
-        className="px-6 pb-8 space-y-3 max-w-xs mx-auto w-full"
+        className="px-6 pb-2 space-y-2 max-w-xs mx-auto w-full shrink-0"
       >
         <motion.a
           variants={item}
@@ -127,7 +128,7 @@ const Landing = () => {
           whileTap={{ scale: 0.98 }}
           transition={{ type: "spring", stiffness: 400, damping: 20 }}
           href="#"
-          className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur p-4 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"
+          className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur px-4 py-2.5 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"
         >
           <HelpCircle className="h-5 w-5 text-primary" />
           Dúvidas sobre a cotação?
@@ -140,7 +141,7 @@ const Landing = () => {
           href="https://wa.me/5500000000000"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur p-4 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"
+          className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur px-4 py-2.5 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"
         >
           <MessageCircle className="h-5 w-5 text-primary" />
           Atendimento pelo WhatsApp
@@ -152,9 +153,9 @@ const Landing = () => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.6, duration: 0.6 }}
-        className="px-6 pb-6 text-center"
+        className="px-6 pb-3 pt-2 text-center shrink-0"
       >
-        <div className="flex items-center justify-center gap-4 mb-4">
+        <div className="flex items-center justify-center gap-4 mb-1.5">
           <motion.a
             whileHover={{ scale: 1.2, rotate: -5 }}
             whileTap={{ scale: 0.9 }}
@@ -172,7 +173,7 @@ const Landing = () => {
             <Facebook className="h-5 w-5" />
           </motion.a>
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[11px] text-muted-foreground">
           © 2026 SAVE CAR BRASIL. Todos os direitos reservados.
         </p>
       </motion.footer>
