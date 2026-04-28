@@ -36,6 +36,9 @@ const BodySchema = z.object({
 });
 
 const CRM_BASE = "https://api.powercrm.com.br/api";
+// Endpoints internos da UI do PowerCRM (path /company/...) — usados pela lupa
+// e pelo botão "Salvar" do form#vehicleEditForm. Confirmados via DevTools.
+const CRM_COMPANY_BASE = "https://app.powercrm.com.br/company";
 
 // ===== Vehicle type → CRM mapping =====
 type CrmVehicleType = { id: number | string; name?: string; nm?: string; label?: string; description?: string; ds?: string };
