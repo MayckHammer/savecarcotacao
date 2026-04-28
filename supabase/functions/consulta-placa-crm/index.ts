@@ -810,9 +810,9 @@ Deno.serve(async (req) => {
         vehicle = await fetchPlateFromCrm(token, plate, vehicleType);
         if (vehicle) break;
 
-        const fipeData = await getQuotationFipe(token, quotationCode);
-        vehicle = extractVehicleFromAny(fipeData, vehicleType);
-        if (vehicle) break;
+        // (getQuotationFipe removido — endpoint quotationFipeApi não é confiável)
+
+
 
         if (negotiationCode) {
           const neg = await getNegotiation(token, negotiationCode);
