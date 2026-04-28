@@ -3,6 +3,8 @@ import { ArrowRight, HelpCircle, MessageCircle, Instagram, Facebook, ShieldCheck
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo-savecar.png";
+import bordaSuperior from "@/assets/borda-superior.png";
+import bordaMaior from "@/assets/borda-maior.png";
 
 const Landing = () => {
   const navigate = useNavigate();
@@ -23,18 +25,22 @@ const Landing = () => {
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
       {/* Decorative background */}
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.2, ease: "easeOut" }}
-          className="absolute -top-32 -right-24 h-80 w-80 rounded-full bg-primary/15 blur-3xl"
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden select-none" aria-hidden="true">
+        <motion.img
+          src={bordaSuperior}
+          alt=""
+          initial={{ opacity: 0, x: 40, y: -20 }}
+          animate={{ opacity: 1, x: 0, y: 0 }}
+          transition={{ duration: 1, ease: "easeOut" }}
+          className="absolute top-0 right-0 w-[60%] max-w-[280px] object-contain"
         />
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.4, ease: "easeOut", delay: 0.2 }}
-          className="absolute top-1/3 -left-24 h-72 w-72 rounded-full bg-secondary/20 blur-3xl"
+        <motion.img
+          src={bordaMaior}
+          alt=""
+          initial={{ opacity: 0, x: -40 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 1.2, ease: "easeOut", delay: 0.2 }}
+          className="absolute top-[55%] -left-8 w-[110%] max-w-none object-contain"
         />
       </div>
 
