@@ -189,7 +189,7 @@ async function fetchCrmModels(token: string, brandId: number, year?: string): Pr
   // Prefer cmby (brand + year) — same endpoint the CRM panel uses; returns a much
   // shorter, more accurate list. Falls back to cm (brand only) if cmby is empty.
   const cleanYear = (year || "").trim();
-  const cacheKey = `${brandId}:${cleanYear}` as unknown as number;
+  const cacheKey = `${brandId}:${cleanYear}`;
   if (modelsCache.has(cacheKey)) return modelsCache.get(cacheKey)!;
   try {
     const url = cleanYear
