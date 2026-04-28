@@ -256,6 +256,9 @@ const CarMiniGame = () => {
   };
 
   const displayScore = score;
+  const prizeUnlocked = displayScore >= PRIZE_GOAL;
+  const progressPct = Math.min(100, (displayScore / PRIZE_GOAL) * 100);
+  const wonPrize = gameOver && score >= PRIZE_GOAL;
 
   return (
     <div className="space-y-2">
@@ -267,6 +270,16 @@ const CarMiniGame = () => {
           </span>
         </div>
         <span className="text-xs text-muted-foreground">Recorde: {best}</span>
+      </div>
+
+      {/* Prize banner */}
+      <div className="rounded-xl p-3 flex items-center gap-3 bg-gradient-to-r from-[#F2B705] to-[#ffd24a] text-[#0D5C3E] shadow-md border border-[#0D5C3E]/10">
+        <div className="h-9 w-9 rounded-full bg-[#0D5C3E] flex items-center justify-center shrink-0">
+          <Gift className="h-5 w-5 text-[#F2B705] animate-pulse" />
+        </div>
+        <p className="text-sm font-bold leading-tight">
+          Chegue a <span className="underline">2.000 pontos</span> e ganhe um brinde da SAVE CAR! 🎁
+        </p>
       </div>
 
       <div className="relative rounded-2xl overflow-hidden border border-border bg-[#2a2a2a] shadow-md">
