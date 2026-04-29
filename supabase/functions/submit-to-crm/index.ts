@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
     const internalNote = [
       `► USO DO VEÍCULO: ${usageLabel}`,
       `► PLANO SELECIONADO: ${planName}`,
-      `► PLANO CRM: ${crmPlanName}`,
+      `► PLANO CRM: ${crmPlanLabel}`,
       `► VALOR CRM: ${crmPriceLabel}`,
       `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
     ].join("\n");
@@ -176,12 +176,12 @@ Deno.serve(async (req) => {
       `>>> DESTAQUE — INFORMAÇÕES DO CLIENTE <<<`,
       `► USO DO VEÍCULO: ${usageLabel}`,
       `► PLANO SELECIONADO: ${planName}`,
-      `► PLANO CRM: ${crmPlanName}`,
+      `► PLANO CRM: ${crmPlanLabel}`,
       `► VALOR CRM: ${crmPriceLabel}`,
       `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
       ``,
       `=== PLANO: ${planName} ===`,
-      `Plano CRM: ${crmPlanName}`,
+      `Plano CRM: ${crmPlanLabel}`,
       `Valor mensal CRM: ${crmPriceLabel}`,
       `Valor: R$ ${totalValue ? totalValue.toFixed(2).replace(".", ",") : "A definir"}/${billingLabel === "Anual" ? "ano" : "mês"}`,
       `Periodicidade: ${billingLabel}`,
