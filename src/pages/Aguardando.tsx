@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import Header from "@/components/Header";
+
 import WhatsAppButton from "@/components/WhatsAppButton";
 import CarMiniGame from "@/components/CarMiniGame";
 import { useQuote } from "@/contexts/QuoteContext";
