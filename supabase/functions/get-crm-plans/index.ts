@@ -4,6 +4,53 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const UF_MAP: Record<string, string> = {
+  AC: "Acre", AL: "Alagoas", AM: "Amazonas", AP: "Amapá", BA: "Bahia",
+  CE: "Ceará", DF: "Distrito Federal", ES: "Espírito Santo", GO: "Goiás",
+  MA: "Maranhão", MG: "Minas Gerais", MS: "Mato Grosso do Sul",
+  MT: "Mato Grosso", PA: "Pará", PB: "Paraíba", PE: "Pernambuco",
+  PI: "Piauí", PR: "Paraná", RJ: "Rio de Janeiro", RN: "Rio Grande do Norte",
+  RO: "Rondônia", RR: "Roraima", RS: "Rio Grande do Sul",
+  SC: "Santa Catarina", SE: "Sergipe", SP: "São Paulo", TO: "Tocantins",
+};
+
+const normalizeText = (s: string): string =>
+  String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+let statesListCache: { nm: string; id: number }[] | null = null;
+const stateCityCache = new Map<string, number>();
+
+async function resolveCityCode(stateRaw: string, cityRaw: string): Promise<number | null> {
+  if (!stateRaw || !cityRaw) return null;
+  const stateName = UF_MAP[String(stateRaw).trim().toUpperCase()] || stateRaw;
+  const cacheKey = `${normalizeText(stateName)}|${normalizeText(cityRaw)}`;
+  if (stateCityCache.has(cacheKey)) return stateCityCache.get(cacheKey)!;
+  try {
+    if (!statesListCache) {
+      const statesRes = await fetch("https://utilities.powercrm.com.br/state/stt");
+      if (!statesRes.ok) return null;
+      statesListCache = await statesRes.json();
+    }
+    const found = statesListCache!.find((s) => normalizeText(s.nm) === normalizeText(stateName));
+    if (!found) return null;
+    const citiesRes = await fetch(`https://utilities.powercrm.com.br/city/ct?st=${found.id}`);
+    if (!citiesRes.ok) return null;
+    const cities = await citiesRes.json() as { nm: string; id: number }[];
+    const city = cities.find((c) => normalizeText(c.nm) === normalizeText(cityRaw));
+    if (!city) return null;
+    stateCityCache.set(cacheKey, city.id);
+    return city.id;
+  } catch (e) {
+    console.error("resolveCityCode error:", e);
+    return null;
+  }
+}
+
+type PlanContext = {
+  vehicle?: Record<string, unknown>;
+  address?: Record<string, unknown>;
+};
+
 function findFirstArray(input: unknown): unknown[] {
   if (Array.isArray(input)) return input;
   if (!input || typeof input !== "object") return [];
@@ -49,17 +96,21 @@ async function fetchQuotationWithRetry(quotationCode: string, token: string, att
   return null;
 }
 
-async function fetchPlansByModelRequest(quotationCode: string, token: string): Promise<{ plans: unknown[]; error?: string }> {
+async function fetchPlansByModelRequest(quotationCode: string, token: string, context: PlanContext = {}): Promise<{ plans: unknown[]; error?: string }> {
   try {
     const qData = await fetchQuotationWithRetry(quotationCode, token);
-    if (!qData) return { plans: [], error: "CRM ainda está processando a cotação" };
     const nested = (qData?.data || {}) as Record<string, unknown>;
+    const vehicle = context.vehicle || {};
+    const address = context.address || {};
 
-    const carModelId = Number(qData?.mdl ?? qData?.carModel ?? nested?.mdl ?? 0);
-    const carModelYearId = Number(qData?.mdlYr ?? qData?.carModelYear ?? nested?.mdlYr ?? 0);
-    const cityId = Number(qData?.city ?? nested?.city ?? 0);
-    const workVehicle = Boolean(qData?.workVehicle ?? nested?.workVehicle ?? false);
-    const fipe = Number(qData?.protectedValue ?? qData?.vhclFipeVl ?? nested?.protectedValue ?? nested?.vhclFipeVl ?? 0);
+    const carModelId = Number(qData?.mdl ?? qData?.carModel ?? nested?.mdl ?? vehicle.crmModelId ?? 0);
+    const carModelYearId = Number(qData?.mdlYr ?? qData?.carModelYear ?? nested?.mdlYr ?? vehicle.crmYearId ?? 0);
+    let cityId = Number(qData?.city ?? nested?.city ?? 0);
+    if (!cityId && address.state && address.city) {
+      cityId = Number(await resolveCityCode(String(address.state), String(address.city)) || 0);
+    }
+    const workVehicle = Boolean(qData?.workVehicle ?? nested?.workVehicle ?? (vehicle.type === "caminhao" || vehicle.usage === "aplicativo"));
+    const fipe = Number(qData?.protectedValue ?? qData?.vhclFipeVl ?? nested?.protectedValue ?? nested?.vhclFipeVl ?? vehicle.fipeValue ?? 0);
     const missing: string[] = [];
     if (!carModelId) missing.push("modelo");
     if (!carModelYearId) missing.push("ano");
@@ -84,7 +135,7 @@ async function fetchPlansByModelRequest(quotationCode: string, token: string): P
   }
 }
 
-async function fetchPlansWithRetry(quotationCode: string, token: string, maxAttempts = 3): Promise<{ plans: unknown[]; error?: string }> {
+async function fetchPlansWithRetry(quotationCode: string, token: string, maxAttempts = 3, context: PlanContext = {}): Promise<{ plans: unknown[]; error?: string }> {
   // Reduced from 4→3 attempts (delays 2s/4s/6s = ~12s) — consulta-placa-crm now pre-warms the V2 endpoint.
   const delays = [2000, 4000, 6000];
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -126,7 +177,7 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
-        const fallback = await fetchPlansByModelRequest(quotationCode, token);
+        const fallback = await fetchPlansByModelRequest(quotationCode, token, context);
         if (fallback.plans.length) return fallback;
         return { plans: [], error: fallback.error || "Cotação não encontrada no CRM (V2 retornou 404)" };
       }
@@ -141,7 +192,7 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
-        const fallback = await fetchPlansByModelRequest(quotationCode, token);
+        const fallback = await fetchPlansByModelRequest(quotationCode, token, context);
         if (fallback.plans.length) return fallback;
         // Final attempt failed — diagnose quotation state
         let diagnostic = fallback.error || "Nenhum plano disponível para esta cotação";
@@ -220,7 +271,12 @@ Deno.serve(async (req) => {
     }
 
     const token = Deno.env.get("POWERCRM_API_TOKEN");
-    const result = await fetchPlansWithRetry(quotationCode, token!, 3);
+    if (!token) {
+      return new Response(JSON.stringify({ plans: [], error: "POWERCRM_API_TOKEN not configured" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const result = await fetchPlansWithRetry(quotationCode, token, 3, { vehicle: body?.vehicle, address: body?.address });
 
     // Always return 200 — frontend will use fallback prices if plans is empty
     return new Response(JSON.stringify({ plans: result.plans, warning: result.error || null }), {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ArrowLeft, AlertCircle, Loader2, Car, Search, Bike, Truck } from "lucide-react";
+import { ArrowRight, ArrowLeft, AlertCircle, Loader2, Car, Search, Bike, Truck, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -159,6 +159,10 @@ const Quote = () => {
     setPlateConsulted(true);
 
     if (!quote.crmQuotationCode) return;
+    if (!quote.address.city || !quote.address.state) {
+      toast.success("Modelo confirmado. O CRM calculará os planos após o endereço.");
+      return;
+    }
     setConfirmingModel(true);
     try {
       const { data, error } = await supabase.functions.invoke("consulta-placa-crm", {
@@ -221,6 +225,11 @@ const Quote = () => {
       setErrors({ type: "Selecione o tipo de veículo antes de consultar" });
       return;
     }
+    if (!validateStep1()) {
+      toast.warning("Complete seus dados pessoais antes de consultar a placa.");
+      setStep(1);
+      return;
+    }
     setPlateLoading(true);
     setFipeError("");
     try {
@@ -247,7 +256,8 @@ const Quote = () => {
       if (data?.vehicle) {
         const v = data.vehicle;
         const crmOptions = Array.isArray(v.modelOptions) ? (v.modelOptions as CrmModelOption[]) : [];
-        const suggestedOption = crmOptions[0];
+        const hasMultipleOptions = crmOptions.length > 1;
+        const suggestedOption = hasMultipleOptions ? undefined : crmOptions[0];
         const fipeValueFromCrm = Number(v.fipeValue) || 0;
         const fipeFormattedFromCrm = fipeValueFromCrm > 0
           ? `R$ ${fipeValueFromCrm.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -255,7 +265,7 @@ const Quote = () => {
 
         updateVehicle({
           brand: v.brand || "",
-          model: suggestedOption?.name || v.model || "",
+          model: hasMultipleOptions ? "" : suggestedOption?.name || v.model || "",
           year: v.year || "",
           color: v.color || "",
           fipeCode: v.fipeCode || "",
@@ -263,14 +273,16 @@ const Quote = () => {
           ...(crmOptions.length === 1 ? { modelCode: crmOptions[0].code } : { modelCode: "" }),
           ...(fipeValueFromCrm > 0 ? { fipeValue: fipeValueFromCrm, fipeFormatted: fipeFormattedFromCrm } : {}),
           ...(v.crmBrandId ? { crmBrandId: Number(v.crmBrandId) } : {}),
-          ...(suggestedOption?.crmModelId ? { crmModelId: Number(suggestedOption.crmModelId) } : v.crmModelId ? { crmModelId: Number(v.crmModelId) } : {}),
-          ...(suggestedOption?.crmYearId ? { crmYearId: Number(suggestedOption.crmYearId) } : v.crmYearId ? { crmYearId: Number(v.crmYearId) } : {}),
+          ...(hasMultipleOptions ? { crmModelId: null, crmYearId: null } : suggestedOption?.crmModelId ? { crmModelId: Number(suggestedOption.crmModelId) } : v.crmModelId ? { crmModelId: Number(v.crmModelId) } : {}),
+          ...(hasMultipleOptions ? {} : suggestedOption?.crmYearId ? { crmYearId: Number(suggestedOption.crmYearId) } : v.crmYearId ? { crmYearId: Number(v.crmYearId) } : {}),
         });
         // Consider identified if we have brand + model + (fipe value OR year)
-        const isFullyIdentified = !!v.brand && !!(suggestedOption?.name || v.model) && (fipeValueFromCrm > 0 || !!v.year);
+        const isFullyIdentified = !!v.brand && !!(suggestedOption?.name || v.model || crmOptions.length > 0) && (fipeValueFromCrm > 0 || !!v.year || crmOptions.length > 0);
         if (isFullyIdentified) {
           setPlateConsulted(true);
-          if (fipeValueFromCrm > 0) {
+          if (hasMultipleOptions) {
+            toast.info("Veículo encontrado! Confirme o modelo exato abaixo para calcular os planos.");
+          } else if (fipeValueFromCrm > 0) {
             toast.success(`Veículo identificado! FIPE: ${fipeFormattedFromCrm}`);
           } else {
             toast.success("Veículo identificado com sucesso!");
@@ -315,11 +327,12 @@ const Quote = () => {
       if (!quote.vehicle.modelCode) e.model = "Selecione o modelo";
       if (!quote.vehicle.yearCode) e.year = "Selecione o ano";
     } else {
+      const hasMultipleOptions = (quote.vehicle.modelOptions?.length || 0) > 1;
       if (!quote.vehicle.brand) e.brand = "Marca não identificada";
-      if (!quote.vehicle.model) e.model = "Modelo não identificado";
+      if (!hasMultipleOptions && !quote.vehicle.model) e.model = "Modelo não identificado";
       // Só exige escolha quando há mais de 1 opção do CRM (fluxo placa).
       // No fluxo manual o backend devolve modelOptions vazio, então essa validação não dispara.
-      if ((quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode) e.model = "Confirme o modelo";
+      if (hasMultipleOptions && !quote.vehicle.modelCode) e.model = "Confirme o modelo exato do veículo";
     }
     if (!quote.vehicle.type) e.type = "Selecione o tipo";
     if (!quote.vehicle.usage) e.usage = "Selecione o uso";
@@ -608,11 +621,15 @@ const Quote = () => {
 
             {/* Vehicle identified via CRM */}
             {plateConsulted && quote.vehicle.brand && (
-              <Card className="border-primary/30 bg-primary/5">
+              <Card className={`${(quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode ? "border-accent/60 bg-accent/10" : "border-primary/30 bg-primary/5"}`}>
                 <CardContent className="p-4 space-y-2">
-                  <div className="flex items-center gap-2 text-primary font-semibold text-sm">
-                    <Car className="h-4 w-4" />
-                    <span>Veículo Identificado</span>
+                  <div className={`flex items-center gap-2 font-semibold text-sm ${(quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode ? "text-accent-foreground" : "text-primary"}`}>
+                    {(quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode ? (
+                      <AlertCircle className="h-4 w-4" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" />
+                    )}
+                    <span>{(quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode ? "Confirme o modelo abaixo" : "Veículo Identificado"}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
@@ -623,10 +640,19 @@ const Quote = () => {
                       <p className="text-muted-foreground text-xs">Ano</p>
                       <p className="font-medium text-foreground">{quote.vehicle.year}</p>
                     </div>
-                    <div className="col-span-2">
-                      <p className="text-muted-foreground text-xs">Modelo</p>
-                      <p className="font-medium text-foreground">{quote.vehicle.model}</p>
-                    </div>
+                    {((quote.vehicle.modelOptions?.length || 0) <= 1 || quote.vehicle.modelCode) && quote.vehicle.model && (
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground text-xs">Modelo</p>
+                        <p className="font-medium text-foreground">{quote.vehicle.model}</p>
+                      </div>
+                    )}
+                    {(quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode && (
+                      <div className="col-span-2 rounded-lg border border-accent/40 bg-background/60 p-3">
+                        <p className="text-xs font-medium text-foreground">
+                          {quote.vehicle.modelOptions?.length} modelos encontrados. Selecione o modelo exato para liberar o cálculo correto da FIPE e dos planos.
+                        </p>
+                      </div>
+                    )}
                     {quote.vehicle.color && (
                       <div>
                         <p className="text-muted-foreground text-xs">Cor</p>
@@ -637,6 +663,12 @@ const Quote = () => {
                       <p className="text-muted-foreground text-xs">Tipo</p>
                       <p className="font-medium text-foreground capitalize">{quote.vehicle.type}</p>
                     </div>
+                    {quote.vehicle.modelCode && quote.vehicle.fipeFormatted && (
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground text-xs">Valor FIPE</p>
+                        <p className="font-bold text-primary text-lg">{quote.vehicle.fipeFormatted}</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
