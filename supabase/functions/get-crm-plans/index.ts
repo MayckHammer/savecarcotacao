@@ -220,7 +220,7 @@ Deno.serve(async (req) => {
     }
 
     const token = Deno.env.get("POWERCRM_API_TOKEN");
-    const result = await fetchPlansWithRetry(quotationCode, token!, 4);
+    const result = await fetchPlansWithRetry(quotationCode, token!, 3);
 
     // Always return 200 — frontend will use fallback prices if plans is empty
     return new Response(JSON.stringify({ plans: result.plans, warning: result.error || null }), {
