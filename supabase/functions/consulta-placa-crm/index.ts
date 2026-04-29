@@ -839,7 +839,7 @@ async function saveCrmVehicleData(
     protectedValue: null, // CRM calcula sozinho a partir de carModel + carModelYear
     shift: null,
     fuel: null,
-    city: null,
+    city: cityId != null ? String(cityId) : null,
     workVehicle: false,
   };
 
