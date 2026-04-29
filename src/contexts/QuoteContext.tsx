@@ -252,7 +252,7 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <QuoteContext.Provider
-      value={{ quote, crmPlans, setCrmPlans, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setPaymentMethod, updateCard, setCoupon, setCrmQuotationCode, setCrmNegotiationCode, setSessionId, resetQuote, getTotal, getSubtotalWithoutDiscount }}
+      value={{ quote, crmPlans, setCrmPlans, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setPaymentMethod, updateCard, setCoupon, setCrmQuotationCode, setCrmQuotationId, setCrmNegotiationCode, setSessionId, resetQuote, getTotal, getSubtotalWithoutDiscount }}
     >
       {children}
     </QuoteContext.Provider>
