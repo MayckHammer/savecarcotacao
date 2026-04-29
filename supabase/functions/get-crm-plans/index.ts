@@ -280,7 +280,18 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
               "hasAddress:", hasAddr, "hasCity:", hasCity,
             );
             if (missing.length) {
-              diagnostic = `Cotação incompleta no CRM (faltando: ${missing.join(", ")})`;
+              // Se o frontend mandou contexto local completo, não acuse "faltando" —
+              // o card visual está OK; o que falta é o cálculo do CRM propagar.
+              const ctxVehicle = (context.vehicle || {}) as Record<string, unknown>;
+              const ctxAddress = (context.address || {}) as Record<string, unknown>;
+              const localCovers =
+                (missing.includes("cidade") ? !!(ctxAddress.city && ctxAddress.state) : true) &&
+                (missing.includes("modelo") ? !!ctxVehicle.crmModelId : true) &&
+                (missing.includes("ano") ? !!ctxVehicle.crmYearId : true) &&
+                (missing.includes("valor FIPE") ? Number(ctxVehicle.fipeValue) > 0 : true);
+              diagnostic = localCovers
+                ? "CRM ainda calculando os planos. Aguarde alguns instantes."
+                : `Cotação incompleta no CRM (faltando: ${missing.join(", ")})`;
             }
           }
         } catch (diagErr) {
