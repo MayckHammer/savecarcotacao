@@ -440,6 +440,11 @@ Deno.serve(async (req) => {
             v = await verifyUpdate();
           }
 
+          // Save the YELLOW field (Observações internas) via internal endpoint.
+          // /quotation/update does NOT persist noteContractInternal — only /add does, or
+          // the company/updateQuotationVehicleData endpoint used by the card form.
+          await saveInternalNote(crmQuotationCode);
+
           // Now that data is complete, open inspection
           if (v.protectedValue > 0 && v.hasAddress) {
             inspectionLink = await openInspection(crmQuotationCode);
