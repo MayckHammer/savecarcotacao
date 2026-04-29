@@ -939,7 +939,24 @@ Deno.serve(async (req) => {
       if (plate) updateBody.plates = plate;
       if (selectedModel.crmYearId) updateBody.mdlYr = Number(selectedModel.crmYearId);
 
-      console.log("CRM update payload (mdl+mdlYr only, no cdFp):", JSON.stringify(updateBody));
+      // Resolve cidade do CRM a partir do endereço do cliente (estado/cidade).
+      // Sem cityId o CRM responde "Cotação incompleta no CRM (faltando: cidade)"
+      // ao pedir os planos.
+      let resolvedCityId: number | string | null = null;
+      if (address?.state && address?.city) {
+        resolvedCityId = await resolveCrmCityId(token, address.state, address.city);
+        if (resolvedCityId != null) updateBody.city = resolvedCityId;
+      }
+      // Endereço completo — chaves observadas no fetchPlansByModelRequest do get-crm-plans.
+      if (address?.cep) updateBody.addressZipcode = address.cep.replace(/\D/g, "");
+      if (address?.street) updateBody.addressAddress = address.street;
+      if (address?.number) updateBody.addressNumber = address.number;
+      if (address?.neighborhood) updateBody.addressNeighborhood = address.neighborhood;
+      if (address?.complement) updateBody.addressComplement = address.complement;
+      if (address?.state) updateBody.addressState = address.state;
+      if (address?.city) updateBody.addressCity = address.city;
+
+      console.log("CRM update payload (mdl+mdlYr+city+address):", JSON.stringify(updateBody));
 
       const upd = await fetch(`${CRM_BASE}/quotation/update`, {
         method: "POST",
