@@ -66,6 +66,7 @@ const PlanDetails = () => {
   const [showUserInfo, setShowUserInfo] = useState(false);
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [continuing, setContinuing] = useState(false);
+  const [planWarning, setPlanWarning] = useState<string | null>(null);
 
   const chips = quote.planName === "PREMIUM" ? CHIPS_PREMIUM : CHIPS_COMPLETO;
 
@@ -130,12 +131,17 @@ const PlanDetails = () => {
 
         const { data: plansData, error } = await supabase.functions.invoke(
           "get-crm-plans",
-          { body: { quotationCode: data.crm_quotation_code } }
+          { body: { quotationCode: data.crm_quotation_code, vehicle: quote.vehicle, address: quote.address } }
         );
 
         if (cancelled) return;
         if (!error && plansData?.plans?.length > 0) {
           setCrmPlans(plansData.plans);
+          setPlanWarning(null);
+        } else if (plansData?.warning || plansData?.error) {
+          setPlanWarning(plansData.warning || plansData.error);
+        } else {
+          setPlanWarning("Planos reais ainda não retornaram do CRM.");
         }
       } catch (err) {
         console.error("Error fetching CRM plans:", err);
@@ -147,7 +153,7 @@ const PlanDetails = () => {
     return () => {
       cancelled = true;
     };
-  }, [quote.sessionId, setCrmPlans]);
+  }, [quote.sessionId, quote.vehicle, quote.address, setCrmPlans]);
 
   const container = {
     hidden: { opacity: 0 },
@@ -270,16 +276,28 @@ const PlanDetails = () => {
                   >
                     {plan}
                   </span>
-                  {monthlyFormatted && (
-                    <span className="text-[11px] font-semibold text-muted-foreground leading-tight">
-                      {monthlyFormatted}<span className="opacity-60">/mês</span>
-                    </span>
-                  )}
+                  <span className="text-[11px] font-semibold text-muted-foreground leading-tight">
+                    {monthlyFormatted ? (
+                      <>
+                        {monthlyFormatted}<span className="opacity-60">/mês</span>
+                      </>
+                    ) : loadingPlans ? (
+                      "Calculando..."
+                    ) : (
+                      "Aguardando CRM"
+                    )}
+                  </span>
                 </div>
               </button>
             );
           })}
         </motion.div>
+
+        {!loadingPlans && planWarning && crmPlans.length === 0 && (
+          <motion.div variants={item} className="rounded-xl border border-accent/40 bg-accent/10 p-3">
+            <p className="text-xs font-medium text-foreground">{planWarning}</p>
+          </motion.div>
+        )}
 
         {/* Visual coverage chips */}
         <motion.div variants={item}>
@@ -312,7 +330,7 @@ const PlanDetails = () => {
         <motion.div variants={item} className="pt-2">
           <Button
             onClick={handleContinue}
-            disabled={continuing}
+            disabled={continuing || loadingPlans || crmPlans.length === 0}
             className="w-full h-13 rounded-xl font-bold text-base"
           >
             {continuing ? (
