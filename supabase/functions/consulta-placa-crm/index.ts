@@ -1268,6 +1268,11 @@ Deno.serve(async (req) => {
         ? `R$ ${recomputedFipeValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : "";
 
+      // Buscar planos reais do CRM agora que o card está com mdl/mdlYr/city/FIPE persistidos.
+      // Se vier vazio, o frontend cai nos preços hardcoded — não bloqueia o fluxo.
+      const crmPlans = await fetchCrmPlansInline(token, crmQuotationCode);
+      console.log(`fetchCrmPlansInline → ${crmPlans.length} planos`);
+
       // Always return 200 when we have a valid recomputed FIPE locally — the CRM update
       // may fail with transient errors (e.g. 412 "Placa já cadastrada") or simply not
       // persist the FIPE on its side. The frontend uses `recomputed` as the source of truth.
@@ -1277,6 +1282,7 @@ Deno.serve(async (req) => {
         verify,
         fipeCheck,
         recomputed: { fipeCode: recomputedFipeCode, fipeValue: recomputedFipeValue, fipeFormatted },
+        crmPlans,
       }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
