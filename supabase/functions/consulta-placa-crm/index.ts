@@ -1487,17 +1487,38 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4c. Se ainda não temos quotationId numérico, busca via getQuotation
+    // 4c. Se ainda não temos quotationId numérico, tenta múltiplas fontes:
+    //   - getQuotation (com retry e Accept JSON)
+    //   - getNegotiation (negotiation embute o quotationId em vários campos)
+    //   - lupaData (a resposta do pltVrfyQttn às vezes traz quotationId quando há card aberto)
     if (!quotationId) {
       const q = await getQuotation(token, quotationCode);
       if (q) {
-        const n = Number(q.id ?? q.quotationId ?? q.idQuotation);
-        if (Number.isFinite(n) && n > 0) {
-          quotationId = n;
+        const n = Number(q.id ?? q.quotationId ?? q.idQuotation) || deepFindQuotationId(q);
+        if (Number.isFinite(n as number) && (n as number) > 0) {
+          quotationId = n as number;
           console.log(`quotationId resolved via getQuotation: ${quotationId}`);
         }
       }
     }
+    if (!quotationId && negotiationCode) {
+      const neg = await getNegotiation(token, negotiationCode);
+      if (neg) {
+        const n = deepFindQuotationId(neg);
+        if (n) {
+          quotationId = n;
+          console.log(`quotationId resolved via getNegotiation: ${quotationId}`);
+        }
+      }
+    }
+    if (!quotationId && lupaData) {
+      const n = deepFindQuotationId(lupaData);
+      if (n) {
+        quotationId = n;
+        console.log(`quotationId resolved via lupaData: ${quotationId}`);
+      }
+    }
+    console.log(`Final quotationId after all fallbacks: ${quotationId ?? "still missing"}`);
 
 
 
