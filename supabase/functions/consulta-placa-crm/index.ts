@@ -33,6 +33,15 @@ const BodySchema = z.object({
     fipeValue: z.number().optional().default(0),
     color: z.string().trim().max(60).optional().default(""),
   }).optional(),
+  address: z.object({
+    cep: z.string().trim().max(20).optional().default(""),
+    street: z.string().trim().max(255).optional().default(""),
+    number: z.string().trim().max(30).optional().default(""),
+    neighborhood: z.string().trim().max(255).optional().default(""),
+    complement: z.string().trim().max(255).optional().default(""),
+    state: z.string().trim().max(10).optional().default(""),
+    city: z.string().trim().max(255).optional().default(""),
+  }).optional(),
 });
 
 const CRM_BASE = "https://api.powercrm.com.br/api";
