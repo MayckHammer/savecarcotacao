@@ -154,7 +154,9 @@ const Landing = () => {
           <motion.a
             whileHover={{ scale: 1.2, rotate: -5 }}
             whileTap={{ scale: 0.9 }}
-            href="#"
+            href="https://www.instagram.com/savecarbrasil?igsh=dWJjbnVhbGF1MzZz"
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-muted-foreground hover:text-primary transition-colors"
           >
             <Instagram className="h-5 w-5" />
