@@ -192,6 +192,11 @@ const Quote = () => {
         });
       }
 
+      // Capta planos reais do CRM já liberados após o save+FIPE.
+      if (Array.isArray(data?.crmPlans) && data.crmPlans.length) {
+        setCrmPlans(data.crmPlans);
+      }
+
       const check = data?.fipeCheck;
       if (check && check.match) {
         toast.success("Modelo confirmado e FIPE conferida com sucesso.");
