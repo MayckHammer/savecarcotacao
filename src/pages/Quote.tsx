@@ -231,6 +231,7 @@ const Quote = () => {
 
       if (data?.quotationCode) {
         setCrmQuotationCode(data.quotationCode);
+        if (data.quotationId) setCrmQuotationId(Number(data.quotationId));
         if (data.negotiationCode) setCrmNegotiationCode(data.negotiationCode);
       }
       // Persist resolved CRM vehicle type id for later updates
