@@ -164,11 +164,26 @@ const CRM_CITY_OVERRIDES: Record<string, number> = {
 const normalizeCityName = (s: string): string =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
 
+const UF_ALIASES: Record<string, string> = {
+  acre: "AC", alagoas: "AL", amapa: "AP", amazonas: "AM", bahia: "BA", ceara: "CE",
+  distritofederal: "DF", espiritosanto: "ES", goias: "GO", maranhao: "MA", minasgerais: "MG",
+  matogrossodosul: "MS", matogrosso: "MT", para: "PA", paraiba: "PB", parana: "PR",
+  pernambuco: "PE", piaui: "PI", riodejaneiro: "RJ", riograndedonorte: "RN",
+  riograndedosul: "RS", rondonia: "RO", roraima: "RR", santacatarina: "SC",
+  sergipe: "SE", saopaulo: "SP", tocantins: "TO",
+};
+
+function normalizeUf(raw: string): string {
+  const cleaned = String(raw || "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(cleaned)) return cleaned;
+  return UF_ALIASES[normalizeCityName(raw)] || cleaned;
+}
+
 // Fallback: lista oficial do IBGE por UF (pública, sem auth).
 // Usamos pra obter o nome canônico da cidade (acentos/caixa corretos) e tentar o
 // match contra os IDs do CRM via overrides ou heurísticas de slug.
 async function fetchIbgeCities(uf: string): Promise<Array<{ id: number; nome: string }>> {
-  const key = uf.toUpperCase().trim();
+  const key = normalizeUf(uf);
   if (!key) return [];
   if (ibgeCityCache.has(key)) return ibgeCityCache.get(key)!;
   const url = `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${key}/municipios`;
@@ -202,7 +217,7 @@ const CRM_STATE_IDS: Record<string, number> = {
 };
 
 async function fetchCrmCities(token: string, uf: string): Promise<CrmCityItem[]> {
-  const key = uf.toUpperCase().trim();
+  const key = normalizeUf(uf);
   if (!key) return [];
   if (cityCache.has(key)) return cityCache.get(key)!;
   const stateId = CRM_STATE_IDS[key];
@@ -245,7 +260,7 @@ async function fetchCrmCities(token: string, uf: string): Promise<CrmCityItem[]>
 
 async function resolveCrmCityId(token: string, uf: string, cityName: string): Promise<number | string | null> {
   if (!uf || !cityName) return null;
-  const ufKey = uf.toUpperCase().trim();
+  const ufKey = normalizeUf(uf);
   const norm = normalizeCityName(cityName);
 
   // 1) Tenta endpoint autenticado do CRM (caminho feliz)
@@ -379,6 +394,19 @@ function pickBestMatch(items: CrmItem[], target: string): CrmItem | null {
 const formatBrl = (value: number): string =>
   value > 0 ? `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "";
 
+function extractSignificantNumbers(s: string): string[] {
+  return (normalize(s).match(/\d+/g) || []).filter((n) => n.length >= 2);
+}
+
+function numberMismatchPenalty(target: string, candidate: string): number {
+  const tNums = extractSignificantNumbers(target);
+  const cNums = extractSignificantNumbers(candidate);
+  if (tNums.length === 0 || cNums.length === 0) return 0;
+  const cSet = new Set(cNums);
+  const hasOverlap = tNums.some((n) => cSet.has(n));
+  return hasOverlap ? 0 : -700;
+}
+
 const optionScore = (label: string, model: string, rawPlateName?: string): number => {
   const raw = rawPlateName || "";
   const brandlessRaw = normalize(raw).split(" ").filter((t) => t.length >= 3).join(" ");
@@ -395,6 +423,7 @@ const optionScore = (label: string, model: string, rawPlateName?: string): numbe
   if ((expandedTokens.has("airc") || expandedTokens.has("aircross")) && !labelNorm.includes("aircross") && !labelNorm.includes("airc")) {
     score -= 800;
   }
+  score += numberMismatchPenalty(model || brandlessRaw, label);
   return score;
 };
 
@@ -549,7 +578,7 @@ export async function resolveCrmIds(
     if ((expandedTokens.has("airc") || expandedTokens.has("aircross")) && !labelNorm.includes("aircross") && !labelNorm.includes("airc")) {
       bonus -= 800;
     }
-    const total = baseScore + bonus;
+    const total = baseScore + bonus + numberMismatchPenalty(model || rawPlateName || "", label);
     if (total > 0 && (!bestModel || total > bestModel.score)) bestModel = { item: m, score: total };
   }
   if (!bestModel) {
