@@ -818,28 +818,81 @@ async function enrichFromFipeByCode(
 }
 
 async function getQuotation(token: string, code: string): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await fetch(`${CRM_BASE}/quotation/${code}`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    const text = await res.text();
-    console.log(`getQuotation ${code} → ${res.status} ${text.substring(0, 250)}`);
-    if (!res.ok) return null;
-    try { return JSON.parse(text); } catch { return null; }
-  } catch (e) {
-    console.error("getQuotation error:", e);
-    return null;
+  // O CRM as vezes retorna 500 sem Accept explícito. Tenta com Accept JSON e
+  // até 2 retries curtos antes de desistir.
+  const url = `${CRM_BASE}/quotation/${code}`;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+      const text = await res.text();
+      console.log(`getQuotation ${code} attempt ${i + 1} → ${res.status} ${text.substring(0, 250)}`);
+      if (res.ok) {
+        try { return JSON.parse(text); } catch { return null; }
+      }
+      // 500 transitório: aguarda 800ms e tenta de novo
+      if (res.status >= 500 && i < 2) {
+        await new Promise((r) => setTimeout(r, 800));
+        continue;
+      }
+      return null;
+    } catch (e) {
+      console.error("getQuotation error:", e);
+      if (i < 2) { await new Promise((r) => setTimeout(r, 800)); continue; }
+      return null;
+    }
   }
+  return null;
 }
 
 async function getNegotiation(token: string, code: string): Promise<Record<string, unknown> | null> {
   try {
     const r = await fetch(`${CRM_BASE}/negotiation/${code}`, {
-      headers: { "Authorization": `Bearer ${token}` },
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
     });
+    const text = await r.text();
+    console.log(`getNegotiation ${code} → ${r.status} ${text.substring(0, 200)}`);
     if (!r.ok) return null;
-    return await r.json();
+    try { return JSON.parse(text); } catch { return null; }
   } catch { return null; }
+}
+
+// Deep-walk an object looking for a numeric quotationId field anywhere in the tree.
+function deepFindQuotationId(obj: unknown, depth = 0): number | null {
+  if (!obj || typeof obj !== "object" || depth > 6) return null;
+  const ID_KEYS = ["quotationId", "idQuotation", "id_quotation", "idQttn", "qttnId"];
+  const ID_KEYS_LOOSE = new Set(["id"]);
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (ID_KEYS.includes(k)) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    // "id" só é aceito se o objeto pai parecer ser uma cotação (tem quotationCode/code)
+    if (ID_KEYS_LOOSE.has(k) && depth === 0) {
+      const parent = obj as Record<string, unknown>;
+      if (parent.quotationCode || parent.code || parent.plts || parent.plates) {
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+    }
+  }
+  // Recurse
+  for (const v of Object.values(obj as Record<string, unknown>)) {
+    if (v && typeof v === "object") {
+      const found = deepFindQuotationId(v, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 // ===== CRM "lupa FIPE" + "Salvar" — replicates manual operator flow =====
