@@ -153,6 +153,43 @@ function resolveVehicleTypeId(types: CrmVehicleType[], userType: string): number
 // Cacheamos por UF.
 type CrmCityItem = { id: number | string; nm?: string; name?: string; ds?: string; description?: string; text?: string };
 const cityCache = new Map<string, CrmCityItem[]>();
+const ibgeCityCache = new Map<string, Array<{ id: number; nome: string }>>();
+
+// Overrides conhecidos (confirmados nos prints do DevTools).
+// Chave: `${UF}|${nomeNormalizado}` → cityId numérico do CRM.
+const CRM_CITY_OVERRIDES: Record<string, number> = {
+  "MG|uberlandia": 2389,
+};
+
+const normalizeCityName = (s: string): string =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
+
+// Fallback: lista oficial do IBGE por UF (pública, sem auth).
+// Usamos pra obter o nome canônico da cidade (acentos/caixa corretos) e tentar o
+// match contra os IDs do CRM via overrides ou heurísticas de slug.
+async function fetchIbgeCities(uf: string): Promise<Array<{ id: number; nome: string }>> {
+  const key = uf.toUpperCase().trim();
+  if (!key) return [];
+  if (ibgeCityCache.has(key)) return ibgeCityCache.get(key)!;
+  const url = `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${key}/municipios`;
+  try {
+    const r = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!r.ok) {
+      console.warn(`fetchIbgeCities ${key} → ${r.status}`);
+      return [];
+    }
+    const data = await r.json();
+    const arr = Array.isArray(data)
+      ? data.map((m: { id: number; nome: string }) => ({ id: m.id, nome: m.nome }))
+      : [];
+    ibgeCityCache.set(key, arr);
+    console.log(`fetchIbgeCities ${key} → ${arr.length} municípios`);
+    return arr;
+  } catch (e) {
+    console.error(`fetchIbgeCities error ${key}:`, e);
+    return [];
+  }
+}
 
 // Mapping UF -> stateId interno do PowerCRM. Confirmado: MG = 11 (print do DevTools
 // mostrou ct?st=11 retornando cidades de MG, e payload do Salvar usou city=2389 = Uberlândia).
