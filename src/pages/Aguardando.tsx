@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import Header from "@/components/Header";
+
 import WhatsAppButton from "@/components/WhatsAppButton";
 import CarMiniGame from "@/components/CarMiniGame";
 import { useQuote } from "@/contexts/QuoteContext";
@@ -24,8 +24,6 @@ const Aguardando = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
-      <Header dark />
-
       <motion.div
         variants={container}
         initial="hidden"
