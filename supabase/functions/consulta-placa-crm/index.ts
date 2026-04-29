@@ -988,6 +988,43 @@ Deno.serve(async (req) => {
       const updText = await upd.text();
       console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 200));
 
+      // PASSO "SALVAR" do card — replica o clique no botão Salvar do form#vehicleEditForm.
+      // POST https://app.powercrm.com.br/company/updateQuotationVehicleData (payload exato dos prints).
+      // Sem essa chamada o CRM não persiste corretamente city/carModel/carModelYear e
+      // o cálculo FIPE oficial (quotationFipeApi) retorna sem valor, fazendo plansQuotation
+      // devolver "Cotação incompleta". Tentamos resolver quotationId numérico se não veio.
+      let resolvedQuotationId: number | null = crmQuotationId ?? null;
+      if (!resolvedQuotationId) {
+        const q = await getQuotation(token, crmQuotationCode);
+        if (q) {
+          const n = Number(q.id ?? q.quotationId ?? q.idQuotation);
+          if (Number.isFinite(n) && n > 0) resolvedQuotationId = n;
+        }
+      }
+      if (resolvedQuotationId) {
+        const vehicleForSave: Vehicle = {
+          brand: selectedModel.brand || "",
+          model: selectedModel.name,
+          year: selectedModel.year,
+          color: "",
+          fipeCode: recomputedFipeCode,
+          fipeValue: recomputedFipeValue,
+          type: vehicleType,
+        };
+        await saveCrmVehicleData(
+          token,
+          crmQuotationCode,
+          resolvedQuotationId,
+          vehicleForSave,
+          { crmModelId: selectedModel.crmModelId, crmYearId: selectedModel.crmYearId ?? null },
+          plate || "",
+          null,
+          resolvedCityId,
+        );
+      } else {
+        console.warn("Não foi possível resolver quotationId numérico para chamar updateQuotationVehicleData");
+      }
+
       // Dispara o cálculo FIPE oficial pelo próprio CRM. Retorna o fipeRealCode
       // correto e o valor — usamos ESSES valores como verdade absoluta.
       const fipeApi = await triggerCrmFipeCalculation(token, crmQuotationCode);
