@@ -49,7 +49,7 @@ const Landing = () => {
         variants={container}
         initial="hidden"
         animate="show"
-        className="relative z-10 flex flex-col items-center px-6 pt-8 pb-4"
+        className="relative z-10 flex flex-col items-center px-6 pt-6"
       >
         <motion.img
           variants={item}
