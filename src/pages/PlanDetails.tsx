@@ -236,35 +236,49 @@ const PlanDetails = () => {
 
         {/* Plan Selector */}
         <motion.div variants={item} className="grid grid-cols-2 gap-3">
-          {(["COMPLETO", "PREMIUM"] as PlanName[]).map((plan) => (
-            <button
-              key={plan}
-              onClick={() => setPlanName(plan)}
-              className={`relative rounded-2xl border-2 p-5 text-center transition-all ${
-                quote.planName === plan
-                  ? "border-primary bg-primary/5 shadow-md scale-[1.02]"
-                  : "border-border bg-card hover:border-muted-foreground/30"
-              }`}
-            >
-              {plan === "PREMIUM" && (
-                <Star className="absolute top-2 right-2 h-4 w-4 text-primary fill-primary" />
-              )}
-              <div className="flex flex-col items-center gap-2">
-                <Shield
-                  className={`h-7 w-7 ${
-                    quote.planName === plan ? "text-primary" : "text-muted-foreground"
-                  }`}
-                />
-                <span
-                  className={`text-sm font-bold ${
-                    quote.planName === plan ? "text-primary" : "text-foreground"
-                  }`}
-                >
-                  {plan}
-                </span>
-              </div>
-            </button>
-          ))}
+          {(["COMPLETO", "PREMIUM"] as PlanName[]).map((plan) => {
+            const crmPlan = crmPlans.find((p) =>
+              p.name?.toUpperCase().includes(plan)
+            );
+            const monthly = crmPlan?.monthlyPrice ?? 0;
+            const monthlyFormatted = monthly > 0
+              ? `R$ ${monthly.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : "";
+            return (
+              <button
+                key={plan}
+                onClick={() => setPlanName(plan)}
+                className={`relative rounded-2xl border-2 p-5 text-center transition-all ${
+                  quote.planName === plan
+                    ? "border-primary bg-primary/5 shadow-md scale-[1.02]"
+                    : "border-border bg-card hover:border-muted-foreground/30"
+                }`}
+              >
+                {plan === "PREMIUM" && (
+                  <Star className="absolute top-2 right-2 h-4 w-4 text-primary fill-primary" />
+                )}
+                <div className="flex flex-col items-center gap-2">
+                  <Shield
+                    className={`h-7 w-7 ${
+                      quote.planName === plan ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  />
+                  <span
+                    className={`text-sm font-bold ${
+                      quote.planName === plan ? "text-primary" : "text-foreground"
+                    }`}
+                  >
+                    {plan}
+                  </span>
+                  {monthlyFormatted && (
+                    <span className="text-[11px] font-semibold text-muted-foreground leading-tight">
+                      {monthlyFormatted}<span className="opacity-60">/mês</span>
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </motion.div>
 
         {/* Visual coverage chips */}
