@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ArrowLeft, AlertCircle, Loader2, Car, Search, Bike, Truck } from "lucide-react";
+import { ArrowRight, ArrowLeft, AlertCircle, Loader2, Car, Search, Bike, Truck, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -159,6 +159,10 @@ const Quote = () => {
     setPlateConsulted(true);
 
     if (!quote.crmQuotationCode) return;
+    if (!quote.address.city || !quote.address.state) {
+      toast.success("Modelo confirmado. O CRM calculará os planos após o endereço.");
+      return;
+    }
     setConfirmingModel(true);
     try {
       const { data, error } = await supabase.functions.invoke("consulta-placa-crm", {
@@ -221,6 +225,11 @@ const Quote = () => {
       setErrors({ type: "Selecione o tipo de veículo antes de consultar" });
       return;
     }
+    if (!validateStep1()) {
+      toast.warning("Complete seus dados pessoais antes de consultar a placa.");
+      setStep(1);
+      return;
+    }
     setPlateLoading(true);
     setFipeError("");
     try {
@@ -247,7 +256,8 @@ const Quote = () => {
       if (data?.vehicle) {
         const v = data.vehicle;
         const crmOptions = Array.isArray(v.modelOptions) ? (v.modelOptions as CrmModelOption[]) : [];
-        const suggestedOption = crmOptions[0];
+        const hasMultipleOptions = crmOptions.length > 1;
+        const suggestedOption = hasMultipleOptions ? undefined : crmOptions[0];
         const fipeValueFromCrm = Number(v.fipeValue) || 0;
         const fipeFormattedFromCrm = fipeValueFromCrm > 0
           ? `R$ ${fipeValueFromCrm.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -255,7 +265,7 @@ const Quote = () => {
 
         updateVehicle({
           brand: v.brand || "",
-          model: suggestedOption?.name || v.model || "",
+          model: hasMultipleOptions ? "" : suggestedOption?.name || v.model || "",
           year: v.year || "",
           color: v.color || "",
           fipeCode: v.fipeCode || "",
@@ -263,14 +273,16 @@ const Quote = () => {
           ...(crmOptions.length === 1 ? { modelCode: crmOptions[0].code } : { modelCode: "" }),
           ...(fipeValueFromCrm > 0 ? { fipeValue: fipeValueFromCrm, fipeFormatted: fipeFormattedFromCrm } : {}),
           ...(v.crmBrandId ? { crmBrandId: Number(v.crmBrandId) } : {}),
-          ...(suggestedOption?.crmModelId ? { crmModelId: Number(suggestedOption.crmModelId) } : v.crmModelId ? { crmModelId: Number(v.crmModelId) } : {}),
-          ...(suggestedOption?.crmYearId ? { crmYearId: Number(suggestedOption.crmYearId) } : v.crmYearId ? { crmYearId: Number(v.crmYearId) } : {}),
+          ...(hasMultipleOptions ? { crmModelId: null, crmYearId: null } : suggestedOption?.crmModelId ? { crmModelId: Number(suggestedOption.crmModelId) } : v.crmModelId ? { crmModelId: Number(v.crmModelId) } : {}),
+          ...(hasMultipleOptions ? {} : suggestedOption?.crmYearId ? { crmYearId: Number(suggestedOption.crmYearId) } : v.crmYearId ? { crmYearId: Number(v.crmYearId) } : {}),
         });
         // Consider identified if we have brand + model + (fipe value OR year)
-        const isFullyIdentified = !!v.brand && !!(suggestedOption?.name || v.model) && (fipeValueFromCrm > 0 || !!v.year);
+        const isFullyIdentified = !!v.brand && !!(suggestedOption?.name || v.model || crmOptions.length > 0) && (fipeValueFromCrm > 0 || !!v.year || crmOptions.length > 0);
         if (isFullyIdentified) {
           setPlateConsulted(true);
-          if (fipeValueFromCrm > 0) {
+          if (hasMultipleOptions) {
+            toast.info("Veículo encontrado! Confirme o modelo exato abaixo para calcular os planos.");
+          } else if (fipeValueFromCrm > 0) {
             toast.success(`Veículo identificado! FIPE: ${fipeFormattedFromCrm}`);
           } else {
             toast.success("Veículo identificado com sucesso!");
@@ -315,11 +327,12 @@ const Quote = () => {
       if (!quote.vehicle.modelCode) e.model = "Selecione o modelo";
       if (!quote.vehicle.yearCode) e.year = "Selecione o ano";
     } else {
+      const hasMultipleOptions = (quote.vehicle.modelOptions?.length || 0) > 1;
       if (!quote.vehicle.brand) e.brand = "Marca não identificada";
-      if (!quote.vehicle.model) e.model = "Modelo não identificado";
+      if (!hasMultipleOptions && !quote.vehicle.model) e.model = "Modelo não identificado";
       // Só exige escolha quando há mais de 1 opção do CRM (fluxo placa).
       // No fluxo manual o backend devolve modelOptions vazio, então essa validação não dispara.
-      if ((quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode) e.model = "Confirme o modelo";
+      if (hasMultipleOptions && !quote.vehicle.modelCode) e.model = "Confirme o modelo exato do veículo";
     }
     if (!quote.vehicle.type) e.type = "Selecione o tipo";
     if (!quote.vehicle.usage) e.usage = "Selecione o uso";
