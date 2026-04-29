@@ -16,6 +16,7 @@ const BodySchema = z.object({
   plate: z.string().trim().max(10).optional().default(""),
   vehicleType: z.enum(["carro", "moto", "caminhao"]).optional().default("carro"),
   crmQuotationCode: z.string().trim().max(100).optional().or(z.literal("")),
+  crmQuotationId: z.number().int().positive().optional().nullable(),
   selectedModel: z.object({
     name: z.string().trim().max(255),
     brand: z.string().trim().max(255).optional().default(""),
