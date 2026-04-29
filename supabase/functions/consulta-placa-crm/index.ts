@@ -1219,9 +1219,16 @@ Deno.serve(async (req) => {
       const updateBody: Record<string, unknown> = {
         code: crmQuotationCode,
         mdl: Number(selectedModel.crmModelId),
+        // Aliases oficiais (Swagger QuotationUpdateRequest aceita carModel/carModelYear).
+        carModel: Number(selectedModel.crmModelId),
       };
       if (plate) updateBody.plates = plate;
-      if (selectedModel.crmYearId) updateBody.mdlYr = Number(selectedModel.crmYearId);
+      if (selectedModel.crmYearId) {
+        updateBody.mdlYr = Number(selectedModel.crmYearId);
+        updateBody.carModelYear = Number(selectedModel.crmYearId);
+      }
+      if (recomputedFipeValue > 0) updateBody.protectedValue = recomputedFipeValue;
+      updateBody.workVehicle = vehicleType === "caminhao";
 
       // Resolve cidade do CRM a partir do endereço do cliente (estado/cidade).
       // Sem cityId o CRM responde "Cotação incompleta no CRM (faltando: cidade)"
