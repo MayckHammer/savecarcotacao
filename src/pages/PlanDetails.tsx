@@ -282,12 +282,6 @@ const PlanDetails = () => {
               );
             })}
           </div>
-          {loadingPlans && (
-            <div className="flex items-center justify-center gap-2 mt-3 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Carregando seu plano personalizado...
-            </div>
-          )}
         </motion.div>
 
         {/* Pretensão de pagamento */}
