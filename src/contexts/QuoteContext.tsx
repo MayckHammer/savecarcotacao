@@ -210,6 +210,9 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
   const setCrmQuotationCode = (crmQuotationCode: string) =>
     setQuote((prev) => ({ ...prev, crmQuotationCode }));
 
+  const setCrmQuotationId = (crmQuotationId: number | null) =>
+    setQuote((prev) => ({ ...prev, crmQuotationId }));
+
   const setCrmNegotiationCode = (crmNegotiationCode: string) =>
     setQuote((prev) => ({ ...prev, crmNegotiationCode }));
 
