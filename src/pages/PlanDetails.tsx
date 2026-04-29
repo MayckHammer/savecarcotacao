@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -62,20 +62,17 @@ const CHIPS_PREMIUM: CoverageChip[] = [
 
 const PlanDetails = () => {
   const navigate = useNavigate();
-  const { quote, crmPlans, setPlanName, setCrmPlans, getTotal } = useQuote();
+  const { quote, setPlanName } = useQuote();
   const [showUserInfo, setShowUserInfo] = useState(false);
-  const [loadingPlans, setLoadingPlans] = useState(true);
   const [continuing, setContinuing] = useState(false);
-  const [planWarning, setPlanWarning] = useState<string | null>(null);
 
   const chips = quote.planName === "PREMIUM" ? CHIPS_PREMIUM : CHIPS_COMPLETO;
 
   const handleContinue = async () => {
     setContinuing(true);
     try {
-      const selectedPlan = crmPlans.find((p) =>
-        p.name?.toUpperCase().includes(quote.planName)
-      );
+      // Sincroniza dados/observações no card do CRM. Sem plano/valor —
+      // o operador preenche manualmente.
       await supabase.functions.invoke("submit-to-crm", {
         body: {
           personal: quote.personal,
@@ -83,13 +80,8 @@ const PlanDetails = () => {
           address: quote.address,
           plan: {
             planName: quote.planName,
-            crmPlanName: selectedPlan?.name || quote.planName,
-            crmMonthlyPrice: selectedPlan?.monthlyPrice || 0,
-            crmAnnualPrice: selectedPlan?.annualPrice || 0,
             paymentMethod: quote.paymentMethod,
             billingPeriod: quote.billingPeriod,
-            total: getTotal(),
-            coverages: selectedPlan?.coverages || [],
           },
           skipCrm: true,
           crmQuotationCode: quote.crmQuotationCode,
@@ -103,80 +95,6 @@ const PlanDetails = () => {
       navigate("/aguardando");
     }
   };
-
-  // Fetch CRM plans on mount (silently — keeps prices in context for downstream use).
-  // Pulamos se o Quote.tsx já trouxe os planos via consulta-placa-crm (caminho rápido).
-  useEffect(() => {
-    if (crmPlans.length > 0) {
-      setLoadingPlans(false);
-      return;
-    }
-    let cancelled = false;
-    const fetchCrmPlans = async () => {
-      if (!quote.sessionId) {
-        setLoadingPlans(false);
-        return;
-      }
-      try {
-        await new Promise((r) => setTimeout(r, 1200));
-        if (cancelled) return;
-
-        const { data } = await supabase
-          .from("quotes")
-          .select("crm_quotation_code")
-          .eq("session_id", quote.sessionId)
-          .single();
-
-        if (!data?.crm_quotation_code) {
-          setLoadingPlans(false);
-          return;
-        }
-
-        // Tenta até 2x: o CRM às vezes precisa de uns segundos extra para persistir
-        // o cityId que acabamos de empurrar via consulta-placa-crm.
-        const tryFetch = async () => {
-          const { data: plansData, error } = await supabase.functions.invoke(
-            "get-crm-plans",
-            { body: { quotationCode: data.crm_quotation_code, vehicle: quote.vehicle, address: quote.address } },
-          );
-          return { plansData, error };
-        };
-
-        let { plansData, error } = await tryFetch();
-        if (
-          !cancelled &&
-          (!plansData?.plans || plansData.plans.length === 0) &&
-          (plansData?.warning || plansData?.error)
-        ) {
-          // Retry silencioso após 4s — dá tempo do CRM propagar a auto-cura de cidade
-          await new Promise((r) => setTimeout(r, 4000));
-          if (!cancelled) {
-            const retry = await tryFetch();
-            plansData = retry.plansData;
-            error = retry.error;
-          }
-        }
-
-        if (cancelled) return;
-        if (!error && plansData?.plans?.length > 0) {
-          setCrmPlans(plansData.plans);
-          setPlanWarning(null);
-        } else if (plansData?.warning || plansData?.error) {
-          setPlanWarning(plansData.warning || plansData.error);
-        } else {
-          setPlanWarning("Planos reais ainda não retornaram do CRM.");
-        }
-      } catch (err) {
-        console.error("Error fetching CRM plans:", err);
-      } finally {
-        if (!cancelled) setLoadingPlans(false);
-      }
-    };
-    fetchCrmPlans();
-    return () => {
-      cancelled = true;
-    };
-  }, [quote.sessionId, quote.vehicle, quote.address, setCrmPlans]);
 
   const container = {
     hidden: { opacity: 0 },
@@ -265,62 +183,39 @@ const PlanDetails = () => {
 
         {/* Plan Selector */}
         <motion.div variants={item} className="grid grid-cols-2 gap-3">
-          {(["COMPLETO", "PREMIUM"] as PlanName[]).map((plan) => {
-            const crmPlan = crmPlans.find((p) =>
-              p.name?.toUpperCase().includes(plan)
-            );
-            const monthly = crmPlan?.monthlyPrice ?? 0;
-            const monthlyFormatted = monthly > 0
-              ? `R$ ${monthly.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              : "";
-            return (
-              <button
-                key={plan}
-                onClick={() => setPlanName(plan)}
-                className={`relative rounded-2xl border-2 p-5 text-center transition-all ${
-                  quote.planName === plan
-                    ? "border-primary bg-primary/5 shadow-md scale-[1.02]"
-                    : "border-border bg-card hover:border-muted-foreground/30"
-                }`}
-              >
-                {plan === "PREMIUM" && (
-                  <Star className="absolute top-2 right-2 h-4 w-4 text-primary fill-primary" />
-                )}
-                <div className="flex flex-col items-center gap-2">
-                  <Shield
-                    className={`h-7 w-7 ${
-                      quote.planName === plan ? "text-primary" : "text-muted-foreground"
-                    }`}
-                  />
-                  <span
-                    className={`text-sm font-bold ${
-                      quote.planName === plan ? "text-primary" : "text-foreground"
-                    }`}
-                  >
-                    {plan}
-                  </span>
-                  <span className="text-[11px] font-semibold text-muted-foreground leading-tight">
-                    {monthlyFormatted ? (
-                      <>
-                        {monthlyFormatted}<span className="opacity-60">/mês</span>
-                      </>
-                    ) : loadingPlans ? (
-                      "Calculando..."
-                    ) : (
-                      "Aguardando CRM"
-                    )}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
+          {(["COMPLETO", "PREMIUM"] as PlanName[]).map((plan) => (
+            <button
+              key={plan}
+              onClick={() => setPlanName(plan)}
+              className={`relative rounded-2xl border-2 p-5 text-center transition-all ${
+                quote.planName === plan
+                  ? "border-primary bg-primary/5 shadow-md scale-[1.02]"
+                  : "border-border bg-card hover:border-muted-foreground/30"
+              }`}
+            >
+              {plan === "PREMIUM" && (
+                <Star className="absolute top-2 right-2 h-4 w-4 text-primary fill-primary" />
+              )}
+              <div className="flex flex-col items-center gap-2">
+                <Shield
+                  className={`h-7 w-7 ${
+                    quote.planName === plan ? "text-primary" : "text-muted-foreground"
+                  }`}
+                />
+                <span
+                  className={`text-sm font-bold ${
+                    quote.planName === plan ? "text-primary" : "text-foreground"
+                  }`}
+                >
+                  {plan}
+                </span>
+                <span className="text-[11px] font-semibold text-muted-foreground leading-tight">
+                  Valor confirmado pelo consultor
+                </span>
+              </div>
+            </button>
+          ))}
         </motion.div>
-
-        {!loadingPlans && planWarning && crmPlans.length === 0 && (
-          <motion.div variants={item} className="rounded-xl border border-accent/40 bg-accent/10 p-3">
-            <p className="text-xs font-medium text-foreground">{planWarning}</p>
-          </motion.div>
-        )}
 
         {/* Visual coverage chips */}
         <motion.div variants={item}>
@@ -353,7 +248,7 @@ const PlanDetails = () => {
         <motion.div variants={item} className="pt-2">
           <Button
             onClick={handleContinue}
-            disabled={continuing || loadingPlans || crmPlans.length === 0}
+            disabled={continuing}
             className="w-full h-13 rounded-xl font-bold text-base"
           >
             {continuing ? (

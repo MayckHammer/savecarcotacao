@@ -144,10 +144,10 @@ Deno.serve(async (req) => {
     // evita gravar no card "PLANO CRM: COMPLETO / VALOR CRM: A definir" como se
     // fosse confirmado.
     const hasRealCrmPlan = crmMonthlyPrice > 0 && !!rawCrmPlanName;
-    const crmPlanLabel = hasRealCrmPlan ? rawCrmPlanName : "Aguardando retorno do CRM";
+    const crmPlanLabel = hasRealCrmPlan ? rawCrmPlanName : "Aguardar definição do consultor";
     const crmPriceLabel = hasRealCrmPlan
       ? `R$ ${crmMonthlyPrice.toFixed(2).replace(".", ",")}/mês`
-      : "A definir";
+      : "Aguardar definição do consultor";
     const paymentMethodLabel = planObj?.paymentMethod === "credit"
       ? "Cartão de Crédito (Adesão + 11x)"
       : "PIX / Boleto (Carnê 11x)";

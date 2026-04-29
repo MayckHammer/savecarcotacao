@@ -1,62 +1,47 @@
-Diagnóstico
+## Objetivo
 
-Sim, a ideia faz sentido: o caminho correto é a API reproduzir o que o operador faz no CRM: clicar na lupa da placa, preencher/confirmar modelo/cidade e clicar em Salvar no card. O problema é que hoje o app tenta fazer isso, mas fica preso em dois pontos:
+Voltar ao fluxo simples e estável: o app envia os dados do cliente ao CRM (via campo de observações internas) e o **operador preenche manualmente** os planos e valores. Sem tentar buscar planos automaticamente, sem auto-cura de cidade, sem simular cliques na lupa/salvar.
 
-1. A cidade está preenchida no card do CRM, mas o endpoint de planos continua dizendo “faltando: cidade” porque a nossa leitura de validação depende de `GET /api/quotation/{code}`, que está retornando 500 para essas cotações. Ou seja: o diagnóstico atual está olhando para um endpoint quebrado/instável e conclui “sem cidade”, mesmo com cidade visível no CRM.
-2. O endpoint interno que replica o botão Salvar (`/company/updateQuotationVehicleData`) exige `quotationId` numérico. A criação da cotação está retornando somente `quotationCode` alfanumérico e `negotiationCode`; quando não conseguimos descobrir o ID numérico, esse “Salvar real” não roda. O fallback `/api/quotation/update` salva parte dos campos visíveis, mas não necessariamente dispara/persiste tudo que o cálculo de planos precisa.
-3. No `get-crm-plans`, existe uma falha lógica: ele resolve cidade pelo endereço, mas adiciona “cidade” na lista de faltantes antes da auto-cura. Como `cityId` local já existe, a mensagem “faltando: cidade” está errada para esse caso. O problema real depois disso é: planos não vieram porque o CRM ainda não conseguiu calcular FIPE/plano, não porque o usuário deixou cidade vazia.
-4. As observações que aparecem no card estão vindo do `submit-to-crm` no momento de continuar para aguardando. “VALOR CRM: A definir” aparece porque o Power CRM não retornou plano/preço real; o app não deveria gravar “PLANO CRM: COMPLETO” como se fosse confirmado quando não há `crmPlans` reais.
+O cliente segue direto da tela de detalhes → aguardando (mini game) → pagamento, sem depender de retorno do CRM.
 
-Plano de correção
+## Mudanças
 
-1. Corrigir `get-crm-plans` para não acusar cidade faltando quando o endereço local resolve um `cityId`
-   - Resolver cidade antes de montar a lista `missing`.
-   - Usar o `cityId` local como válido para o fallback `/api/plans/`.
-   - Se a cotação no CRM não puder ser lida por `GET /quotation/{code}`, não retornar “faltando cidade” automaticamente.
-   - Trocar o aviso por algo mais correto, por exemplo: “CRM ainda não retornou planos para esta cotação” quando cidade/modelo/ano existem no contexto local.
+### 1. `src/pages/PlanDetails.tsx`
+- Remover todo o `useEffect` que invoca `get-crm-plans` e seus retries.
+- Remover estados `loadingPlans`, `planWarning` e a renderização do alerta amarelo "CRM ainda calculando os planos…".
+- Cards COMPLETO/PREMIUM passam a mostrar apenas o nome do plano + selo "Valor confirmado pelo consultor" (sem "Aguardando CRM" nem "Calculando…"). Sem preço dinâmico.
+- Botão **Continuar** deixa de depender de `crmPlans.length > 0` — fica habilitado assim que o usuário escolhe forma de pagamento.
+- `handleContinue` continua chamando `submit-to-crm` com `skipCrm: true` para sincronizar dados/observações no card do CRM, mas sem `crmPlanName/crmMonthlyPrice` (deixa em branco — o operador preenche).
 
-2. Reforçar a criação/atualização da cotação já com os campos que o CRM precisa
-   - Ao criar a cotação em `consulta-placa-crm`, se já houver endereço/modelo em chamadas posteriores, enviar também os campos oficiais do Swagger: `city`, `mdl`, `mdlYr`, `carModel`, `carModelYear`, `addressZipcode`, `addressAddress`, `addressNumber`, `addressNeighborhood`, `protectedValue`, `workVehicle`.
-   - No fluxo de modelo confirmado/endereço preenchido, atualizar com os aliases oficiais (`mdl`/`mdlYr` e `carModel`/`carModelYear`) para aumentar a chance do Power CRM aceitar os dados para planos.
-   - Manter o “reforço de cidade”, mas sem depender da leitura quebrada do card.
+### 2. `src/pages/Quote.tsx`
+- Em `handleNext` (step 3), remover o bloco que reinvoca `consulta-placa-crm` com `selectedModel + address` para "liberar planos". Manter apenas o `submit-to-crm` (cria/atualiza o card no CRM com observações).
+- Em `handleCrmModelConfirm`, remover o uso de `data.crmPlans` (não vamos mais consumir planos). Manter o resto (atualização de FIPE recomputado e toast de sucesso).
+- Remover `setCrmPlans` dos imports/uso onde só servia para popular planos automáticos.
 
-3. Criar fallback real de planos por contexto local
-   - Quando `plansQuotation` retornar 404/“Nenhum plano” e `GET /quotation/{code}` retornar 500, chamar `/api/plans/` usando os dados que o frontend já enviou:
-     - `vehicle.crmModelId`
-     - `vehicle.crmYearId`
-     - `cityId` resolvido de `address.state/address.city`
-     - `vehicle.fipeValue`
-     - `workVehicle`
-   - Isso evita bloquear o usuário quando o card visual do CRM está preenchido, mas o endpoint de cotação está quebrado.
+### 3. `supabase/functions/submit-to-crm/index.ts`
+- Ajustar montagem das observações (`internalNote` e `observation`): quando não houver plano CRM confirmado, gravar:
+  - `► PLANO CRM: Aguardar definição do consultor`
+  - `► VALOR CRM: Aguardar definição do consultor`
+- Remover qualquer lógica que tente forçar um valor placeholder.
 
-4. Ajustar a simulação da “lupa” e do “Salvar”
-   - Manter a chamada da lupa (`pltVrfyQttn`) como enriquecimento, mas tratar retorno HTML como “não útil” e não como sucesso.
-   - Quando não houver `quotationId` numérico, não ficar tentando indefinidamente `updateQuotationVehicleData`; usar o caminho oficial `/api/quotation/update` + `/api/quotation/quotationFipeApi` + `/api/plans/` por contexto local.
-   - Se conseguirmos o `quotationId`, continuar chamando `updateQuotationVehicleData` como caminho preferencial.
+### 4. `supabase/functions/get-crm-plans/index.ts`
+- **Não chamar mais do frontend.** A função pode permanecer no projeto desativada (não removida) para evitar quebrar logs/históricos, mas nenhum componente fará invoke nela. Não precisa editar o arquivo.
 
-5. Corrigir as observações do card para não afirmar preço/plano CRM inexistente
-   - Em `PlanDetails`, se `crmPlans` estiver vazio, o botão Continuar ainda pode seguir, mas o envio para o CRM deve registrar:
-     - “PLANO SELECIONADO: COMPLETO/PREMIUM”
-     - “PLANO CRM: Aguardando retorno do CRM” ou “Não retornado”
-     - “VALOR CRM: A definir”
-   - Só escrever “PLANO CRM: COMPLETO” e preço real quando `get-crm-plans` retornar um plano real com valor.
+### 5. `supabase/functions/consulta-placa-crm/index.ts`
+- **Manter como está.** A consulta de placa + criação da cotação no CRM continua funcionando normalmente (esse é o fluxo manual que o operador espera). Não precisa editar.
 
-6. Melhorar a tela para refletir a causa real
-   - Trocar o alerta “Cotação incompleta no CRM (faltando: cidade)” quando cidade está no contexto por uma mensagem menos enganosa: “Cidade preenchida; aguardando cálculo/planos do CRM”.
-   - Se houver modelo, ano, FIPE e cidade no contexto local, mostrar isso como diagnóstico interno amigável em vez de apontar campo faltante.
+## Resultado para o usuário
 
-Arquivos a alterar
+1. Cliente preenche dados → consulta placa → endereço.
+2. Card é criado no CRM com todas as informações nas observações internas.
+3. Cliente vê tela de planos (COMPLETO/PREMIUM) sem preço, escolhe um e a forma de pagamento.
+4. Clica Continuar → vai para `/aguardando` (mini game) → `/pagamento`.
+5. Operador abre o card no CRM, lê as observações, preenche o plano e o valor manualmente, e dá seguimento.
 
-- `supabase/functions/get-crm-plans/index.ts`
-- `supabase/functions/consulta-placa-crm/index.ts`
-- `supabase/functions/submit-to-crm/index.ts`
+Sem mais erros de "missing city", sem espera de planos, sem 500 do `getQuotation`.
+
+## Arquivos editados
+
 - `src/pages/PlanDetails.tsx`
-- possivelmente `src/pages/Quote.tsx` apenas para garantir que `address`, `crmModelId`, `crmYearId`, `fipeValue` e `crmNegotiationCode` sempre sejam enviados nas chamadas de confirmação.
-
-Resultado esperado
-
-- A cidade preenchida no CRM não será mais reportada falsamente como ausente.
-- O app tentará o fluxo equivalente à lupa + salvar quando o CRM permitir.
-- Quando o CRM não devolver o ID numérico do card, o app terá um fallback oficial por contexto local para buscar planos.
-- As observações do CRM não vão mais indicar “PLANO CRM: COMPLETO” como confirmado sem preço real.
-- O usuário não ficará preso por um erro de diagnóstico incorreto enquanto o card visual já está com cidade/modelo preenchidos.
+- `src/pages/Quote.tsx`
+- `supabase/functions/submit-to-crm/index.ts`
