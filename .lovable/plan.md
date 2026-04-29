@@ -1,50 +1,18 @@
-## Objetivo
-Reduzir os espaços verticais da Landing (`/`) para que todo o conteúdo (logo, badge, título, descrição, CTA, links de dúvida/WhatsApp, redes sociais e copyright) caiba na tela mobile (390x844) sem necessidade de scroll.
+## Problema
+No mobile, há um espaço vazio grande entre o botão "Fazer Cotação" e o bloco "Dúvidas / WhatsApp / redes sociais". Isso acontece porque o hero usa `flex-1` + `justify-center`, esticando o container e empurrando o CTA para cima do centro vertical, enquanto o resto fica ancorado ao fim da página.
 
-## Diagnóstico
-No `src/pages/Landing.tsx` os principais consumidores de altura hoje são:
-- Logo com `h-56` (224px) — muito alto pra mobile.
-- Hero com `py-12` (96px de padding vertical).
-- Título `mb-3`, descrição `mb-10` (40px), CTA dentro de `max-w-xs`.
-- Seção de links com `pb-8` + `space-y-3` e cards com `p-4`.
-- Footer com `pb-6` + `mb-4` nos ícones (que agora são `h-12 w-12`).
+## Solução
+Em `src/pages/Landing.tsx`, alterar apenas o container do hero (linha 52) para que ele não estique mais — todo o conteúdo flui de cima pra baixo de forma harmonizada e contínua.
 
-## Alterações em `src/pages/Landing.tsx`
+### Mudança
+- Linha 52: `className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 py-6"`
+  → `className="relative z-10 flex flex-col items-center px-6 pt-8 pb-4"`
 
-1. **Hero (container)**
-   - `py-12` → `py-6` (e `justify-center` mantido).
+Removemos `flex-1` e `justify-center` (que causavam o vão) e usamos paddings explícitos (`pt-8 pb-4`) para dar respiro consistente entre logo, CTA e a seção de links logo abaixo.
 
-2. **Logo**
-   - `h-56 mb-6` → `h-40 mb-3` (reduz ~96px de altura).
+Nenhum outro elemento precisa mudar — espaçamentos internos do hero (mb-3, mb-2, mb-5) e da seção de links (`space-y-2 pb-4`) já estão calibrados.
 
-3. **Badge "Proteção 100% confiável"**
-   - `mb-4` → `mb-3`.
-
-4. **Título**
-   - `mb-3` → `mb-2`.
-
-5. **Descrição**
-   - `mb-10` → `mb-5` (economiza ~20px).
-
-6. **Botão CTA**
-   - `h-14` → `h-12` (mantém presença mas economiza 8px).
-
-7. **Seção de links (Dúvidas / WhatsApp)**
-   - `pb-8 space-y-3` → `pb-4 space-y-2`.
-   - Cards: `p-4` → `p-3` e `text-sm` mantido.
-
-8. **Footer social**
-   - `pb-6` → `pb-4`.
-   - `gap-6 mb-4` → `gap-5 mb-3`.
-   - Ícones permanecem `h-12 w-12` (cores nativas + pulse preservados).
-
-9. **Copyright**
-   - Mantém `text-xs`.
-
-## Resultado esperado
-No viewport 390x844, todo o conteúdo da Landing deve caber sem scroll, mantendo:
-- Hierarquia visual (logo destacado, CTA principal evidente).
-- Cores nativas e efeito pulsar dos ícones Instagram/LinkedIn.
-- Animações Framer Motion existentes.
-
-Nenhum outro arquivo precisa ser alterado.
+## Resultado
+- Botão CTA fica naturalmente próximo dos cards "Dúvidas" e "WhatsApp".
+- Ícones sociais permanecem no rodapé com seu pulse.
+- Layout fluido sem o "buraco" visual atual, sem perder espaços confortáveis.
