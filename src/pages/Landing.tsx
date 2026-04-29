@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, HelpCircle, MessageCircle, Instagram, Facebook, ShieldCheck } from "lucide-react";
+import { ArrowRight, HelpCircle, MessageCircle, Instagram, Linkedin, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo-savecar.png";
@@ -164,10 +164,12 @@ const Landing = () => {
           <motion.a
             whileHover={{ scale: 1.2, rotate: 5 }}
             whileTap={{ scale: 0.9 }}
-            href="#"
+            href="https://www.linkedin.com/company/save-car-brasil/"
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-muted-foreground hover:text-primary transition-colors"
           >
-            <Facebook className="h-5 w-5" />
+            <Linkedin className="h-5 w-5" />
           </motion.a>
         </div>
         <p className="text-xs text-muted-foreground">
