@@ -24,8 +24,6 @@ const Aguardando = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-background pb-20">
-      <Header dark />
-
       <motion.div
         variants={container}
         initial="hidden"
