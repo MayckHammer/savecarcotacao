@@ -395,6 +395,7 @@ const Quote = () => {
                 plate: quote.vehicle.plate || "",
                 vehicleType: quote.vehicle.type,
                 crmQuotationCode: quote.crmQuotationCode,
+                crmQuotationId: quote.crmQuotationId,
                 selectedModel: {
                   name: quote.vehicle.model,
                   brand: quote.vehicle.brand,
