@@ -1396,6 +1396,7 @@ Deno.serve(async (req) => {
     const vehicleAny = vehicle as (Vehicle & { crmFipeConfirmed?: boolean; crmFipeValueFinal?: number; crmFipeCodeFinal?: string }) | null;
     return new Response(JSON.stringify({
       quotationCode,
+      quotationId, // numérico — necessário p/ a 2a chamada (updateQuotationVehicleData)
       negotiationCode,
       vehicle: vehicle ? { ...vehicle, modelOptions } : null,
       vehicleType,
