@@ -150,26 +150,46 @@ const Landing = () => {
         transition={{ delay: 0.6, duration: 0.6 }}
         className="relative z-10 px-6 pb-6 text-center"
       >
-        <div className="flex items-center justify-center gap-4 mb-4">
+        <div className="flex items-center justify-center gap-6 mb-4">
+          {/* Instagram com gradiente nativo + pulse */}
           <motion.a
-            whileHover={{ scale: 1.2, rotate: -5 }}
+            whileHover={{ scale: 1.15, rotate: -5 }}
             whileTap={{ scale: 0.9 }}
             href="https://www.instagram.com/savecarbrasil?igsh=dWJjbnVhbGF1MzZz"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-primary transition-colors"
+            aria-label="Instagram Save Car Brasil"
+            className="relative inline-flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg shadow-pink-500/30 hover:shadow-xl hover:shadow-pink-500/50 transition-shadow"
+            style={{
+              background:
+                "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)",
+            }}
           >
-            <Instagram className="h-5 w-5" />
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 rounded-2xl animate-ping opacity-40"
+              style={{
+                background: "linear-gradient(45deg, #f09433, #dc2743, #bc1888)",
+              }}
+            />
+            <Instagram className="relative h-6 w-6" strokeWidth={2.2} />
           </motion.a>
+
+          {/* LinkedIn com azul nativo + pulse */}
           <motion.a
-            whileHover={{ scale: 1.2, rotate: 5 }}
+            whileHover={{ scale: 1.15, rotate: 5 }}
             whileTap={{ scale: 0.9 }}
             href="https://www.linkedin.com/company/save-car-brasil/"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-primary transition-colors"
+            aria-label="LinkedIn Save Car Brasil"
+            className="relative inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0A66C2] text-white shadow-lg shadow-[#0A66C2]/30 hover:shadow-xl hover:shadow-[#0A66C2]/50 transition-shadow"
           >
-            <Linkedin className="h-5 w-5" />
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 rounded-2xl bg-[#0A66C2] animate-ping opacity-40"
+            />
+            <Linkedin className="relative h-6 w-6" strokeWidth={2.2} />
           </motion.a>
         </div>
         <p className="text-xs text-muted-foreground">
