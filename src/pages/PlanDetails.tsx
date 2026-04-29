@@ -100,8 +100,13 @@ const PlanDetails = () => {
     }
   };
 
-  // Fetch CRM plans on mount (silently — keeps prices in context for downstream use)
+  // Fetch CRM plans on mount (silently — keeps prices in context for downstream use).
+  // Pulamos se o Quote.tsx já trouxe os planos via consulta-placa-crm (caminho rápido).
   useEffect(() => {
+    if (crmPlans.length > 0) {
+      setLoadingPlans(false);
+      return;
+    }
     let cancelled = false;
     const fetchCrmPlans = async () => {
       if (!quote.sessionId) {
