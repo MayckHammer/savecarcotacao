@@ -132,10 +132,30 @@ const PlanDetails = () => {
           return;
         }
 
-        const { data: plansData, error } = await supabase.functions.invoke(
-          "get-crm-plans",
-          { body: { quotationCode: data.crm_quotation_code, vehicle: quote.vehicle, address: quote.address } }
-        );
+        // Tenta até 2x: o CRM às vezes precisa de uns segundos extra para persistir
+        // o cityId que acabamos de empurrar via consulta-placa-crm.
+        const tryFetch = async () => {
+          const { data: plansData, error } = await supabase.functions.invoke(
+            "get-crm-plans",
+            { body: { quotationCode: data.crm_quotation_code, vehicle: quote.vehicle, address: quote.address } },
+          );
+          return { plansData, error };
+        };
+
+        let { plansData, error } = await tryFetch();
+        if (
+          !cancelled &&
+          (!plansData?.plans || plansData.plans.length === 0) &&
+          (plansData?.warning || plansData?.error)
+        ) {
+          // Retry silencioso após 4s — dá tempo do CRM propagar a auto-cura de cidade
+          await new Promise((r) => setTimeout(r, 4000));
+          if (!cancelled) {
+            const retry = await tryFetch();
+            plansData = retry.plansData;
+            error = retry.error;
+          }
+        }
 
         if (cancelled) return;
         if (!error && plansData?.plans?.length > 0) {
