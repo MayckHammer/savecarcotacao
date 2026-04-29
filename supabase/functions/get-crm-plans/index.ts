@@ -103,23 +103,25 @@ async function fetchPlansByModelRequest(quotationCode: string, token: string, co
     const vehicle = context.vehicle || {};
     const address = context.address || {};
 
-    const carModelId = Number(qData?.mdl ?? qData?.carModel ?? nested?.mdl ?? vehicle.crmModelId ?? 0);
-    const carModelYearId = Number(qData?.mdlYr ?? qData?.carModelYear ?? nested?.mdlYr ?? vehicle.crmYearId ?? 0);
+    // PRIORIDADE: contexto local (que o frontend já garantiu) sobre o que o CRM
+    // devolve em GET /quotation/{code} — esse endpoint frequentemente retorna 500
+    // ou dados parciais mesmo com o card visualmente preenchido.
+    const carModelId = Number(vehicle.crmModelId ?? qData?.mdl ?? qData?.carModel ?? nested?.mdl ?? 0);
+    const carModelYearId = Number(vehicle.crmYearId ?? qData?.mdlYr ?? qData?.carModelYear ?? nested?.mdlYr ?? 0);
     let cityId = Number(qData?.city ?? nested?.city ?? 0);
     if (!cityId && address.state && address.city) {
       cityId = Number(await resolveCityCode(String(address.state), String(address.city)) || 0);
     }
     const workVehicle = Boolean(qData?.workVehicle ?? nested?.workVehicle ?? (vehicle.type === "caminhao" || vehicle.usage === "aplicativo"));
-    const fipe = Number(qData?.protectedValue ?? qData?.vhclFipeVl ?? nested?.protectedValue ?? nested?.vhclFipeVl ?? vehicle.fipeValue ?? 0);
+    const fipe = Number(vehicle.fipeValue ?? qData?.protectedValue ?? qData?.vhclFipeVl ?? nested?.protectedValue ?? nested?.vhclFipeVl ?? 0);
     const missing: string[] = [];
     if (!carModelId) missing.push("modelo");
     if (!carModelYearId) missing.push("ano");
     if (!cityId) missing.push("cidade");
 
-    // AUTO-CURA: se a cotação está sem cidade no CRM mas temos cityId resolvido localmente,
-    // empurra um /quotation/update + endereço completo para o CRM persistir e tenta de novo
-    // o plansQuotation V2 antes de cair no fallback /api/plans (que é menos confiável).
-    if (missing.includes("cidade") && cityId && address?.state && address?.city) {
+    // AUTO-CURA (mantida para casos em que conseguimos ler o card mas cidade está null lá):
+    // empurra um /quotation/update + endereço completo para o CRM persistir.
+    if (qData && missing.length === 0 && cityId && address?.state && address?.city) {
       try {
         const reinforceBody: Record<string, unknown> = {
           code: quotationCode,
