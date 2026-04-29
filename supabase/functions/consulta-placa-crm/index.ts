@@ -17,6 +17,7 @@ const BodySchema = z.object({
   vehicleType: z.enum(["carro", "moto", "caminhao"]).optional().default("carro"),
   crmQuotationCode: z.string().trim().max(100).optional().or(z.literal("")),
   crmQuotationId: z.number().int().positive().optional().nullable(),
+  crmNegotiationCode: z.string().trim().max(100).optional().or(z.literal("")),
   selectedModel: z.object({
     name: z.string().trim().max(255),
     brand: z.string().trim().max(255).optional().default(""),
@@ -818,28 +819,81 @@ async function enrichFromFipeByCode(
 }
 
 async function getQuotation(token: string, code: string): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await fetch(`${CRM_BASE}/quotation/${code}`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    const text = await res.text();
-    console.log(`getQuotation ${code} → ${res.status} ${text.substring(0, 250)}`);
-    if (!res.ok) return null;
-    try { return JSON.parse(text); } catch { return null; }
-  } catch (e) {
-    console.error("getQuotation error:", e);
-    return null;
+  // O CRM as vezes retorna 500 sem Accept explícito. Tenta com Accept JSON e
+  // até 2 retries curtos antes de desistir.
+  const url = `${CRM_BASE}/quotation/${code}`;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+      const text = await res.text();
+      console.log(`getQuotation ${code} attempt ${i + 1} → ${res.status} ${text.substring(0, 250)}`);
+      if (res.ok) {
+        try { return JSON.parse(text); } catch { return null; }
+      }
+      // 500 transitório: aguarda 800ms e tenta de novo
+      if (res.status >= 500 && i < 2) {
+        await new Promise((r) => setTimeout(r, 800));
+        continue;
+      }
+      return null;
+    } catch (e) {
+      console.error("getQuotation error:", e);
+      if (i < 2) { await new Promise((r) => setTimeout(r, 800)); continue; }
+      return null;
+    }
   }
+  return null;
 }
 
 async function getNegotiation(token: string, code: string): Promise<Record<string, unknown> | null> {
   try {
     const r = await fetch(`${CRM_BASE}/negotiation/${code}`, {
-      headers: { "Authorization": `Bearer ${token}` },
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
     });
+    const text = await r.text();
+    console.log(`getNegotiation ${code} → ${r.status} ${text.substring(0, 200)}`);
     if (!r.ok) return null;
-    return await r.json();
+    try { return JSON.parse(text); } catch { return null; }
   } catch { return null; }
+}
+
+// Deep-walk an object looking for a numeric quotationId field anywhere in the tree.
+function deepFindQuotationId(obj: unknown, depth = 0): number | null {
+  if (!obj || typeof obj !== "object" || depth > 6) return null;
+  const ID_KEYS = ["quotationId", "idQuotation", "id_quotation", "idQttn", "qttnId"];
+  const ID_KEYS_LOOSE = new Set(["id"]);
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (ID_KEYS.includes(k)) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    // "id" só é aceito se o objeto pai parecer ser uma cotação (tem quotationCode/code)
+    if (ID_KEYS_LOOSE.has(k) && depth === 0) {
+      const parent = obj as Record<string, unknown>;
+      if (parent.quotationCode || parent.code || parent.plts || parent.plates) {
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+    }
+  }
+  // Recurse
+  for (const v of Object.values(obj as Record<string, unknown>)) {
+    if (v && typeof v === "object") {
+      const found = deepFindQuotationId(v, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 // ===== CRM "lupa FIPE" + "Salvar" — replicates manual operator flow =====
@@ -1114,7 +1168,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const { personal, plate, vehicleType, crmQuotationCode, crmQuotationId, selectedModel, manualVehicle, address } = parsed.data;
+    const { personal, plate, vehicleType, crmQuotationCode, crmQuotationId, crmNegotiationCode, selectedModel, manualVehicle, address } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     if (!token) {
       return new Response(JSON.stringify({ error: "POWERCRM_API_TOKEN not configured" }), {
@@ -1205,8 +1259,19 @@ Deno.serve(async (req) => {
       if (!resolvedQuotationId) {
         const q = await getQuotation(token, crmQuotationCode);
         if (q) {
-          const n = Number(q.id ?? q.quotationId ?? q.idQuotation);
-          if (Number.isFinite(n) && n > 0) resolvedQuotationId = n;
+          const n = Number(q.id ?? q.quotationId ?? q.idQuotation) || deepFindQuotationId(q);
+          if (Number.isFinite(n as number) && (n as number) > 0) resolvedQuotationId = n as number;
+        }
+      }
+      // Fallback adicional: usa negotiationCode (raiz comum quando getQuotation está com 500).
+      if (!resolvedQuotationId && crmNegotiationCode) {
+        const neg = await getNegotiation(token, crmNegotiationCode);
+        if (neg) {
+          const n = deepFindQuotationId(neg);
+          if (n) {
+            resolvedQuotationId = n;
+            console.log(`resolvedQuotationId via negotiation (${crmNegotiationCode}): ${n}`);
+          }
         }
       }
       if (resolvedQuotationId) {
@@ -1230,7 +1295,7 @@ Deno.serve(async (req) => {
           resolvedCityId,
         );
       } else {
-        console.warn("Não foi possível resolver quotationId numérico para chamar updateQuotationVehicleData");
+        console.warn("Não foi possível resolver quotationId numérico para chamar updateQuotationVehicleData — fluxo seguirá apenas com /quotation/update simples");
       }
 
       // Dispara o cálculo FIPE oficial pelo próprio CRM. Retorna o fipeRealCode
@@ -1240,6 +1305,32 @@ Deno.serve(async (req) => {
         recomputedFipeCode = fipeApi.fipeCode || recomputedFipeCode;
         recomputedFipeValue = fipeApi.fipeValue || recomputedFipeValue;
         console.log(`quotationFipeApi confirmou: code=${recomputedFipeCode} value=${recomputedFipeValue}`);
+      }
+
+      // REFORÇO DE CIDADE: o cálculo FIPE acima às vezes sobrescreve city para null.
+      // Repete um PATCH só com city + endereço para garantir persistência antes do plansQuotation.
+      if (resolvedCityId != null) {
+        try {
+          const reinforceBody: Record<string, unknown> = {
+            code: crmQuotationCode,
+            city: resolvedCityId,
+          };
+          if (address?.cep) reinforceBody.addressZipcode = address.cep.replace(/\D/g, "");
+          if (address?.street) reinforceBody.addressAddress = address.street;
+          if (address?.number) reinforceBody.addressNumber = address.number;
+          if (address?.neighborhood) reinforceBody.addressNeighborhood = address.neighborhood;
+          if (address?.complement) reinforceBody.addressComplement = address.complement;
+          if (address?.state) reinforceBody.addressState = address.state;
+          if (address?.city) reinforceBody.addressCity = address.city;
+          const rf = await fetch(`${CRM_BASE}/quotation/update`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify(reinforceBody),
+          });
+          console.log(`Reforço cidade /quotation/update → ${rf.status}`);
+        } catch (e) {
+          console.error("Reforço cidade falhou:", e);
+        }
       }
 
 
@@ -1367,7 +1458,8 @@ Deno.serve(async (req) => {
     let crmData: any = {};
     try { crmData = JSON.parse(crmRaw); } catch { /* not json */ }
     console.log("CRM quotation HTTP status:", crmRes.status);
-    console.log("CRM quotation response body:", crmRaw.slice(0, 500));
+    // Log estendido: precisamos enxergar o ID numérico que vem mais ao final do JSON
+    console.log("CRM quotation response body:", crmRaw.slice(0, 2500));
 
     if (!crmData.quotationCode) {
       return new Response(JSON.stringify({
@@ -1382,14 +1474,20 @@ Deno.serve(async (req) => {
     // Captura o quotationId NUMÉRICO (necessário para /company/updateQuotationVehicleData).
     // O navegador usa esse ID (ex: 41315826), não o code alfanumérico (ex: "DnKN1l8r").
     let quotationId: number | null = (() => {
-      const candidates = [crmData.quotationId, crmData.id, crmData.idQuotation, crmData.quotation?.id];
+      const candidates = [
+        crmData.quotationId, crmData.id, crmData.idQuotation,
+        crmData.quotation?.id, crmData.quotation?.quotationId,
+        crmData.qttnId, crmData.idQttn,
+      ];
       for (const c of candidates) {
         const n = Number(c);
         if (Number.isFinite(n) && n > 0) return n;
       }
-      return null;
+      // Deep walk no JSON inteiro como último recurso
+      return deepFindQuotationId(crmData);
     })();
-    console.log(`Quotation created: code=${quotationCode} numericId=${quotationId ?? "missing"}`);
+    console.log(`Quotation created: code=${quotationCode} negCode=${negotiationCode ?? "missing"} numericId=${quotationId ?? "missing"}`);
+
 
     // 3. Update with vehicle type explicitly
     if (vehicleTypeId != null) {
@@ -1427,17 +1525,38 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4c. Se ainda não temos quotationId numérico, busca via getQuotation
+    // 4c. Se ainda não temos quotationId numérico, tenta múltiplas fontes:
+    //   - getQuotation (com retry e Accept JSON)
+    //   - getNegotiation (negotiation embute o quotationId em vários campos)
+    //   - lupaData (a resposta do pltVrfyQttn às vezes traz quotationId quando há card aberto)
     if (!quotationId) {
       const q = await getQuotation(token, quotationCode);
       if (q) {
-        const n = Number(q.id ?? q.quotationId ?? q.idQuotation);
-        if (Number.isFinite(n) && n > 0) {
-          quotationId = n;
+        const n = Number(q.id ?? q.quotationId ?? q.idQuotation) || deepFindQuotationId(q);
+        if (Number.isFinite(n as number) && (n as number) > 0) {
+          quotationId = n as number;
           console.log(`quotationId resolved via getQuotation: ${quotationId}`);
         }
       }
     }
+    if (!quotationId && negotiationCode) {
+      const neg = await getNegotiation(token, negotiationCode);
+      if (neg) {
+        const n = deepFindQuotationId(neg);
+        if (n) {
+          quotationId = n;
+          console.log(`quotationId resolved via getNegotiation: ${quotationId}`);
+        }
+      }
+    }
+    if (!quotationId && lupaData) {
+      const n = deepFindQuotationId(lupaData);
+      if (n) {
+        quotationId = n;
+        console.log(`quotationId resolved via lupaData: ${quotationId}`);
+      }
+    }
+    console.log(`Final quotationId after all fallbacks: ${quotationId ?? "still missing"}`);
 
 
 

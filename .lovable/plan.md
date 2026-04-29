@@ -1,185 +1,68 @@
-Plano para fazer o caminho certo: aplicar um merge seletivo, sem substituir arquivos inteiros por versões parciais, mantendo o app funcional e alinhado ao fluxo manual do CRM.
+## Diagnóstico
 
-Objetivo final:
+A imagem do CRM mostra a cidade ("Uberlândia / Minas Gerais") preenchida visualmente, mas o backend do Power CRM **não persistiu** o `cityId` na cotação `EjKeb2wq`. Por isso `get-crm-plans` respondeu `{"plans":[],"warning":"Cotação incompleta no CRM (faltando: cidade)"}` e o card mostra "Aguardando CRM".
 
-```text
-App = janela externa do CRM
-Cliente preenche dados
--> app cria/atualiza cotação no CRM
--> CRM calcula FIPE e planos
--> app mostra COMPLETO e PREMIUM com valores reais
--> cliente escolhe plano
--> escolha volta para o campo informativo/observações do CRM
-```
+A causa exata está nos logs de rede:
 
-## 1. Corrigir `Quote.tsx` sem reescrever o arquivo inteiro
+1. Na 1ª chamada (`consulta-placa-crm` sem endereço) a resposta veio com `"quotationId": null` — o CRM criou a cotação mas não devolveu o ID numérico.
+2. Na 2ª chamada (com endereço), o frontend reenviou `"crmQuotationId": null`.
+3. No bloco que faz o "Salvar" no CRM (`updateQuotationVehicleData`) o código **só executa se `resolvedQuotationId` existir**. Como veio `null` e o fallback `getQuotation` também não conseguiu resolver o ID numérico, o "Salvar" foi pulado.
+4. Sem o "Salvar", o CRM nunca recebeu `city`, `addressZipcode`, `addressCity`, etc. — então `plansQuotation` retorna sem planos e o `get-crm-plans` adiciona o warning.
 
-Vou manter a estrutura atual funcional e aplicar apenas os pontos úteis do material enviado.
+Adicionalmente: o `fipeCheck.mismatches` confirmou `"CRM ainda não persistiu o valor FIPE"`, sintoma do mesmo problema raiz.
 
-Alterações planejadas:
+## Correções
 
-- Garantir que não exista JSX quebrado nem `\n` literal dentro do JSX.
-- Adicionar validação defensiva antes de consultar placa:
-  - nome obrigatório;
-  - e-mail válido;
-  - telefone válido;
-  - CPF válido.
-- Se faltar dado pessoal, o botão “Consultar” não chama `consulta-placa-crm`; ele mostra aviso e volta para a etapa 1.
-- Quando a consulta da placa retornar múltiplos modelos:
-  - não pré-selecionar automaticamente `crmOptions[0]` como modelo confirmado;
-  - mostrar aviso para confirmar o modelo exato;
-  - bloquear avanço até o usuário selecionar o modelo correto.
-- Quando houver apenas um modelo confiável:
-  - manter o comportamento automático.
-- Manter o fluxo manual para quando o cliente não tiver placa.
-- Manter a captura de `crmPlans` quando a edge function retornar planos reais.
+### 1. `supabase/functions/consulta-placa-crm/index.ts` — sempre garantir o `quotationId` numérico
 
-## 2. Melhorar o card de veículo identificado
+- Logo após criar a cotação (linha ~1392), se `quotationId` veio `null`, chamar **imediatamente** `getQuotation(token, quotationCode)` em retry (até 3 tentativas com backoff de 800ms) para extrair `id`/`quotationId`/`idQuotation`. Logar o resultado.
+- Persistir esse ID resolvido na resposta JSON da 1ª chamada (`quotationId` no body de retorno) para o frontend reenviar na 2ª chamada.
+- No bloco do "Selected model" (linha ~1204), antes de pular o `saveCrmVehicleData`, fazer o mesmo fallback (já existe parcial, mas com 1 tentativa só) — transformar em loop com retry.
+- **Crítico:** se mesmo após retries o `quotationId` continuar nulo, ainda assim chamar `/quotation/update` com cidade + endereço (já é feito) **mas também** repetir o `/quotation/update` específico do payload de cidade após o `triggerCrmFipeCalculation` para forçar persistência.
 
-Aplicar a lógica visual sugerida, mas com JSX limpo e compilável.
+### 2. `supabase/functions/consulta-placa-crm/index.ts` — desacoplar cidade do "Salvar"
 
-Comportamento:
+Mesmo quando o `updateQuotationVehicleData` falha, o `/quotation/update` plano (linha ~1191) já envia `city` + `addressCity` + `addressState`. Garantir:
 
-- Se houver múltiplos modelos:
-  - card em estado de atenção;
-  - texto: “Confirme o modelo abaixo”;
-  - não exibir o modelo como confirmado antes da escolha;
-  - mostrar quantidade de modelos encontrados.
-- Depois da confirmação:
-  - exibir modelo, ano, FIPE e demais dados normalmente.
+- Logar `resolvedCityId` resolvido por `resolveCrmCityId` para confirmar que ele é numérico (Power CRM exige número).
+- Se `resolveCrmCityId` retornar `null`, fazer fallback adicional para o endpoint público `utilities.powercrm.com.br/cities?state=...&name=...` (mesmo usado em `get-crm-plans`).
+- Após `triggerCrmFipeCalculation`, fazer **um segundo PATCH** `/quotation/update` só com `{ code, city: resolvedCityId }` para reforçar a persistência (alguns campos do CRM são sobrescritos pelo cálculo FIPE).
 
-## 3. Melhorar o scoring de modelos no `consulta-placa-crm`
+### 3. `supabase/functions/get-crm-plans/index.ts` — auto-cura
 
-Aproveitar da segunda parte enviada:
+Se receber a cotação sem `city` mas tiver `address.state` + `address.city` no body, **antes** de retornar warning:
 
-- `extractSignificantNumbers`;
-- `numberMismatchPenalty`;
-- penalidade para evitar confundir:
-  - 125 com 150;
-  - 160 com 180;
-  - 1.4 com 1.8;
-  - versões numericamente incompatíveis.
+- Resolver `cityId` via `resolveCityCode` (já faz).
+- Chamar `/quotation/update` com `{ code: quotationCode, city: cityId, addressState, addressCity, addressZipcode, addressAddress, addressNumber, addressNeighborhood }` para fechar o gap.
+- Esperar 1.5s e tentar `plansQuotation` de novo.
+- Só então, se ainda vier vazio, retornar o warning.
 
-Manter do código atual:
+Isso torna o `get-crm-plans` resiliente a estados intermediários do CRM, igual o operador faria manualmente clicando "Salvar" na tela.
 
-- `cmby?cb=&cy=` para buscar modelos por marca + ano;
-- fallback para `cm?cb=` se necessário;
-- lógica de tokens como `airc`/`aircross`, `tend`/`tendance`;
-- lista de opções para o usuário escolher quando não houver certeza.
+### 4. Frontend `src/pages/PlanDetails.tsx` — retry automático
 
-## 4. Manter e reforçar o fluxo correto do CRM: lupa + salvar + FIPE + planos
+- Quando `plans=[]` + `warning` vem com "faltando", em vez de só mostrar "Aguardando CRM", agendar **1 retry automático** após 4s antes de exibir o estado de espera ao usuário. Reduz o caso em que o operador só precisa esperar a propagação do CRM.
 
-Não vou substituir o fluxo atual pelo update simplificado da segunda parte, porque ele remove partes necessárias.
+## Validação
 
-Manteremos:
+Após o deploy:
 
-- `CRM_COMPANY_BASE`;
-- `triggerCrmPlateLookup` para reproduzir a lupa real do CRM;
-- `saveCrmVehicleData` usando `company/updateQuotationVehicleData`;
-- `crmQuotationId` numérico;
-- resolução de cidade interna do CRM;
-- `triggerCrmFipeCalculation`;
-- `fetchCrmPlansInline`.
+1. Refazer a cotação com a placa PSY0764 + CEP 38400-112.
+2. Verificar nos logs de `consulta-placa-crm` que `Quotation created: code=... numericId=<número>` (não mais `missing`).
+3. Verificar `updateQuotationVehicleData payload:` aparecendo nos logs com `city: "<id>"`.
+4. Confirmar que o `get-crm-plans` retorna `plans` populado com COMPLETO/PREMIUM e seus preços reais (sem warning).
+5. Conferir no print do CRM que "Cidade de circulação" e "Valor FIPE" agora ficam preenchidos e os planos aparecem na cotação.
 
-Ajuste principal:
+## Resumo do que muda
 
 ```text
-Só buscar planos depois que a cotação tiver:
-- modelo CRM
-- ano CRM
-- cidade CRM
-- endereço
-- FIPE/protectedValue calculado/persistido
+Antes:                              Depois:
+────────                            ────────
+1. Cria cotação                     1. Cria cotação + retry getQuotation p/ ID
+2. quotationId=null → pula Salvar   2. Sempre resolve quotationId (retries)
+3. CRM sem cidade nem FIPE          3. Salvar SEMPRE roda (com city)
+4. get-crm-plans: warning           4. get-crm-plans: auto-PATCH cidade se faltar
+5. Frontend: "Aguardando CRM"       5. Frontend: retry silencioso 1x antes de avisar
 ```
 
-## 5. Corrigir o problema do `city` em `get-crm-plans`
-
-O print está correto: buscar plano sem cidade faz o CRM retornar vazio.
-
-Ajustes planejados:
-
-- `get-crm-plans` continuará aceitando `quotationCode`.
-- Também poderá receber contexto auxiliar opcional:
-  - `address.city`;
-  - `address.state`;
-  - `vehicle.crmModelId`;
-  - `vehicle.crmYearId`;
-  - `vehicle.fipeValue`;
-  - `vehicle.type`.
-- Se o CRM ainda não tiver cidade/modelo/ano, a função retornará diagnóstico claro em vez de falhar silenciosamente.
-- A busca de planos será feita preferencialmente após o step 3, porque só ali temos endereço/cidade.
-
-## 6. Corrigir o step 3: endereço libera os planos
-
-No avanço da etapa de endereço:
-
-- Validar CEP, rua, bairro, número, estado e cidade.
-- Chamar `consulta-placa-crm` com:
-  - `personal`;
-  - `plate`;
-  - `vehicleType`;
-  - `crmQuotationCode`;
-  - `crmQuotationId`;
-  - `selectedModel`;
-  - `address`.
-- A edge function deve:
-  - resolver `cityId`;
-  - salvar veículo + endereço no CRM;
-  - disparar cálculo FIPE oficial;
-  - buscar planos reais;
-  - retornar `crmPlans`.
-- O frontend salva `crmPlans` no contexto antes de navegar para a tela de planos.
-
-## 7. Evitar preço hardcoded como se fosse preço real
-
-Em `PlanDetails.tsx`:
-
-- Se `crmPlans` já estiverem no contexto, usar imediatamente.
-- Se não estiverem, chamar `get-crm-plans` com `quotationCode` e contexto auxiliar.
-- Se ainda não houver planos reais:
-  - mostrar estado de carregamento/aviso controlado;
-  - não apresentar preço estimado como se fosse o valor final do CRM.
-
-## 8. Reforçar envio do plano escolhido para o CRM
-
-Em `submit-to-crm`:
-
-- Manter o envio para o campo informativo/observações.
-- Garantir que entre no texto:
-  - plano escolhido: COMPLETO ou PREMIUM;
-  - valor real retornado pelo CRM;
-  - forma de pagamento;
-  - uso do veículo;
-  - FIPE;
-  - veículo;
-  - endereço.
-
-## 9. Preservar validação e segurança
-
-Como os dados vêm do usuário e são enviados para APIs externas:
-
-- manter Zod nas edge functions;
-- validar client-side antes das chamadas;
-- não aceitar HTML do usuário;
-- manter limites de tamanho nos campos;
-- codificar parâmetros de URL com `encodeURIComponent`;
-- não logar dados sensíveis além do necessário para diagnóstico.
-
-## Resultado esperado após implementar
-
-- O app compila normalmente.
-- O cliente não consegue consultar placa sem dados pessoais válidos.
-- O CRM não recebe cotação vazia/incompleta no começo do fluxo.
-- Se a placa retornar múltiplos modelos, o usuário precisa confirmar o modelo exato.
-- O endereço/cidade é salvo antes de buscar planos.
-- O CRM calcula FIPE e planos como no processo manual.
-- O app mostra COMPLETO e PREMIUM com valores vindos do CRM.
-- O plano escolhido aparece no campo informativo/observações do CRM.
-
-Arquivos a alterar:
-
-- `src/pages/Quote.tsx`
-- `src/pages/PlanDetails.tsx`
-- `supabase/functions/consulta-placa-crm/index.ts`
-- `supabase/functions/get-crm-plans/index.ts`
-- `supabase/functions/submit-to-crm/index.ts`
+Nenhuma alteração de schema do banco. Apenas Edge Functions + um pequeno ajuste no `PlanDetails.tsx`.
