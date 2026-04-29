@@ -16,6 +16,7 @@ import Confirmation from "./pages/Confirmation";
 import NotFound from "./pages/NotFound";
 import Codebase from "./pages/Codebase";
 import QuickQuote from "./pages/QuickQuote";
+import ScrollToTop from "./components/ScrollToTop";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <ScrollToTop />
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/cotacao" element={<Quote />} />
