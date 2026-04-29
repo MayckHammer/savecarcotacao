@@ -22,7 +22,7 @@ interface FipeOption {
 
 const Quote = () => {
   const navigate = useNavigate();
-  const { quote, updatePersonal, updateVehicle, updateAddress, setSessionId, setCrmQuotationCode, setCrmQuotationId, setCrmNegotiationCode } = useQuote();
+  const { quote, updatePersonal, updateVehicle, updateAddress, setSessionId, setCrmQuotationCode, setCrmQuotationId, setCrmNegotiationCode, setCrmPlans } = useQuote();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -190,6 +190,11 @@ const Quote = () => {
           ...(fipeValue ? { fipeValue } : {}),
           ...(fipeFormatted ? { fipeFormatted } : {}),
         });
+      }
+
+      // Capta planos reais do CRM já liberados após o save+FIPE.
+      if (Array.isArray(data?.crmPlans) && data.crmPlans.length) {
+        setCrmPlans(data.crmPlans);
       }
 
       const check = data?.fipeCheck;
@@ -389,7 +394,7 @@ const Quote = () => {
         //    com cidade/estado/endereço para liberar o cálculo dos planos reais.
         if (quote.crmQuotationCode && quote.vehicle.crmModelId) {
           try {
-            await supabase.functions.invoke("consulta-placa-crm", {
+            const { data: addrData } = await supabase.functions.invoke("consulta-placa-crm", {
               body: {
                 personal: quote.personal,
                 plate: quote.vehicle.plate || "",
@@ -408,6 +413,10 @@ const Quote = () => {
                 address: quote.address,
               },
             });
+            // Capta planos reais já que o CRM agora tem endereço + cidade.
+            if (Array.isArray(addrData?.crmPlans) && addrData.crmPlans.length) {
+              setCrmPlans(addrData.crmPlans);
+            }
           } catch (e) {
             console.error("CRM address update error (non-fatal):", e);
           }

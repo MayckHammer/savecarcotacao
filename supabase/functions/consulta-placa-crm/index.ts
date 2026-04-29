@@ -963,6 +963,113 @@ async function pollCrmFipeValue(
   return { confirmed, crmFipeValue, crmFipeCode, verify };
 }
 
+// ===== Buscar planos do CRM inline (V2) =====
+// Após o "Salvar" (updateQuotationVehicleData) + cálculo FIPE, o CRM já consegue
+// listar os planos disponíveis. Replicamos o mesmo endpoint que o get-crm-plans usa,
+// mas inline para que o frontend receba os planos sem precisar de uma segunda call.
+type CrmPlanLite = {
+  id: string | number | null;
+  name: string;
+  monthlyPrice: number;
+  annualPrice: number;
+  coverages: unknown[];
+};
+
+function findFirstArrayDeep(input: unknown): unknown[] {
+  if (Array.isArray(input)) return input;
+  if (!input || typeof input !== "object") return [];
+  const obj = input as Record<string, unknown>;
+  for (const key of ["plans", "data", "body", "items", "content", "result"]) {
+    const found = findFirstArrayDeep(obj[key]);
+    if (found.length) return found;
+  }
+  return [];
+}
+
+function normalizeCrmPlans(data: unknown): CrmPlanLite[] {
+  return findFirstArrayDeep(data).map((raw) => {
+    const p = raw as Record<string, unknown>;
+    const monthlyPrice = Number(p.monthlyPrice || p.monthlyValue || p.vlMnthly || p.value || p.price || p.total || 0);
+    return {
+      id: (p.id || p.planId || p.tppId || null) as string | number | null,
+      name: String(p.name || p.planName || p.nm || p.description || p.ds || ""),
+      monthlyPrice,
+      annualPrice: Number(p.annualPrice || p.annualValue || p.vlAnnl || 0) || monthlyPrice * 12,
+      coverages: (p.coverages || p.items || p.optionals || []) as unknown[],
+    };
+  }).filter((p) => p.name || p.monthlyPrice > 0);
+}
+
+async function fetchCrmPlansInline(
+  token: string,
+  quotationCode: string,
+): Promise<CrmPlanLite[]> {
+  // V2 endpoint confirmado na doc: GET /api/quotation/plansQuotation
+  // (substitui o legado plansQuotationApi). Tratamos 200 com array, 404 e 500 como
+  // transitórios com 1 retry curto. Se ainda vier vazio, fallback POST /api/plans/.
+  const url = `${CRM_BASE}/quotation/plansQuotation?quotationCode=${encodeURIComponent(quotationCode)}`;
+  const delays = [0, 3000];
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) await new Promise((r) => setTimeout(r, delays[attempt]));
+    try {
+      const r = await fetch(url, {
+        headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+      });
+      const text = await r.text();
+      console.log(`fetchCrmPlansInline V2 attempt ${attempt + 1} → ${r.status} ${text.substring(0, 250)}`);
+      if (r.status === 404 || r.status >= 500) continue; // retry
+      let data: unknown;
+      try { data = JSON.parse(text); } catch { continue; }
+      const plans = normalizeCrmPlans(data);
+      if (plans.length) return plans;
+      // Sem plans no payload (pode ter "errors": ["Nenhum plano disponível"])
+      const obj = data as Record<string, unknown>;
+      const errs = obj?.errors as string[] | undefined;
+      if (errs?.some((e) => /nenhum plano/i.test(e))) continue;
+      break;
+    } catch (e) {
+      console.error(`fetchCrmPlansInline error attempt ${attempt + 1}:`, e);
+    }
+  }
+  // Fallback: POST /api/plans/ usando os campos que o getQuotation devolveu
+  try {
+    const q = await getQuotation(token, quotationCode);
+    if (!q) return [];
+    const carModelId = Number(q.mdl ?? (q as Record<string, unknown>).carModel ?? 0);
+    const carModelYearId = Number(q.mdlYr ?? (q as Record<string, unknown>).carModelYear ?? 0);
+    const cityId = Number(q.city ?? 0);
+    const workVehicle = Boolean(q.workVehicle ?? false);
+    const fipe = Number(
+      (q as Record<string, unknown>).protectedValue ??
+      (q as Record<string, unknown>).vhclFipeVl ?? 0,
+    );
+    if (!carModelId || !carModelYearId || !cityId) {
+      console.log(`fetchCrmPlansInline fallback skip: mdl=${carModelId} mdlYr=${carModelYearId} city=${cityId}`);
+      return [];
+    }
+    console.log(`fetchCrmPlansInline POST /api/plans payload: mdl=${carModelId} mdlYr=${carModelYearId} city=${cityId} fipe=${fipe}`);
+    const r = await fetch(`${CRM_BASE}/plans/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({
+        carModelId, carModelYearId, cityId,
+        quotationWorkVehicle: workVehicle,
+        protectedValue: fipe,
+        token,
+      }),
+    });
+    const text = await r.text();
+    console.log(`fetchCrmPlansInline POST /api/plans → ${r.status} ${text.substring(0, 250)}`);
+    if (!r.ok) return [];
+    let data: unknown;
+    try { data = JSON.parse(text); } catch { return []; }
+    return normalizeCrmPlans(data);
+  } catch (e) {
+    console.error("fetchCrmPlansInline fallback error:", e);
+    return [];
+  }
+}
+
 Deno.serve(async (req) => {
 
   if (req.method === "OPTIONS") {
@@ -1161,6 +1268,11 @@ Deno.serve(async (req) => {
         ? `R$ ${recomputedFipeValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : "";
 
+      // Buscar planos reais do CRM agora que o card está com mdl/mdlYr/city/FIPE persistidos.
+      // Se vier vazio, o frontend cai nos preços hardcoded — não bloqueia o fluxo.
+      const crmPlans = await fetchCrmPlansInline(token, crmQuotationCode);
+      console.log(`fetchCrmPlansInline → ${crmPlans.length} planos`);
+
       // Always return 200 when we have a valid recomputed FIPE locally — the CRM update
       // may fail with transient errors (e.g. 412 "Placa já cadastrada") or simply not
       // persist the FIPE on its side. The frontend uses `recomputed` as the source of truth.
@@ -1170,6 +1282,7 @@ Deno.serve(async (req) => {
         verify,
         fipeCheck,
         recomputed: { fipeCode: recomputedFipeCode, fipeValue: recomputedFipeValue, fipeFormatted },
+        crmPlans,
       }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

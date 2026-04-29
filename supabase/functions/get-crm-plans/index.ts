@@ -84,8 +84,9 @@ async function fetchPlansByModelRequest(quotationCode: string, token: string): P
   }
 }
 
-async function fetchPlansWithRetry(quotationCode: string, token: string, maxAttempts = 4): Promise<{ plans: unknown[]; error?: string }> {
-  const delays = [3000, 5000, 7000, 9000]; // progressive delays in ms (~24s total)
+async function fetchPlansWithRetry(quotationCode: string, token: string, maxAttempts = 3): Promise<{ plans: unknown[]; error?: string }> {
+  // Reduced from 4→3 attempts (delays 2s/4s/6s = ~12s) — consulta-placa-crm now pre-warms the V2 endpoint.
+  const delays = [2000, 4000, 6000];
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     console.log(`Fetching plans attempt ${attempt}/${maxAttempts} for ${quotationCode}`);
     
@@ -107,14 +108,28 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
       } catch {
         console.error(`Non-JSON response (attempt ${attempt}):`, text.substring(0, 200));
         if (attempt < maxAttempts) {
-          const delay = delays[attempt - 1] || 10000;
+          const delay = delays[attempt - 1] || 6000;
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
         return { plans: [], error: "CRM returned invalid response" };
       }
 
-      console.log(`CRM plans response (attempt ${attempt}):`, JSON.stringify(data, null, 2));
+      console.log(`CRM plans response (attempt ${attempt}) status=${res.status}:`, JSON.stringify(data).substring(0, 500));
+
+      // 404 = "Cotação não encontrada" — pode ser temporário (CRM ainda persistindo).
+      // Tratamos igual a "Nenhum plano": retry com backoff, fallback no fim.
+      if (res.status === 404) {
+        if (attempt < maxAttempts) {
+          const delay = delays[attempt - 1] || 6000;
+          console.log(`Quotation not found yet (404), retrying in ${delay / 1000}s...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        const fallback = await fetchPlansByModelRequest(quotationCode, token);
+        if (fallback.plans.length) return fallback;
+        return { plans: [], error: fallback.error || "Cotação não encontrada no CRM (V2 retornou 404)" };
+      }
 
       // Check if CRM says no plans available — may be temporary (FIPE not yet processed)
       const dataObj = data as Record<string, unknown>;
@@ -205,7 +220,7 @@ Deno.serve(async (req) => {
     }
 
     const token = Deno.env.get("POWERCRM_API_TOKEN");
-    const result = await fetchPlansWithRetry(quotationCode, token!, 4);
+    const result = await fetchPlansWithRetry(quotationCode, token!, 3);
 
     // Always return 200 — frontend will use fallback prices if plans is empty
     return new Response(JSON.stringify({ plans: result.plans, warning: result.error || null }), {
