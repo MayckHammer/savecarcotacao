@@ -23,7 +23,7 @@ const Landing = () => {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
+    <div className="relative flex min-h-screen flex-col justify-between overflow-hidden bg-background">
       {/* Decorative background */}
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden select-none" aria-hidden="true">
         <motion.img
