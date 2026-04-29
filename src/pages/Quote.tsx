@@ -22,7 +22,7 @@ interface FipeOption {
 
 const Quote = () => {
   const navigate = useNavigate();
-  const { quote, updatePersonal, updateVehicle, updateAddress, setSessionId, setCrmQuotationCode, setCrmQuotationId, setCrmNegotiationCode, setCrmPlans } = useQuote();
+  const { quote, updatePersonal, updateVehicle, updateAddress, setSessionId, setCrmQuotationCode, setCrmQuotationId, setCrmNegotiationCode } = useQuote();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -195,11 +195,6 @@ const Quote = () => {
           ...(fipeValue ? { fipeValue } : {}),
           ...(fipeFormatted ? { fipeFormatted } : {}),
         });
-      }
-
-      // Capta planos reais do CRM já liberados após o save+FIPE.
-      if (Array.isArray(data?.crmPlans) && data.crmPlans.length) {
-        setCrmPlans(data.crmPlans);
       }
 
       const check = data?.fipeCheck;
@@ -404,40 +399,8 @@ const Quote = () => {
     else if (step === 3 && validateStep3()) {
       setSubmitting(true);
       try {
-        // 1. Se já temos cotação CRM e modelo CRM resolvido, atualiza o card no CRM
-        //    com cidade/estado/endereço para liberar o cálculo dos planos reais.
-        if (quote.crmQuotationCode && quote.vehicle.crmModelId) {
-          try {
-            const { data: addrData } = await supabase.functions.invoke("consulta-placa-crm", {
-              body: {
-                personal: quote.personal,
-                plate: quote.vehicle.plate || "",
-                vehicleType: quote.vehicle.type,
-                crmQuotationCode: quote.crmQuotationCode,
-                crmQuotationId: quote.crmQuotationId,
-                crmNegotiationCode: quote.crmNegotiationCode,
-                selectedModel: {
-                  name: quote.vehicle.model,
-                  brand: quote.vehicle.brand,
-                  year: quote.vehicle.year,
-                  fipeCode: quote.vehicle.fipeCode || "",
-                  fipeValue: quote.vehicle.fipeValue || 0,
-                  crmModelId: Number(quote.vehicle.crmModelId),
-                  crmYearId: quote.vehicle.crmYearId ? Number(quote.vehicle.crmYearId) : null,
-                },
-                address: quote.address,
-              },
-            });
-            // Capta planos reais já que o CRM agora tem endereço + cidade.
-            if (Array.isArray(addrData?.crmPlans) && addrData.crmPlans.length) {
-              setCrmPlans(addrData.crmPlans);
-            }
-          } catch (e) {
-            console.error("CRM address update error (non-fatal):", e);
-          }
-        }
-
-        // 2. Salva localmente (Supabase quotes table) — fonte usada pelo restante do fluxo.
+        // Salva localmente (Supabase quotes table) e atualiza o card no CRM com observações.
+        // O operador vai preencher os planos/valores manualmente no CRM.
         if (quote.crmQuotationCode) {
           const { data } = await supabase.functions.invoke("submit-to-crm", {
             body: {
