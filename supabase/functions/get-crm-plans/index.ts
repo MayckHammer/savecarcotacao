@@ -115,6 +115,54 @@ async function fetchPlansByModelRequest(quotationCode: string, token: string, co
     if (!carModelId) missing.push("modelo");
     if (!carModelYearId) missing.push("ano");
     if (!cityId) missing.push("cidade");
+
+    // AUTO-CURA: se a cotação está sem cidade no CRM mas temos cityId resolvido localmente,
+    // empurra um /quotation/update + endereço completo para o CRM persistir e tenta de novo
+    // o plansQuotation V2 antes de cair no fallback /api/plans (que é menos confiável).
+    if (missing.includes("cidade") && cityId && address?.state && address?.city) {
+      try {
+        const reinforceBody: Record<string, unknown> = {
+          code: quotationCode,
+          city: cityId,
+          addressState: address.state,
+          addressCity: address.city,
+        };
+        if (address.cep) reinforceBody.addressZipcode = String(address.cep).replace(/\D/g, "");
+        if (address.street) reinforceBody.addressAddress = address.street;
+        if (address.number) reinforceBody.addressNumber = address.number;
+        if (address.neighborhood) reinforceBody.addressNeighborhood = address.neighborhood;
+        if (address.complement) reinforceBody.addressComplement = address.complement;
+        const rf = await fetch("https://api.powercrm.com.br/api/quotation/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify(reinforceBody),
+        });
+        console.log(`get-crm-plans auto-cura cidade /quotation/update → ${rf.status}`);
+        // Aguarda um pouco e tenta o V2 novamente antes do fallback
+        await new Promise((r) => setTimeout(r, 1500));
+        try {
+          const v2 = await fetch(
+            `https://api.powercrm.com.br/api/quotation/plansQuotation?quotationCode=${quotationCode}`,
+            { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
+          );
+          const v2Text = await v2.text();
+          console.log(`Auto-cura plansQuotation V2 → ${v2.status} ${v2Text.substring(0, 200)}`);
+          if (v2.ok) {
+            try {
+              const v2Data = JSON.parse(v2Text);
+              const v2Plans = normalizePlans(v2Data);
+              if (v2Plans.length) return { plans: v2Plans };
+            } catch { /* ignore */ }
+          }
+        } catch (e) { console.error("Auto-cura V2 retry error:", e); }
+        // Considera cidade resolvida — segue para o fallback /api/plans.
+        const idx = missing.indexOf("cidade");
+        if (idx >= 0) missing.splice(idx, 1);
+      } catch (e) {
+        console.error("Auto-cura cidade falhou:", e);
+      }
+    }
+
     if (missing.length) return { plans: [], error: `Cotação incompleta no CRM (faltando: ${missing.join(", ")})` };
 
     console.log("Fallback /api/plans request:", JSON.stringify({ carModelId, carModelYearId, cityId, workVehicle, fipe }));
