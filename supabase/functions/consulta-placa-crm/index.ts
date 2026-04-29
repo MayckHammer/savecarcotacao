@@ -144,6 +144,58 @@ function resolveVehicleTypeId(types: CrmVehicleType[], userType: string): number
     if (keywords.some((kw) => label.includes(kw))) return t.id;
   }
   return null;
+
+// ===== City resolver (CRM) =====
+// CRM usa /quotation/cit?st={UF} pra popular o dropdown de cidade no card.
+// Cacheamos por UF.
+type CrmCityItem = { id: number | string; nm?: string; name?: string; ds?: string; description?: string; text?: string };
+const cityCache = new Map<string, CrmCityItem[]>();
+
+async function fetchCrmCities(token: string, uf: string): Promise<CrmCityItem[]> {
+  const key = uf.toUpperCase().trim();
+  if (!key) return [];
+  if (cityCache.has(key)) return cityCache.get(key)!;
+  // Tenta variações conhecidas do endpoint do CRM até uma responder.
+  const candidates = [
+    `${CRM_BASE}/quotation/cit?st=${encodeURIComponent(key)}`,
+    `${CRM_BASE}/quotation/cities?st=${encodeURIComponent(key)}`,
+    `${CRM_BASE}/quotation/cities?uf=${encodeURIComponent(key)}`,
+    `${CRM_BASE}/quotation/city?st=${encodeURIComponent(key)}`,
+  ];
+  for (const url of candidates) {
+    try {
+      const r = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+      if (!r.ok) {
+        console.log(`fetchCrmCities ${url} → ${r.status}`);
+        continue;
+      }
+      const data = await r.json();
+      const arr: CrmCityItem[] = Array.isArray(data) ? data : (data?.data || data?.body || []);
+      if (arr.length) {
+        console.log(`fetchCrmCities OK via ${url} → ${arr.length} cidades para UF=${key}`);
+        cityCache.set(key, arr);
+        return arr;
+      }
+    } catch (e) {
+      console.error(`fetchCrmCities error ${url}:`, e);
+    }
+  }
+  console.warn(`fetchCrmCities: nenhum endpoint retornou cidades para UF=${key}`);
+  return [];
+}
+
+async function resolveCrmCityId(token: string, uf: string, cityName: string): Promise<number | string | null> {
+  if (!uf || !cityName) return null;
+  const cities = await fetchCrmCities(token, uf);
+  if (!cities.length) return null;
+  // CrmCityItem não casa exatamente com CrmItem, mas labelOf/pickBestMatch só lê strings.
+  const match = pickBestMatch(cities as unknown as CrmItem[], cityName);
+  if (match) {
+    console.log(`CRM city matched: "${cityName}/${uf}" → ${labelOf(match as unknown as CrmItem)} (id=${(match as { id: unknown }).id})`);
+    return (match as { id: number | string }).id;
+  }
+  console.log(`CRM city NOT matched for "${cityName}/${uf}"`);
+  return null;
 }
 
 // ===== Helpers =====
