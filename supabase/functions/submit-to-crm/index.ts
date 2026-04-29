@@ -246,6 +246,103 @@ Deno.serve(async (req) => {
       return null;
     };
 
+    // Helper: tenta salvar noteContractInternal (campo amarelo) usando o endpoint
+    // interno que o formulário do card usa. Esse endpoint exige o quotationId NUMÉRICO.
+    const saveInternalNote = async (quotationCode: string): Promise<boolean> => {
+      if (!token) return false;
+      try {
+        // Resolve o quotationId numérico via GET /quotation/{code}
+        const qRes = await fetch(`https://api.powercrm.com.br/api/quotation/${quotationCode}`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        if (!qRes.ok) {
+          console.log("saveInternalNote: getQuotation failed", qRes.status);
+          return false;
+        }
+        const qData = await qRes.json().catch(() => ({})) as Record<string, unknown>;
+        const candidates = [
+          qData.id, qData.quotationId, qData.idQuotation,
+          (qData.data as Record<string, unknown> | undefined)?.id,
+          (qData.quotation as Record<string, unknown> | undefined)?.id,
+        ];
+        let quotationId: number | null = null;
+        for (const c of candidates) {
+          const n = Number(c);
+          if (Number.isFinite(n) && n > 0) { quotationId = n; break; }
+        }
+        if (!quotationId) {
+          console.log("saveInternalNote: quotationId numérico não encontrado");
+          return false;
+        }
+
+        // Lê os dados atuais do veículo no card para NÃO sobrescrever com vazio.
+        const getStr = (k: string) =>
+          String((qData[k] ?? (qData.data as Record<string, unknown> | undefined)?.[k] ?? "") || "").trim();
+        const getNum = (k: string) => {
+          const v = qData[k] ?? (qData.data as Record<string, unknown> | undefined)?.[k];
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        };
+
+        const currentCarModel = getNum("mdl") ?? getNum("carModel");
+        const currentCarYear = getNum("mdlYr") ?? getNum("carModelYear");
+        const currentChassi = getStr("chassi") || getStr("vhclChassi");
+        const currentColor = getStr("color") || getStr("vhclColor");
+        const currentPlates = getStr("plts") || getStr("plates") || vehicle.plate || "";
+        const currentFabYr = getNum("fabricationYear") ?? (() => {
+          const yr = parseInt(String(vehicle.year || "").split("/")[0], 10);
+          return Number.isFinite(yr) ? yr : null;
+        })();
+
+        // Modelo do CRM resolvido pela /consulta-placa-crm (preferir esses se ausentes no card)
+        const crmModelId = Number((vehicle as Record<string, unknown>).crmModelId) || 0;
+        const crmYearId = Number((vehicle as Record<string, unknown>).crmYearId) || 0;
+
+        const innerBody: Record<string, unknown> = {
+          quotationId,
+          plates: currentPlates,
+          chassi: currentChassi,
+          renavam: "",
+          carModel: String(currentCarModel || crmModelId || ""),
+          carModelYear: currentCarYear ? String(currentCarYear) : (crmYearId ? String(crmYearId) : ""),
+          fabricationYear: currentFabYr ? String(currentFabYr) : "",
+          color: currentColor || (vehicle.color || ""),
+          engineNumber: "",
+          depreciationId: "0",
+          expirationDay: 0,
+          kmtr: "",
+          noteContract: internalNote,           // Observações no termo
+          noteContractInternal: internalNote,   // CAMPO AMARELO (Observações internas)
+          protectedValue: null,                 // null = CRM mantém o valor calculado
+          shift: null,
+          fuel: null,
+          city: null,
+          workVehicle: vehicle.type === "caminhao" || vehicle.usage === "aplicativo",
+        };
+
+        console.log("saveInternalNote payload:", JSON.stringify(innerBody));
+        const url = "https://app.powercrm.com.br/company/updateQuotationVehicleData";
+        const attempts: Array<{ label: string; headers: HeadersInit }> = [
+          { label: "bearer", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "Accept": "*/*" } },
+          { label: "cookie", headers: { "Content-Type": "application/json", "Cookie": `token=${token}`, "Accept": "*/*" } },
+        ];
+        for (const { label, headers } of attempts) {
+          try {
+            const r = await fetch(url, { method: "POST", headers, body: JSON.stringify(innerBody) });
+            const text = await r.text();
+            console.log(`saveInternalNote (${label}) → ${r.status} ${text.substring(0, 250)}`);
+            if (r.ok) return true;
+          } catch (e) {
+            console.error(`saveInternalNote (${label}) error:`, e);
+          }
+        }
+        return false;
+      } catch (e) {
+        console.error("saveInternalNote unexpected error:", e);
+        return false;
+      }
+    };
+
     if (skipCrm) {
       crmQuotationCode = existingQuotationCode || null;
       crmNegotiationCode = existingNegotiationCode || null;
@@ -342,6 +439,11 @@ Deno.serve(async (req) => {
             await new Promise((r) => setTimeout(r, 1500));
             v = await verifyUpdate();
           }
+
+          // Save the YELLOW field (Observações internas) via internal endpoint.
+          // /quotation/update does NOT persist noteContractInternal — only /add does, or
+          // the company/updateQuotationVehicleData endpoint used by the card form.
+          await saveInternalNote(crmQuotationCode);
 
           // Now that data is complete, open inspection
           if (v.protectedValue > 0 && v.hasAddress) {
