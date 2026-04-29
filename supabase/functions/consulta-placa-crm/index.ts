@@ -1420,7 +1420,8 @@ Deno.serve(async (req) => {
     let crmData: any = {};
     try { crmData = JSON.parse(crmRaw); } catch { /* not json */ }
     console.log("CRM quotation HTTP status:", crmRes.status);
-    console.log("CRM quotation response body:", crmRaw.slice(0, 500));
+    // Log estendido: precisamos enxergar o ID numérico que vem mais ao final do JSON
+    console.log("CRM quotation response body:", crmRaw.slice(0, 2500));
 
     if (!crmData.quotationCode) {
       return new Response(JSON.stringify({
@@ -1435,14 +1436,20 @@ Deno.serve(async (req) => {
     // Captura o quotationId NUMÉRICO (necessário para /company/updateQuotationVehicleData).
     // O navegador usa esse ID (ex: 41315826), não o code alfanumérico (ex: "DnKN1l8r").
     let quotationId: number | null = (() => {
-      const candidates = [crmData.quotationId, crmData.id, crmData.idQuotation, crmData.quotation?.id];
+      const candidates = [
+        crmData.quotationId, crmData.id, crmData.idQuotation,
+        crmData.quotation?.id, crmData.quotation?.quotationId,
+        crmData.qttnId, crmData.idQttn,
+      ];
       for (const c of candidates) {
         const n = Number(c);
         if (Number.isFinite(n) && n > 0) return n;
       }
-      return null;
+      // Deep walk no JSON inteiro como último recurso
+      return deepFindQuotationId(crmData);
     })();
-    console.log(`Quotation created: code=${quotationCode} numericId=${quotationId ?? "missing"}`);
+    console.log(`Quotation created: code=${quotationCode} negCode=${negotiationCode ?? "missing"} numericId=${quotationId ?? "missing"}`);
+
 
     // 3. Update with vehicle type explicitly
     if (vehicleTypeId != null) {
