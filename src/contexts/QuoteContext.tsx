@@ -125,6 +125,7 @@ export interface QuoteData {
   coupon: string;
   sessionId: string;
   crmQuotationCode: string;
+  crmQuotationId: number | null;
   crmNegotiationCode: string;
 }
 
