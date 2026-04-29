@@ -33,6 +33,15 @@ const BodySchema = z.object({
     fipeValue: z.number().optional().default(0),
     color: z.string().trim().max(60).optional().default(""),
   }).optional(),
+  address: z.object({
+    cep: z.string().trim().max(20).optional().default(""),
+    street: z.string().trim().max(255).optional().default(""),
+    number: z.string().trim().max(30).optional().default(""),
+    neighborhood: z.string().trim().max(255).optional().default(""),
+    complement: z.string().trim().max(255).optional().default(""),
+    state: z.string().trim().max(10).optional().default(""),
+    city: z.string().trim().max(255).optional().default(""),
+  }).optional(),
 });
 
 const CRM_BASE = "https://api.powercrm.com.br/api";
@@ -134,6 +143,75 @@ function resolveVehicleTypeId(types: CrmVehicleType[], userType: string): number
     if (!label) continue;
     if (keywords.some((kw) => label.includes(kw))) return t.id;
   }
+  return null;
+}
+
+// ===== City resolver (CRM) =====
+// CRM usa /quotation/cit?st={UF} pra popular o dropdown de cidade no card.
+// Cacheamos por UF.
+type CrmCityItem = { id: number | string; nm?: string; name?: string; ds?: string; description?: string; text?: string };
+const cityCache = new Map<string, CrmCityItem[]>();
+
+async function fetchCrmCities(token: string, uf: string): Promise<CrmCityItem[]> {
+  const key = uf.toUpperCase().trim();
+  if (!key) return [];
+  if (cityCache.has(key)) return cityCache.get(key)!;
+  // Tenta variações conhecidas do endpoint do CRM até uma responder.
+  // O CRM usa endpoints variados pra popular o dropdown de cidade. Testamos:
+  //   /company/cit?st=UF      ← padrão observado no card (igual à lupa)
+  //   /company/getCities?st=  ← variação vista em outros forms
+  //   /api/quotation/cit?st=  ← API REST oficial (Bearer)
+  // Tentamos com Bearer e Cookie até alguma responder com array.
+  const paths = [
+    `${CRM_COMPANY_BASE}/cit?st=${encodeURIComponent(key)}`,
+    `${CRM_COMPANY_BASE}/getCities?st=${encodeURIComponent(key)}`,
+    `${CRM_COMPANY_BASE}/cities?st=${encodeURIComponent(key)}`,
+    `${CRM_BASE}/quotation/cit?st=${encodeURIComponent(key)}`,
+  ];
+  const authVariants: HeadersInit[] = [
+    { "Authorization": `Bearer ${token}`, "Accept": "application/json,*/*" },
+    { "Cookie": `token=${token}`, "Accept": "application/json,*/*" },
+  ];
+  for (const url of paths) {
+    for (const headers of authVariants) {
+      try {
+        const r = await fetch(url, { headers });
+        if (!r.ok) {
+          console.log(`fetchCrmCities ${url} (auth=${"Authorization" in headers ? "bearer" : "cookie"}) → ${r.status}`);
+          continue;
+        }
+        const text = await r.text();
+        let data: unknown;
+        try { data = JSON.parse(text); } catch { continue; }
+        const arr: CrmCityItem[] = Array.isArray(data)
+          ? data
+          : ((data as { data?: unknown; body?: unknown })?.data as CrmCityItem[]) ||
+            ((data as { data?: unknown; body?: unknown })?.body as CrmCityItem[]) || [];
+        if (Array.isArray(arr) && arr.length) {
+          console.log(`fetchCrmCities OK via ${url} → ${arr.length} cidades para UF=${key}`);
+          cityCache.set(key, arr);
+          return arr;
+        }
+      } catch (e) {
+        console.error(`fetchCrmCities error ${url}:`, e);
+      }
+    }
+  }
+  console.warn(`fetchCrmCities: nenhum endpoint retornou cidades para UF=${key}`);
+  return [];
+}
+
+async function resolveCrmCityId(token: string, uf: string, cityName: string): Promise<number | string | null> {
+  if (!uf || !cityName) return null;
+  const cities = await fetchCrmCities(token, uf);
+  if (!cities.length) return null;
+  // CrmCityItem não casa exatamente com CrmItem, mas labelOf/pickBestMatch só lê strings.
+  const match = pickBestMatch(cities as unknown as CrmItem[], cityName);
+  if (match) {
+    console.log(`CRM city matched: "${cityName}/${uf}" → ${labelOf(match as unknown as CrmItem)} (id=${(match as { id: unknown }).id})`);
+    return (match as { id: number | string }).id;
+  }
+  console.log(`CRM city NOT matched for "${cityName}/${uf}"`);
   return null;
 }
 
@@ -822,7 +900,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const { personal, plate, vehicleType, crmQuotationCode, selectedModel, manualVehicle } = parsed.data;
+    const { personal, plate, vehicleType, crmQuotationCode, selectedModel, manualVehicle, address } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     if (!token) {
       return new Response(JSON.stringify({ error: "POWERCRM_API_TOKEN not configured" }), {
@@ -877,7 +955,24 @@ Deno.serve(async (req) => {
       if (plate) updateBody.plates = plate;
       if (selectedModel.crmYearId) updateBody.mdlYr = Number(selectedModel.crmYearId);
 
-      console.log("CRM update payload (mdl+mdlYr only, no cdFp):", JSON.stringify(updateBody));
+      // Resolve cidade do CRM a partir do endereço do cliente (estado/cidade).
+      // Sem cityId o CRM responde "Cotação incompleta no CRM (faltando: cidade)"
+      // ao pedir os planos.
+      let resolvedCityId: number | string | null = null;
+      if (address?.state && address?.city) {
+        resolvedCityId = await resolveCrmCityId(token, address.state, address.city);
+        if (resolvedCityId != null) updateBody.city = resolvedCityId;
+      }
+      // Endereço completo — chaves observadas no fetchPlansByModelRequest do get-crm-plans.
+      if (address?.cep) updateBody.addressZipcode = address.cep.replace(/\D/g, "");
+      if (address?.street) updateBody.addressAddress = address.street;
+      if (address?.number) updateBody.addressNumber = address.number;
+      if (address?.neighborhood) updateBody.addressNeighborhood = address.neighborhood;
+      if (address?.complement) updateBody.addressComplement = address.complement;
+      if (address?.state) updateBody.addressState = address.state;
+      if (address?.city) updateBody.addressCity = address.city;
+
+      console.log("CRM update payload (mdl+mdlYr+city+address):", JSON.stringify(updateBody));
 
       const upd = await fetch(`${CRM_BASE}/quotation/update`, {
         method: "POST",
