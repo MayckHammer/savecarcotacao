@@ -1,79 +1,111 @@
-## Problema identificado
+## Objetivo
 
-Analisando o print do PowerCRM e os logs atuais, a cotação está sendo criada e a "lupa" da placa já é disparada, mas **três coisas estão quebrando** o cálculo final dos planos COMPLETO/PREMIUM:
+Fazer com que, ao colocar a placa no nosso app, o backend execute exatamente os mesmos 4 passos que o operador faz no PowerCRM (lupa, estado, cidade, salvar) — usando os endpoints e payloads **confirmados nos prints do DevTools**. Resultado: os planos COMPLETO e PREMIUM passam a vir com valor FIPE real do CRM.
 
-1. **Cidade/Estado de circulação nunca são enviados ao CRM.** No `saveCrmVehicleData` o campo `city` está hardcoded como `null`. Sem cidade, o CRM responde `"Cotação incompleta no CRM (faltando: cidade)"` ao pedir os planos.
-2. **`quotationId` numérico não vem na criação** (`numericId=missing` nos logs), então o `updateQuotationVehicleData` aborta e cai no fallback `/quotation/update` que retorna 412.
-3. **`quotationFipeApi` está dando 502** seguidamente porque é chamado antes do save real ter ocorrido.
+## O que os prints confirmaram
 
-Resultado: hoje o cliente termina o fluxo, mas o CRM nunca recebe os dados completos para calcular o valor real do plano sobre o FIPE — o sistema mostra preços de fallback locais, não os valores oficiais da Savecar.
+1. **Salvar do card** (`updateQuotationVehicleData`) usa o payload exato:
+   - `quotationId` (numérico, ex: 41338865)
+   - `plates`, `chassi`, `engineNumber` (vindos da lupa)
+   - `carModel` (ID interno do modelo no CRM, ex: "603" — não é FIPE code)
+   - `carModelYear` (ex: "2015")
+   - `city` (ID numérico da cidade, ex: "2389" para Uberlândia)
+   - `protectedValue: null` (CRM calcula sozinho)
+   - `fuel: null`, `shift: null`, `workVehicle: false`
 
-## O que vai mudar
+2. **Cidades por estado**: `GET /company/ct?st={stateId}` (ex: `st=11` = Minas Gerais) retorna a lista pré-carregada — não há autocomplete por digitação.
 
-### 1. Reordenar o fluxo para coletar endereço ANTES de salvar no CRM
+3. **Estado**: precisa virar **stateId numérico** (MG=11, SP=26 etc.) antes da chamada `ct?st=`.
 
-Hoje o `consulta-placa-crm` é chamado logo na primeira tela (placa + nome). Vou:
+## Mudanças no `consulta-placa-crm`
 
-- Manter a primeira chamada (criar cotação + lupa) como está, para já abrir o card no CRM.
-- Adicionar uma **segunda chamada** após o cliente preencher o endereço (CEP/cidade/estado), que envia o endereço completo + modelo escolhido para o CRM. Essa segunda chamada é a que dispara o cálculo dos planos reais.
+### 1. Adicionar tabela fixa UF → stateId do CRM
 
-### 2. Edge function `consulta-placa-crm` — passar cidade/estado e resolver IDs do CRM
+O CRM usa IDs próprios para os estados (visto que `st=11` retornou cidades de MG). Cabe uma constante no edge function:
 
-- Adicionar campo `address` no schema de entrada (`cep`, `state`, `city`, `street`, `neighborhood`, `number`).
-- Antes de salvar, resolver o `cityId` numérico do CRM via `GET /api/quotation/cities?uf={UF}` (ou endpoint equivalente que o CRM usa no dropdown da imagem) e fazer match por nome normalizado.
-- No payload do `updateQuotationVehicleData` substituir `city: null` pelo `cityId` resolvido, e enviar também `addressZipcode`, `addressAddress`, `addressNumber`, `addressNeighborhood`, `addressState`, `addressCity` (chaves observadas no log do `fetchPlansByModelRequest`).
-- Buscar `quotationId` numérico via `getQuotation` **imediatamente após** criar o card (já existe lógica em 4c, mas hoje só roda em condições específicas — sempre rodar).
-
-### 3. Disparar o save real depois do endereço
-
-Quando o cliente clicar em "Avançar" na tela de endereço (`Quote.tsx`), a chamada ao `consulta-placa-crm` deve enviar:
-- `crmQuotationCode` (já criado na primeira etapa)
-- `selectedModel` (escolhido na tela de modelo)
-- `address` (novo)
-
-A edge function detecta esses três e executa o caminho do "salvar" (replica passo 4 do print): `updateQuotationVehicleData` com cidade + `quotationFipeApi` para forçar o cálculo. Só depois disso `get-crm-plans` consegue retornar valores reais.
-
-### 4. Frontend — exibir os planos reais do CRM
-
-- `PlanDetails.tsx` já consome `crmPlans` do contexto. Garantir que após a etapa de endereço o frontend chame `get-crm-plans` com o `quotationCode` e popule o estado.
-- Manter os preços de fallback locais apenas como segurança em caso de timeout — mas a fonte primária passa a ser o CRM.
-
-## Detalhes técnicos
-
-```text
-Fluxo novo (resumo)
--------------------
-Tela 1: nome + placa
-  → consulta-placa-crm (cria cotação, lupa, FIPE Parallelum, retorna modelOptions)
-
-Tela 2: confirmar modelo (se múltiplas opções)
-  → seleciona crmModelId/crmYearId
-
-Tela 3: endereço (CEP, estado, cidade, rua…)
-  → consulta-placa-crm de novo, agora com {crmQuotationCode, selectedModel, address}
-     → resolve cityId no CRM
-     → updateQuotationVehicleData com city + endereço completo + modelo
-     → quotationFipeApi para forçar cálculo
-     → retorna FIPE confirmado pelo CRM
-
-Tela 4: planos
-  → get-crm-plans → valores REAIS do CRM (COMPLETO / PREMIUM)
+```ts
+const CRM_STATE_IDS: Record<string, number> = {
+  AC: 1, AL: 2, AP: 3, AM: 4, BA: 5, CE: 6, DF: 7, ES: 8, GO: 9,
+  MA: 10, MG: 11, MS: 12, MT: 13, PA: 14, PB: 15, PR: 16, PE: 17,
+  PI: 18, RJ: 19, RN: 20, RS: 21, RO: 22, RR: 23, SC: 24, SE: 25,
+  SP: 26, TO: 27,
+};
 ```
 
-Arquivos afetados:
+(Vou validar com 1-2 chamadas reais de teste durante a implementação chamando `ct?st=N` para diferentes números até casar com cidades conhecidas, e ajustar a tabela se necessário.)
 
-- `supabase/functions/consulta-placa-crm/index.ts` — schema, resolver cidade, atualizar payload do save, forçar busca do quotationId numérico.
-- `src/pages/Quote.tsx` — adicionar segunda invocação após validar endereço.
-- `src/pages/PlanDetails.tsx` — garantir refetch dos planos quando voltar com `crmFipeConfirmed=true`.
-- `src/contexts/QuoteContext.tsx` — campo opcional para guardar `cityId` resolvido (debug).
+### 2. Trocar `fetchCrmCities` para usar **stateId numérico**
 
-## Pontos em aberto (vou descobrir durante a implementação)
+Hoje o código tenta `ct?st=MG` (sigla). O CRM espera o ID. Substituir por:
+```
+GET https://app.powercrm.com.br/company/ct?st={CRM_STATE_IDS[uf]}&_={timestamp}
+```
+com tentativa Bearer + Cookie como já fazemos. Isso faz `resolveCrmCityId` finalmente devolver IDs reais (ex: 2389 para Uberlândia).
 
-- O endpoint exato do CRM para listar cidades por UF não está documentado nos arquivos atuais. Vou tentar `GET /api/quotation/cities?uf=XX` primeiro; se não funcionar, capturo o endpoint real e ajusto.
-- O CRM pode rejeitar `city` se a UF/cidade não casarem. Vou logar o `cityId` resolvido e retornar warning no response para podermos debugar pela primeira execução.
+### 3. Corrigir `saveCrmVehicleData` — passar `city` numérico
 
-## O que NÃO muda
+No payload atual está enviando `city: null` fixo. Trocar para receber o `cityId` resolvido e enviar:
+```ts
+city: resolvedCityId != null ? String(resolvedCityId) : null,
+```
 
-- Visual das telas (sem mudanças de UI).
-- Estrutura da tabela `quotes` no banco.
-- Fluxo de pagamento e vistoria.
+### 4. Chamar `saveCrmVehicleData` no fluxo do modelo selecionado
+
+Hoje `saveCrmVehicleData` está definida mas **não é chamada** no branch `selectedModel` (linhas 920-1062). É chamada só no fluxo automático. Vou:
+- Resolver `cityId` via `resolveCrmCityId(token, address.state, address.city)` 
+- Chamar `saveCrmVehicleData(token, quotationCode, quotationId, vehicle, ids, plate, lupaData)` **logo após** o `/quotation/update` enxuto, antes do `triggerCrmFipeCalculation`
+- Garantir que o `quotationId` numérico seja recuperado via `getQuotation` se ainda não estiver disponível no contexto (precisa ser persistido junto com `crmQuotationCode` no app — ver passo 6)
+
+### 5. Persistir `quotationId` numérico
+
+Hoje o app guarda só `crmQuotationCode` (alfanumérico). O endpoint `/company/updateQuotationVehicleData` precisa do **ID numérico** (`quotationId`). Vou:
+- Adicionar `crmQuotationId: number | null` ao `QuoteContext`
+- Salvar na tabela `quotes` (coluna nova `crm_quotation_id bigint nullable` via migration)
+- Devolver `quotationId` na resposta da primeira chamada do `consulta-placa-crm` (já é capturado, só não retornado)
+- Re-enviar do frontend na segunda chamada (quando o usuário escolhe o modelo)
+
+### 6. Garantir que `get-crm-plans` veja `cityId`
+
+O `fetchPlansByModelRequest` (fallback) já lê `qData.city`. Com o `updateQuotationVehicleData` setando o `city` corretamente, o CRM vai persistir e os planos virão com FIPE real. O caminho principal (`plansQuotation`) também passa a funcionar porque a cotação fica completa.
+
+## Resumo do fluxo final
+
+```text
+1. Usuário digita placa
+   → consulta-placa-crm cria quotation (quotationCode + quotationId)
+   → lupa CRM (pltVrfyQttn) traz chassi/engineNumber
+   → resolveCrmIds traz crmModelId
+   → devolve modelOptions + quotationId pro frontend
+
+2. Usuário escolhe modelo (Quote.tsx) e endereço
+   → consulta-placa-crm (segunda chamada com selectedModel + address)
+     a. resolveCrmCityId(state, city) → cityId numérico
+     b. /quotation/update enxuto (mdl + mdlYr)
+     c. /company/updateQuotationVehicleData (payload exato dos prints, com city)
+     d. quotationFipeApi → fipeRealCode + valor
+   → devolve recomputed FIPE pro frontend
+
+3. PlanDetails monta → get-crm-plans
+   → plansQuotation devolve COMPLETO/PREMIUM com valores reais
+```
+
+## Arquivos a editar
+
+- `supabase/functions/consulta-placa-crm/index.ts` — itens 1-4 acima
+- `src/contexts/QuoteContext.tsx` — adicionar `crmQuotationId`
+- `src/pages/Quote.tsx` — re-enviar `crmQuotationId` na segunda chamada
+- Migration nova: `ALTER TABLE quotes ADD COLUMN crm_quotation_id bigint;`
+
+## Validação
+
+Após implementar, vou:
+1. Deploy do edge function
+2. Tail dos logs (`supabase--edge_function_logs consulta-placa-crm`)
+3. Testar com a placa PAI0F65 + MG/Uberlândia via curl direto do edge function
+4. Confirmar que `updateQuotationVehicleData` retorna 200, `getQuotation` mostra `city: 2389`, e `plansQuotation` devolve COMPLETO/PREMIUM com valor
+
+Se algum stateId estiver errado na tabela hardcoded, ajusto na hora com mais 1-2 testes.
+
+## Risco / observação
+
+A tabela `CRM_STATE_IDS` é a única parte chutada — todos os outros valores vêm direto dos prints. Se o CRM usar IDs diferentes, valido durante testes e ajusto. Pior caso (bem improvável): preciso descobrir os IDs chamando `ct?st=N` para N=1..27 e mapeando pelas cidades retornadas.
