@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           crm_error: string | null
           crm_quotation_code: string | null
+          crm_quotation_id: number | null
           crm_submitted: boolean
           id: string
           inspection_link: string | null
@@ -37,6 +38,7 @@ export type Database = {
           created_at?: string
           crm_error?: string | null
           crm_quotation_code?: string | null
+          crm_quotation_id?: number | null
           crm_submitted?: boolean
           id?: string
           inspection_link?: string | null
@@ -54,6 +56,7 @@ export type Database = {
           created_at?: string
           crm_error?: string | null
           crm_quotation_code?: string | null
+          crm_quotation_id?: number | null
           crm_submitted?: boolean
           id?: string
           inspection_link?: string | null
