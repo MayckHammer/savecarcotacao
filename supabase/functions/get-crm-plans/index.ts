@@ -109,7 +109,7 @@ async function fetchPlansByModelRequest(quotationCode: string, token: string, co
     if (!cityId && address.state && address.city) {
       cityId = Number(await resolveCityCode(String(address.state), String(address.city)) || 0);
     }
-    const workVehicle = Boolean(qData?.workVehicle ?? nested?.workVehicle ?? vehicle.type === "caminhao" || vehicle.usage === "aplicativo");
+    const workVehicle = Boolean(qData?.workVehicle ?? nested?.workVehicle ?? (vehicle.type === "caminhao" || vehicle.usage === "aplicativo"));
     const fipe = Number(qData?.protectedValue ?? qData?.vhclFipeVl ?? nested?.protectedValue ?? nested?.vhclFipeVl ?? vehicle.fipeValue ?? 0);
     const missing: string[] = [];
     if (!carModelId) missing.push("modelo");
@@ -177,7 +177,7 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
-        const fallback = await fetchPlansByModelRequest(quotationCode, token, context)
+        const fallback = await fetchPlansByModelRequest(quotationCode, token, context);
         if (fallback.plans.length) return fallback;
         return { plans: [], error: fallback.error || "Cotação não encontrada no CRM (V2 retornou 404)" };
       }
@@ -192,7 +192,7 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
-        const fallback = await fetchPlansByModelRequest(quotationCode, token, context)
+        const fallback = await fetchPlansByModelRequest(quotationCode, token, context);
         if (fallback.plans.length) return fallback;
         // Final attempt failed — diagnose quotation state
         let diagnostic = fallback.error || "Nenhum plano disponível para esta cotação";
