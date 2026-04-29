@@ -144,6 +144,7 @@ function resolveVehicleTypeId(types: CrmVehicleType[], userType: string): number
     if (keywords.some((kw) => label.includes(kw))) return t.id;
   }
   return null;
+}
 
 // ===== City resolver (CRM) =====
 // CRM usa /quotation/cit?st={UF} pra popular o dropdown de cidade no card.
