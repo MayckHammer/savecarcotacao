@@ -165,7 +165,16 @@ async function fetchPlansByModelRequest(quotationCode: string, token: string, co
       }
     }
 
-    if (missing.length) return { plans: [], error: `Cotação incompleta no CRM (faltando: ${missing.join(", ")})` };
+    if (missing.length) {
+      // Diferencia "faltando dados" (contexto local incompleto) de "CRM offline" (qData veio null
+      // mas frontend já enviou tudo). Isso evita a falsa mensagem "faltando: cidade" quando o
+      // card visual no CRM já está preenchido e só GET /quotation/{code} está com 500.
+      const hasLocalContext = vehicle.crmModelId && vehicle.crmYearId && address?.city && address?.state;
+      if (!qData && hasLocalContext) {
+        return { plans: [], error: "CRM ainda calculando os planos. Aguarde alguns instantes." };
+      }
+      return { plans: [], error: `Cotação incompleta no CRM (faltando: ${missing.join(", ")})` };
+    }
 
     console.log("Fallback /api/plans request:", JSON.stringify({ carModelId, carModelYearId, cityId, workVehicle, fipe }));
       const plansRes = await fetch("https://api.powercrm.com.br/api/plans/", {
