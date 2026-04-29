@@ -621,11 +621,15 @@ const Quote = () => {
 
             {/* Vehicle identified via CRM */}
             {plateConsulted && quote.vehicle.brand && (
-              <Card className="border-primary/30 bg-primary/5">
+              <Card className={`${(quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode ? "border-accent/60 bg-accent/10" : "border-primary/30 bg-primary/5"}`}>
                 <CardContent className="p-4 space-y-2">
-                  <div className="flex items-center gap-2 text-primary font-semibold text-sm">
-                    <Car className="h-4 w-4" />
-                    <span>Veículo Identificado</span>
+                  <div className={`flex items-center gap-2 font-semibold text-sm ${(quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode ? "text-accent-foreground" : "text-primary"}`}>
+                    {(quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode ? (
+                      <AlertCircle className="h-4 w-4" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" />
+                    )}
+                    <span>{(quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode ? "Confirme o modelo abaixo" : "Veículo Identificado"}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
@@ -636,10 +640,19 @@ const Quote = () => {
                       <p className="text-muted-foreground text-xs">Ano</p>
                       <p className="font-medium text-foreground">{quote.vehicle.year}</p>
                     </div>
-                    <div className="col-span-2">
-                      <p className="text-muted-foreground text-xs">Modelo</p>
-                      <p className="font-medium text-foreground">{quote.vehicle.model}</p>
-                    </div>
+                    {((quote.vehicle.modelOptions?.length || 0) <= 1 || quote.vehicle.modelCode) && quote.vehicle.model && (
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground text-xs">Modelo</p>
+                        <p className="font-medium text-foreground">{quote.vehicle.model}</p>
+                      </div>
+                    )}
+                    {(quote.vehicle.modelOptions?.length || 0) > 1 && !quote.vehicle.modelCode && (
+                      <div className="col-span-2 rounded-lg border border-accent/40 bg-background/60 p-3">
+                        <p className="text-xs font-medium text-foreground">
+                          {quote.vehicle.modelOptions?.length} modelos encontrados. Selecione o modelo exato para liberar o cálculo correto da FIPE e dos planos.
+                        </p>
+                      </div>
+                    )}
                     {quote.vehicle.color && (
                       <div>
                         <p className="text-muted-foreground text-xs">Cor</p>
@@ -650,6 +663,12 @@ const Quote = () => {
                       <p className="text-muted-foreground text-xs">Tipo</p>
                       <p className="font-medium text-foreground capitalize">{quote.vehicle.type}</p>
                     </div>
+                    {quote.vehicle.modelCode && quote.vehicle.fipeFormatted && (
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground text-xs">Valor FIPE</p>
+                        <p className="font-bold text-primary text-lg">{quote.vehicle.fipeFormatted}</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
