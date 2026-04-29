@@ -792,6 +792,7 @@ async function saveCrmVehicleData(
   ids: { crmBrandId?: number | null; crmModelId?: number | null; crmYearId?: number | null },
   plate: string,
   lookupData: Record<string, unknown> | null,
+  cityId: number | string | null = null,
 ): Promise<{ ok: boolean; status: number; body: string }> {
   // Replica o clique no botão "Salvar" do form#vehicleEditForm.
   // Endpoint REAL confirmado via DevTools (prints):
