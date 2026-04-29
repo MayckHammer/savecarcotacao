@@ -164,6 +164,7 @@ interface QuoteContextType {
   updateCard: (data: Partial<Pick<QuoteData, "cardNumber" | "cardExpiry" | "cardCvv" | "cardName">>) => void;
   setCoupon: (coupon: string) => void;
   setCrmQuotationCode: (code: string) => void;
+  setCrmQuotationId: (id: number | null) => void;
   setCrmNegotiationCode: (code: string) => void;
   setSessionId: (id: string) => void;
   resetQuote: () => void;
