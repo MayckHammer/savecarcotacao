@@ -40,7 +40,7 @@ const BodySchema = z.object({
     number: z.string().trim().max(30).optional().default(""),
     neighborhood: z.string().trim().max(255).optional().default(""),
     complement: z.string().trim().max(255).optional().default(""),
-    state: z.string().trim().max(10).optional().default(""),
+    state: z.string().trim().max(60).optional().default(""),
     city: z.string().trim().max(255).optional().default(""),
   }).optional(),
 });
