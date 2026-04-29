@@ -1259,8 +1259,19 @@ Deno.serve(async (req) => {
       if (!resolvedQuotationId) {
         const q = await getQuotation(token, crmQuotationCode);
         if (q) {
-          const n = Number(q.id ?? q.quotationId ?? q.idQuotation);
-          if (Number.isFinite(n) && n > 0) resolvedQuotationId = n;
+          const n = Number(q.id ?? q.quotationId ?? q.idQuotation) || deepFindQuotationId(q);
+          if (Number.isFinite(n as number) && (n as number) > 0) resolvedQuotationId = n as number;
+        }
+      }
+      // Fallback adicional: usa negotiationCode (raiz comum quando getQuotation está com 500).
+      if (!resolvedQuotationId && crmNegotiationCode) {
+        const neg = await getNegotiation(token, crmNegotiationCode);
+        if (neg) {
+          const n = deepFindQuotationId(neg);
+          if (n) {
+            resolvedQuotationId = n;
+            console.log(`resolvedQuotationId via negotiation (${crmNegotiationCode}): ${n}`);
+          }
         }
       }
       if (resolvedQuotationId) {
@@ -1284,7 +1295,7 @@ Deno.serve(async (req) => {
           resolvedCityId,
         );
       } else {
-        console.warn("Não foi possível resolver quotationId numérico para chamar updateQuotationVehicleData");
+        console.warn("Não foi possível resolver quotationId numérico para chamar updateQuotationVehicleData — fluxo seguirá apenas com /quotation/update simples");
       }
 
       // Dispara o cálculo FIPE oficial pelo próprio CRM. Retorna o fipeRealCode
@@ -1294,6 +1305,32 @@ Deno.serve(async (req) => {
         recomputedFipeCode = fipeApi.fipeCode || recomputedFipeCode;
         recomputedFipeValue = fipeApi.fipeValue || recomputedFipeValue;
         console.log(`quotationFipeApi confirmou: code=${recomputedFipeCode} value=${recomputedFipeValue}`);
+      }
+
+      // REFORÇO DE CIDADE: o cálculo FIPE acima às vezes sobrescreve city para null.
+      // Repete um PATCH só com city + endereço para garantir persistência antes do plansQuotation.
+      if (resolvedCityId != null) {
+        try {
+          const reinforceBody: Record<string, unknown> = {
+            code: crmQuotationCode,
+            city: resolvedCityId,
+          };
+          if (address?.cep) reinforceBody.addressZipcode = address.cep.replace(/\D/g, "");
+          if (address?.street) reinforceBody.addressAddress = address.street;
+          if (address?.number) reinforceBody.addressNumber = address.number;
+          if (address?.neighborhood) reinforceBody.addressNeighborhood = address.neighborhood;
+          if (address?.complement) reinforceBody.addressComplement = address.complement;
+          if (address?.state) reinforceBody.addressState = address.state;
+          if (address?.city) reinforceBody.addressCity = address.city;
+          const rf = await fetch(`${CRM_BASE}/quotation/update`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify(reinforceBody),
+          });
+          console.log(`Reforço cidade /quotation/update → ${rf.status}`);
+        } catch (e) {
+          console.error("Reforço cidade falhou:", e);
+        }
       }
 
 
