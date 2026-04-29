@@ -356,6 +356,7 @@ const Quote = () => {
       if (error || data?.error) throw error || new Error(data?.error);
       if (data?.quotationCode) {
         setCrmQuotationCode(data.quotationCode);
+        if (data.quotationId) setCrmQuotationId(Number(data.quotationId));
         if (data.negotiationCode) setCrmNegotiationCode(data.negotiationCode);
       }
       if (data?.vehicleTypeId) {
