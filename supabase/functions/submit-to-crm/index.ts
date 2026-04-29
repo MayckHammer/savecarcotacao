@@ -134,12 +134,18 @@ Deno.serve(async (req) => {
 
     const planObj = plan as Record<string, unknown>;
     const planName = (planObj?.planName as string) || "COMPLETO";
-    const crmPlanName = (planObj?.crmPlanName as string) || planName;
+    const rawCrmPlanName = (planObj?.crmPlanName as string) || "";
     const crmMonthlyPrice = Number(planObj?.crmMonthlyPrice) || 0;
     const crmAnnualPrice = Number(planObj?.crmAnnualPrice) || 0;
     const totalValue = Number(planObj?.total) || crmMonthlyPrice || 0;
     const billingLabel = planObj?.billingPeriod === "annual" ? "Anual" : "Mensal";
-    const crmPriceLabel = crmMonthlyPrice > 0
+    // Só considere "PLANO CRM" confirmado quando o CRM realmente devolveu um plano
+    // com preço > 0. Caso contrário, deixe explícito que está aguardando o CRM —
+    // evita gravar no card "PLANO CRM: COMPLETO / VALOR CRM: A definir" como se
+    // fosse confirmado.
+    const hasRealCrmPlan = crmMonthlyPrice > 0 && !!rawCrmPlanName;
+    const crmPlanLabel = hasRealCrmPlan ? rawCrmPlanName : "Aguardando retorno do CRM";
+    const crmPriceLabel = hasRealCrmPlan
       ? `R$ ${crmMonthlyPrice.toFixed(2).replace(".", ",")}/mês`
       : "A definir";
     const paymentMethodLabel = planObj?.paymentMethod === "credit"
