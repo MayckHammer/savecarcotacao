@@ -23,7 +23,7 @@ const Aguardando = () => {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background pb-20">
+    <div className="relative min-h-screen flex-col overflow-hidden bg-background flex items-center justify-start pb-20">
       <motion.div
         variants={container}
         initial="hidden"
