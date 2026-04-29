@@ -147,6 +147,7 @@ const defaultQuote: QuoteData = {
   sessionId: "",
   coupon: "",
   crmQuotationCode: "",
+  crmQuotationId: null,
   crmNegotiationCode: "",
 };
 
