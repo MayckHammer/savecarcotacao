@@ -381,8 +381,35 @@ const Quote = () => {
     else if (step === 3 && validateStep3()) {
       setSubmitting(true);
       try {
+        // 1. Se já temos cotação CRM e modelo CRM resolvido, atualiza o card no CRM
+        //    com cidade/estado/endereço para liberar o cálculo dos planos reais.
+        if (quote.crmQuotationCode && quote.vehicle.crmModelId) {
+          try {
+            await supabase.functions.invoke("consulta-placa-crm", {
+              body: {
+                personal: quote.personal,
+                plate: quote.vehicle.plate || "",
+                vehicleType: quote.vehicle.type,
+                crmQuotationCode: quote.crmQuotationCode,
+                selectedModel: {
+                  name: quote.vehicle.model,
+                  brand: quote.vehicle.brand,
+                  year: quote.vehicle.year,
+                  fipeCode: quote.vehicle.fipeCode || "",
+                  fipeValue: quote.vehicle.fipeValue || 0,
+                  crmModelId: Number(quote.vehicle.crmModelId),
+                  crmYearId: quote.vehicle.crmYearId ? Number(quote.vehicle.crmYearId) : null,
+                },
+                address: quote.address,
+              },
+            });
+          } catch (e) {
+            console.error("CRM address update error (non-fatal):", e);
+          }
+        }
+
+        // 2. Salva localmente (Supabase quotes table) — fonte usada pelo restante do fluxo.
         if (quote.crmQuotationCode) {
-          // CRM quotation already created via plate lookup — just save locally
           const { data } = await supabase.functions.invoke("submit-to-crm", {
             body: {
               personal: quote.personal,
