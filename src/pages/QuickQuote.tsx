@@ -109,7 +109,7 @@ const QuickQuote = () => {
 
   const handleWhatsApp = () => {
     window.open(
-      "https://wa.me/5500000000000?text=Olá!%20Quero%20cotar%20meu%20veículo%20com%20a%20SaveCar%20Brasil.",
+      "https://wa.me/5534998679585?text=Olá!%20Quero%20cotar%20meu%20veículo%20com%20a%20SaveCar%20Brasil.",
       "_blank",
     );
   };
