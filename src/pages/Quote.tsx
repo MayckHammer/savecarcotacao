@@ -22,7 +22,7 @@ interface FipeOption {
 
 const Quote = () => {
   const navigate = useNavigate();
-  const { quote, updatePersonal, updateVehicle, updateAddress, setSessionId, setCrmQuotationCode, setCrmNegotiationCode } = useQuote();
+  const { quote, updatePersonal, updateVehicle, updateAddress, setSessionId, setCrmQuotationCode, setCrmQuotationId, setCrmNegotiationCode } = useQuote();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -167,6 +167,8 @@ const Quote = () => {
           plate: quote.vehicle.plate,
           vehicleType: quote.vehicle.type,
           crmQuotationCode: quote.crmQuotationCode,
+          crmQuotationId: quote.crmQuotationId,
+          address: quote.address,
           selectedModel: {
             name: selected.name,
             brand: quote.vehicle.brand,
@@ -229,6 +231,7 @@ const Quote = () => {
 
       if (data?.quotationCode) {
         setCrmQuotationCode(data.quotationCode);
+        if (data.quotationId) setCrmQuotationId(Number(data.quotationId));
         if (data.negotiationCode) setCrmNegotiationCode(data.negotiationCode);
       }
       // Persist resolved CRM vehicle type id for later updates
@@ -353,6 +356,7 @@ const Quote = () => {
       if (error || data?.error) throw error || new Error(data?.error);
       if (data?.quotationCode) {
         setCrmQuotationCode(data.quotationCode);
+        if (data.quotationId) setCrmQuotationId(Number(data.quotationId));
         if (data.negotiationCode) setCrmNegotiationCode(data.negotiationCode);
       }
       if (data?.vehicleTypeId) {
@@ -391,6 +395,7 @@ const Quote = () => {
                 plate: quote.vehicle.plate || "",
                 vehicleType: quote.vehicle.type,
                 crmQuotationCode: quote.crmQuotationCode,
+                crmQuotationId: quote.crmQuotationId,
                 selectedModel: {
                   name: quote.vehicle.model,
                   brand: quote.vehicle.brand,

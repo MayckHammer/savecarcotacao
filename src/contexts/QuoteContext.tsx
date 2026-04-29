@@ -125,6 +125,7 @@ export interface QuoteData {
   coupon: string;
   sessionId: string;
   crmQuotationCode: string;
+  crmQuotationId: number | null;
   crmNegotiationCode: string;
 }
 
@@ -146,6 +147,7 @@ const defaultQuote: QuoteData = {
   sessionId: "",
   coupon: "",
   crmQuotationCode: "",
+  crmQuotationId: null,
   crmNegotiationCode: "",
 };
 
@@ -162,6 +164,7 @@ interface QuoteContextType {
   updateCard: (data: Partial<Pick<QuoteData, "cardNumber" | "cardExpiry" | "cardCvv" | "cardName">>) => void;
   setCoupon: (coupon: string) => void;
   setCrmQuotationCode: (code: string) => void;
+  setCrmQuotationId: (id: number | null) => void;
   setCrmNegotiationCode: (code: string) => void;
   setSessionId: (id: string) => void;
   resetQuote: () => void;
@@ -207,6 +210,9 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
   const setCrmQuotationCode = (crmQuotationCode: string) =>
     setQuote((prev) => ({ ...prev, crmQuotationCode }));
 
+  const setCrmQuotationId = (crmQuotationId: number | null) =>
+    setQuote((prev) => ({ ...prev, crmQuotationId }));
+
   const setCrmNegotiationCode = (crmNegotiationCode: string) =>
     setQuote((prev) => ({ ...prev, crmNegotiationCode }));
 
@@ -246,7 +252,7 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <QuoteContext.Provider
-      value={{ quote, crmPlans, setCrmPlans, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setPaymentMethod, updateCard, setCoupon, setCrmQuotationCode, setCrmNegotiationCode, setSessionId, resetQuote, getTotal, getSubtotalWithoutDiscount }}
+      value={{ quote, crmPlans, setCrmPlans, updatePersonal, updateVehicle, updateAddress, setBillingPeriod, setPlanName, setPaymentMethod, updateCard, setCoupon, setCrmQuotationCode, setCrmQuotationId, setCrmNegotiationCode, setSessionId, resetQuote, getTotal, getSubtotalWithoutDiscount }}
     >
       {children}
     </QuoteContext.Provider>

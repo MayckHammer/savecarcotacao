@@ -16,6 +16,7 @@ const BodySchema = z.object({
   plate: z.string().trim().max(10).optional().default(""),
   vehicleType: z.enum(["carro", "moto", "caminhao"]).optional().default("carro"),
   crmQuotationCode: z.string().trim().max(100).optional().or(z.literal("")),
+  crmQuotationId: z.number().int().positive().optional().nullable(),
   selectedModel: z.object({
     name: z.string().trim().max(255),
     brand: z.string().trim().max(255).optional().default(""),
@@ -147,57 +148,61 @@ function resolveVehicleTypeId(types: CrmVehicleType[], userType: string): number
 }
 
 // ===== City resolver (CRM) =====
-// CRM usa /quotation/cit?st={UF} pra popular o dropdown de cidade no card.
+// CRM usa /company/ct?st={stateIdNumerico} pra popular o dropdown de cidade no card.
+// Confirmado nos prints do DevTools: GET /company/ct?st=11 retorna cidades de MG.
 // Cacheamos por UF.
 type CrmCityItem = { id: number | string; nm?: string; name?: string; ds?: string; description?: string; text?: string };
 const cityCache = new Map<string, CrmCityItem[]>();
+
+// Mapping UF -> stateId interno do PowerCRM. Confirmado: MG = 11 (print do DevTools
+// mostrou ct?st=11 retornando cidades de MG, e payload do Salvar usou city=2389 = Uberlândia).
+// Os demais IDs seguem a ordem alfabética padrão do CRM (validar via testes; ajustar se necessário).
+const CRM_STATE_IDS: Record<string, number> = {
+  AC: 1, AL: 2, AP: 3, AM: 4, BA: 5, CE: 6, DF: 7, ES: 8, GO: 9,
+  MA: 10, MG: 11, MS: 12, MT: 13, PA: 14, PB: 15, PR: 16, PE: 17,
+  PI: 18, RJ: 19, RN: 20, RS: 21, RO: 22, RR: 23, SC: 24, SE: 25,
+  SP: 26, TO: 27,
+};
 
 async function fetchCrmCities(token: string, uf: string): Promise<CrmCityItem[]> {
   const key = uf.toUpperCase().trim();
   if (!key) return [];
   if (cityCache.has(key)) return cityCache.get(key)!;
-  // Tenta variações conhecidas do endpoint do CRM até uma responder.
-  // O CRM usa endpoints variados pra popular o dropdown de cidade. Testamos:
-  //   /company/cit?st=UF      ← padrão observado no card (igual à lupa)
-  //   /company/getCities?st=  ← variação vista em outros forms
-  //   /api/quotation/cit?st=  ← API REST oficial (Bearer)
-  // Tentamos com Bearer e Cookie até alguma responder com array.
-  const paths = [
-    `${CRM_COMPANY_BASE}/cit?st=${encodeURIComponent(key)}`,
-    `${CRM_COMPANY_BASE}/getCities?st=${encodeURIComponent(key)}`,
-    `${CRM_COMPANY_BASE}/cities?st=${encodeURIComponent(key)}`,
-    `${CRM_BASE}/quotation/cit?st=${encodeURIComponent(key)}`,
-  ];
+  const stateId = CRM_STATE_IDS[key];
+  if (!stateId) {
+    console.warn(`fetchCrmCities: UF "${key}" sem mapeamento de stateId no CRM`);
+    return [];
+  }
+  // Endpoint exato confirmado nos prints do DevTools.
+  const url = `${CRM_COMPANY_BASE}/ct?st=${stateId}&_=${Date.now()}`;
   const authVariants: HeadersInit[] = [
     { "Authorization": `Bearer ${token}`, "Accept": "application/json,*/*" },
     { "Cookie": `token=${token}`, "Accept": "application/json,*/*" },
   ];
-  for (const url of paths) {
-    for (const headers of authVariants) {
-      try {
-        const r = await fetch(url, { headers });
-        if (!r.ok) {
-          console.log(`fetchCrmCities ${url} (auth=${"Authorization" in headers ? "bearer" : "cookie"}) → ${r.status}`);
-          continue;
-        }
-        const text = await r.text();
-        let data: unknown;
-        try { data = JSON.parse(text); } catch { continue; }
-        const arr: CrmCityItem[] = Array.isArray(data)
-          ? data
-          : ((data as { data?: unknown; body?: unknown })?.data as CrmCityItem[]) ||
-            ((data as { data?: unknown; body?: unknown })?.body as CrmCityItem[]) || [];
-        if (Array.isArray(arr) && arr.length) {
-          console.log(`fetchCrmCities OK via ${url} → ${arr.length} cidades para UF=${key}`);
-          cityCache.set(key, arr);
-          return arr;
-        }
-      } catch (e) {
-        console.error(`fetchCrmCities error ${url}:`, e);
+  for (const headers of authVariants) {
+    try {
+      const r = await fetch(url, { headers });
+      if (!r.ok) {
+        console.log(`fetchCrmCities ${url} (auth=${"Authorization" in headers ? "bearer" : "cookie"}) → ${r.status}`);
+        continue;
       }
+      const text = await r.text();
+      let data: unknown;
+      try { data = JSON.parse(text); } catch { continue; }
+      const arr: CrmCityItem[] = Array.isArray(data)
+        ? data
+        : ((data as { data?: unknown; body?: unknown })?.data as CrmCityItem[]) ||
+          ((data as { data?: unknown; body?: unknown })?.body as CrmCityItem[]) || [];
+      if (Array.isArray(arr) && arr.length) {
+        console.log(`fetchCrmCities OK st=${stateId}(${key}) → ${arr.length} cidades`);
+        cityCache.set(key, arr);
+        return arr;
+      }
+    } catch (e) {
+      console.error(`fetchCrmCities error ${url}:`, e);
     }
   }
-  console.warn(`fetchCrmCities: nenhum endpoint retornou cidades para UF=${key}`);
+  console.warn(`fetchCrmCities: nenhuma cidade retornada para st=${stateId} (UF=${key})`);
   return [];
 }
 
@@ -211,7 +216,7 @@ async function resolveCrmCityId(token: string, uf: string, cityName: string): Pr
     console.log(`CRM city matched: "${cityName}/${uf}" → ${labelOf(match as unknown as CrmItem)} (id=${(match as { id: unknown }).id})`);
     return (match as { id: number | string }).id;
   }
-  console.log(`CRM city NOT matched for "${cityName}/${uf}"`);
+  console.log(`CRM city NOT matched for "${cityName}/${uf}" entre ${cities.length} cidades`);
   return null;
 }
 
@@ -787,6 +792,7 @@ async function saveCrmVehicleData(
   ids: { crmBrandId?: number | null; crmModelId?: number | null; crmYearId?: number | null },
   plate: string,
   lookupData: Record<string, unknown> | null,
+  cityId: number | string | null = null,
 ): Promise<{ ok: boolean; status: number; body: string }> {
   // Replica o clique no botão "Salvar" do form#vehicleEditForm.
   // Endpoint REAL confirmado via DevTools (prints):
@@ -833,7 +839,7 @@ async function saveCrmVehicleData(
     protectedValue: null, // CRM calcula sozinho a partir de carModel + carModelYear
     shift: null,
     fuel: null,
-    city: null,
+    city: cityId != null ? String(cityId) : null,
     workVehicle: false,
   };
 
@@ -900,7 +906,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const { personal, plate, vehicleType, crmQuotationCode, selectedModel, manualVehicle, address } = parsed.data;
+    const { personal, plate, vehicleType, crmQuotationCode, crmQuotationId, selectedModel, manualVehicle, address } = parsed.data;
     const token = Deno.env.get("POWERCRM_API_TOKEN");
     if (!token) {
       return new Response(JSON.stringify({ error: "POWERCRM_API_TOKEN not configured" }), {
@@ -981,6 +987,43 @@ Deno.serve(async (req) => {
       });
       const updText = await upd.text();
       console.log(`Selected model CRM update → ${upd.status}`, updText.substring(0, 200));
+
+      // PASSO "SALVAR" do card — replica o clique no botão Salvar do form#vehicleEditForm.
+      // POST https://app.powercrm.com.br/company/updateQuotationVehicleData (payload exato dos prints).
+      // Sem essa chamada o CRM não persiste corretamente city/carModel/carModelYear e
+      // o cálculo FIPE oficial (quotationFipeApi) retorna sem valor, fazendo plansQuotation
+      // devolver "Cotação incompleta". Tentamos resolver quotationId numérico se não veio.
+      let resolvedQuotationId: number | null = crmQuotationId ?? null;
+      if (!resolvedQuotationId) {
+        const q = await getQuotation(token, crmQuotationCode);
+        if (q) {
+          const n = Number(q.id ?? q.quotationId ?? q.idQuotation);
+          if (Number.isFinite(n) && n > 0) resolvedQuotationId = n;
+        }
+      }
+      if (resolvedQuotationId) {
+        const vehicleForSave: Vehicle = {
+          brand: selectedModel.brand || "",
+          model: selectedModel.name,
+          year: selectedModel.year,
+          color: "",
+          fipeCode: recomputedFipeCode,
+          fipeValue: recomputedFipeValue,
+          type: vehicleType,
+        };
+        await saveCrmVehicleData(
+          token,
+          crmQuotationCode,
+          resolvedQuotationId,
+          vehicleForSave,
+          { crmModelId: selectedModel.crmModelId, crmYearId: selectedModel.crmYearId ?? null },
+          plate || "",
+          null,
+          resolvedCityId,
+        );
+      } else {
+        console.warn("Não foi possível resolver quotationId numérico para chamar updateQuotationVehicleData");
+      }
 
       // Dispara o cálculo FIPE oficial pelo próprio CRM. Retorna o fipeRealCode
       // correto e o valor — usamos ESSES valores como verdade absoluta.
@@ -1353,6 +1396,7 @@ Deno.serve(async (req) => {
     const vehicleAny = vehicle as (Vehicle & { crmFipeConfirmed?: boolean; crmFipeValueFinal?: number; crmFipeCodeFinal?: string }) | null;
     return new Response(JSON.stringify({
       quotationCode,
+      quotationId, // numérico — necessário p/ a 2a chamada (updateQuotationVehicleData)
       negotiationCode,
       vehicle: vehicle ? { ...vehicle, modelOptions } : null,
       vehicleType,
