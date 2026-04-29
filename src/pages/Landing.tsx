@@ -23,7 +23,7 @@ const Landing = () => {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
+    <div className="relative flex min-h-screen flex-col justify-between overflow-hidden bg-background">
       {/* Decorative background */}
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden select-none" aria-hidden="true">
         <motion.img
@@ -49,7 +49,7 @@ const Landing = () => {
         variants={container}
         initial="hidden"
         animate="show"
-        className="relative z-10 flex flex-col items-center px-6 pt-8 pb-4"
+        className="relative z-10 flex flex-col items-center px-6 pt-6"
       >
         <motion.img
           variants={item}
