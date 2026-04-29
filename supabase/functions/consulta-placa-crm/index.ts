@@ -245,15 +245,50 @@ async function fetchCrmCities(token: string, uf: string): Promise<CrmCityItem[]>
 
 async function resolveCrmCityId(token: string, uf: string, cityName: string): Promise<number | string | null> {
   if (!uf || !cityName) return null;
-  const cities = await fetchCrmCities(token, uf);
-  if (!cities.length) return null;
-  // CrmCityItem não casa exatamente com CrmItem, mas labelOf/pickBestMatch só lê strings.
-  const match = pickBestMatch(cities as unknown as CrmItem[], cityName);
-  if (match) {
-    console.log(`CRM city matched: "${cityName}/${uf}" → ${labelOf(match as unknown as CrmItem)} (id=${(match as { id: unknown }).id})`);
-    return (match as { id: number | string }).id;
+  const ufKey = uf.toUpperCase().trim();
+  const norm = normalizeCityName(cityName);
+
+  // 1) Tenta endpoint autenticado do CRM (caminho feliz)
+  const cities = await fetchCrmCities(token, ufKey);
+  if (cities.length) {
+    const match = pickBestMatch(cities as unknown as CrmItem[], cityName);
+    if (match) {
+      console.log(`CRM city matched: "${cityName}/${ufKey}" → ${labelOf(match as unknown as CrmItem)} (id=${(match as { id: unknown }).id})`);
+      return (match as { id: number | string }).id;
+    }
+    console.log(`CRM city NOT matched for "${cityName}/${ufKey}" entre ${cities.length} cidades`);
   }
-  console.log(`CRM city NOT matched for "${cityName}/${uf}" entre ${cities.length} cidades`);
+
+  // 2) Fallback A: overrides hardcoded confirmados via DevTools
+  const overrideKey = `${ufKey}|${norm}`;
+  if (CRM_CITY_OVERRIDES[overrideKey] != null) {
+    const id = CRM_CITY_OVERRIDES[overrideKey];
+    console.log(`CRM city resolved via OVERRIDE: ${overrideKey} → ${id}`);
+    return id;
+  }
+
+  // 3) Fallback B: usa IBGE pra obter nome canônico e tenta variantes contra o CRM,
+  //    procurando match por nome normalizado caso o /company/ct retorne dados parciais.
+  const ibge = await fetchIbgeCities(ufKey);
+  if (ibge.length) {
+    const ibgeMatch = ibge.find((c) => normalizeCityName(c.nome) === norm);
+    if (ibgeMatch) {
+      // Re-checa o cache do CRM com o nome canônico do IBGE (acentos corretos)
+      if (cities.length) {
+        const m2 = cities.find((c) => normalizeCityName(labelOf(c as unknown as CrmItem)) === norm);
+        if (m2) {
+          console.log(`CRM city matched via IBGE-canonical: "${ibgeMatch.nome}/${ufKey}" → id=${m2.id}`);
+          return m2.id;
+        }
+      }
+      // Sem CRM disponível: retorna o ID do IBGE como último recurso (CRM pode aceitar
+      // ou ignorar; melhor que enviar null e quebrar updateQuotationVehicleData).
+      console.warn(`CRM city fallback IBGE id (não confirmado pelo CRM): "${ibgeMatch.nome}/${ufKey}" → ${ibgeMatch.id}`);
+      return ibgeMatch.id;
+    }
+    console.log(`IBGE também não casou "${cityName}/${ufKey}" entre ${ibge.length} municípios`);
+  }
+
   return null;
 }
 
