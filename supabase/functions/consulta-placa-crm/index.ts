@@ -157,28 +157,44 @@ async function fetchCrmCities(token: string, uf: string): Promise<CrmCityItem[]>
   if (!key) return [];
   if (cityCache.has(key)) return cityCache.get(key)!;
   // Tenta variações conhecidas do endpoint do CRM até uma responder.
-  const candidates = [
+  // O CRM usa endpoints variados pra popular o dropdown de cidade. Testamos:
+  //   /company/cit?st=UF      ← padrão observado no card (igual à lupa)
+  //   /company/getCities?st=  ← variação vista em outros forms
+  //   /api/quotation/cit?st=  ← API REST oficial (Bearer)
+  // Tentamos com Bearer e Cookie até alguma responder com array.
+  const paths = [
+    `${CRM_COMPANY_BASE}/cit?st=${encodeURIComponent(key)}`,
+    `${CRM_COMPANY_BASE}/getCities?st=${encodeURIComponent(key)}`,
+    `${CRM_COMPANY_BASE}/cities?st=${encodeURIComponent(key)}`,
     `${CRM_BASE}/quotation/cit?st=${encodeURIComponent(key)}`,
-    `${CRM_BASE}/quotation/cities?st=${encodeURIComponent(key)}`,
-    `${CRM_BASE}/quotation/cities?uf=${encodeURIComponent(key)}`,
-    `${CRM_BASE}/quotation/city?st=${encodeURIComponent(key)}`,
   ];
-  for (const url of candidates) {
-    try {
-      const r = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
-      if (!r.ok) {
-        console.log(`fetchCrmCities ${url} → ${r.status}`);
-        continue;
+  const authVariants: HeadersInit[] = [
+    { "Authorization": `Bearer ${token}`, "Accept": "application/json,*/*" },
+    { "Cookie": `token=${token}`, "Accept": "application/json,*/*" },
+  ];
+  for (const url of paths) {
+    for (const headers of authVariants) {
+      try {
+        const r = await fetch(url, { headers });
+        if (!r.ok) {
+          console.log(`fetchCrmCities ${url} (auth=${"Authorization" in headers ? "bearer" : "cookie"}) → ${r.status}`);
+          continue;
+        }
+        const text = await r.text();
+        let data: unknown;
+        try { data = JSON.parse(text); } catch { continue; }
+        const arr: CrmCityItem[] = Array.isArray(data)
+          ? data
+          : ((data as { data?: unknown; body?: unknown })?.data as CrmCityItem[]) ||
+            ((data as { data?: unknown; body?: unknown })?.body as CrmCityItem[]) || [];
+        if (Array.isArray(arr) && arr.length) {
+          console.log(`fetchCrmCities OK via ${url} → ${arr.length} cidades para UF=${key}`);
+          cityCache.set(key, arr);
+          return arr;
+        }
+      } catch (e) {
+        console.error(`fetchCrmCities error ${url}:`, e);
       }
-      const data = await r.json();
-      const arr: CrmCityItem[] = Array.isArray(data) ? data : (data?.data || data?.body || []);
-      if (arr.length) {
-        console.log(`fetchCrmCities OK via ${url} → ${arr.length} cidades para UF=${key}`);
-        cityCache.set(key, arr);
-        return arr;
-      }
-    } catch (e) {
-      console.error(`fetchCrmCities error ${url}:`, e);
     }
   }
   console.warn(`fetchCrmCities: nenhum endpoint retornou cidades para UF=${key}`);
