@@ -103,23 +103,25 @@ async function fetchPlansByModelRequest(quotationCode: string, token: string, co
     const vehicle = context.vehicle || {};
     const address = context.address || {};
 
-    const carModelId = Number(qData?.mdl ?? qData?.carModel ?? nested?.mdl ?? vehicle.crmModelId ?? 0);
-    const carModelYearId = Number(qData?.mdlYr ?? qData?.carModelYear ?? nested?.mdlYr ?? vehicle.crmYearId ?? 0);
+    // PRIORIDADE: contexto local (que o frontend já garantiu) sobre o que o CRM
+    // devolve em GET /quotation/{code} — esse endpoint frequentemente retorna 500
+    // ou dados parciais mesmo com o card visualmente preenchido.
+    const carModelId = Number(vehicle.crmModelId ?? qData?.mdl ?? qData?.carModel ?? nested?.mdl ?? 0);
+    const carModelYearId = Number(vehicle.crmYearId ?? qData?.mdlYr ?? qData?.carModelYear ?? nested?.mdlYr ?? 0);
     let cityId = Number(qData?.city ?? nested?.city ?? 0);
     if (!cityId && address.state && address.city) {
       cityId = Number(await resolveCityCode(String(address.state), String(address.city)) || 0);
     }
     const workVehicle = Boolean(qData?.workVehicle ?? nested?.workVehicle ?? (vehicle.type === "caminhao" || vehicle.usage === "aplicativo"));
-    const fipe = Number(qData?.protectedValue ?? qData?.vhclFipeVl ?? nested?.protectedValue ?? nested?.vhclFipeVl ?? vehicle.fipeValue ?? 0);
+    const fipe = Number(vehicle.fipeValue ?? qData?.protectedValue ?? qData?.vhclFipeVl ?? nested?.protectedValue ?? nested?.vhclFipeVl ?? 0);
     const missing: string[] = [];
     if (!carModelId) missing.push("modelo");
     if (!carModelYearId) missing.push("ano");
     if (!cityId) missing.push("cidade");
 
-    // AUTO-CURA: se a cotação está sem cidade no CRM mas temos cityId resolvido localmente,
-    // empurra um /quotation/update + endereço completo para o CRM persistir e tenta de novo
-    // o plansQuotation V2 antes de cair no fallback /api/plans (que é menos confiável).
-    if (missing.includes("cidade") && cityId && address?.state && address?.city) {
+    // AUTO-CURA (mantida para casos em que conseguimos ler o card mas cidade está null lá):
+    // empurra um /quotation/update + endereço completo para o CRM persistir.
+    if (qData && missing.length === 0 && cityId && address?.state && address?.city) {
       try {
         const reinforceBody: Record<string, unknown> = {
           code: quotationCode,
@@ -163,7 +165,16 @@ async function fetchPlansByModelRequest(quotationCode: string, token: string, co
       }
     }
 
-    if (missing.length) return { plans: [], error: `Cotação incompleta no CRM (faltando: ${missing.join(", ")})` };
+    if (missing.length) {
+      // Diferencia "faltando dados" (contexto local incompleto) de "CRM offline" (qData veio null
+      // mas frontend já enviou tudo). Isso evita a falsa mensagem "faltando: cidade" quando o
+      // card visual no CRM já está preenchido e só GET /quotation/{code} está com 500.
+      const hasLocalContext = vehicle.crmModelId && vehicle.crmYearId && address?.city && address?.state;
+      if (!qData && hasLocalContext) {
+        return { plans: [], error: "CRM ainda calculando os planos. Aguarde alguns instantes." };
+      }
+      return { plans: [], error: `Cotação incompleta no CRM (faltando: ${missing.join(", ")})` };
+    }
 
     console.log("Fallback /api/plans request:", JSON.stringify({ carModelId, carModelYearId, cityId, workVehicle, fipe }));
       const plansRes = await fetch("https://api.powercrm.com.br/api/plans/", {
@@ -269,7 +280,18 @@ async function fetchPlansWithRetry(quotationCode: string, token: string, maxAtte
               "hasAddress:", hasAddr, "hasCity:", hasCity,
             );
             if (missing.length) {
-              diagnostic = `Cotação incompleta no CRM (faltando: ${missing.join(", ")})`;
+              // Se o frontend mandou contexto local completo, não acuse "faltando" —
+              // o card visual está OK; o que falta é o cálculo do CRM propagar.
+              const ctxVehicle = (context.vehicle || {}) as Record<string, unknown>;
+              const ctxAddress = (context.address || {}) as Record<string, unknown>;
+              const localCovers =
+                (missing.includes("cidade") ? !!(ctxAddress.city && ctxAddress.state) : true) &&
+                (missing.includes("modelo") ? !!ctxVehicle.crmModelId : true) &&
+                (missing.includes("ano") ? !!ctxVehicle.crmYearId : true) &&
+                (missing.includes("valor FIPE") ? Number(ctxVehicle.fipeValue) > 0 : true);
+              diagnostic = localCovers
+                ? "CRM ainda calculando os planos. Aguarde alguns instantes."
+                : `Cotação incompleta no CRM (faltando: ${missing.join(", ")})`;
             }
           }
         } catch (diagErr) {

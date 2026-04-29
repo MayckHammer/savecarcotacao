@@ -134,12 +134,18 @@ Deno.serve(async (req) => {
 
     const planObj = plan as Record<string, unknown>;
     const planName = (planObj?.planName as string) || "COMPLETO";
-    const crmPlanName = (planObj?.crmPlanName as string) || planName;
+    const rawCrmPlanName = (planObj?.crmPlanName as string) || "";
     const crmMonthlyPrice = Number(planObj?.crmMonthlyPrice) || 0;
     const crmAnnualPrice = Number(planObj?.crmAnnualPrice) || 0;
     const totalValue = Number(planObj?.total) || crmMonthlyPrice || 0;
     const billingLabel = planObj?.billingPeriod === "annual" ? "Anual" : "Mensal";
-    const crmPriceLabel = crmMonthlyPrice > 0
+    // Só considere "PLANO CRM" confirmado quando o CRM realmente devolveu um plano
+    // com preço > 0. Caso contrário, deixe explícito que está aguardando o CRM —
+    // evita gravar no card "PLANO CRM: COMPLETO / VALOR CRM: A definir" como se
+    // fosse confirmado.
+    const hasRealCrmPlan = crmMonthlyPrice > 0 && !!rawCrmPlanName;
+    const crmPlanLabel = hasRealCrmPlan ? rawCrmPlanName : "Aguardando retorno do CRM";
+    const crmPriceLabel = hasRealCrmPlan
       ? `R$ ${crmMonthlyPrice.toFixed(2).replace(".", ",")}/mês`
       : "A definir";
     const paymentMethodLabel = planObj?.paymentMethod === "credit"
@@ -159,7 +165,7 @@ Deno.serve(async (req) => {
     const internalNote = [
       `► USO DO VEÍCULO: ${usageLabel}`,
       `► PLANO SELECIONADO: ${planName}`,
-      `► PLANO CRM: ${crmPlanName}`,
+      `► PLANO CRM: ${crmPlanLabel}`,
       `► VALOR CRM: ${crmPriceLabel}`,
       `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
     ].join("\n");
@@ -170,12 +176,12 @@ Deno.serve(async (req) => {
       `>>> DESTAQUE — INFORMAÇÕES DO CLIENTE <<<`,
       `► USO DO VEÍCULO: ${usageLabel}`,
       `► PLANO SELECIONADO: ${planName}`,
-      `► PLANO CRM: ${crmPlanName}`,
+      `► PLANO CRM: ${crmPlanLabel}`,
       `► VALOR CRM: ${crmPriceLabel}`,
       `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
       ``,
       `=== PLANO: ${planName} ===`,
-      `Plano CRM: ${crmPlanName}`,
+      `Plano CRM: ${crmPlanLabel}`,
       `Valor mensal CRM: ${crmPriceLabel}`,
       `Valor: R$ ${totalValue ? totalValue.toFixed(2).replace(".", ",") : "A definir"}/${billingLabel === "Anual" ? "ano" : "mês"}`,
       `Periodicidade: ${billingLabel}`,
