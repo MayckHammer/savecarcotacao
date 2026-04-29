@@ -134,8 +134,14 @@ Deno.serve(async (req) => {
 
     const planObj = plan as Record<string, unknown>;
     const planName = (planObj?.planName as string) || "COMPLETO";
-    const totalValue = Number(planObj?.total) || 0;
+    const crmPlanName = (planObj?.crmPlanName as string) || planName;
+    const crmMonthlyPrice = Number(planObj?.crmMonthlyPrice) || 0;
+    const crmAnnualPrice = Number(planObj?.crmAnnualPrice) || 0;
+    const totalValue = Number(planObj?.total) || crmMonthlyPrice || 0;
     const billingLabel = planObj?.billingPeriod === "annual" ? "Anual" : "Mensal";
+    const crmPriceLabel = crmMonthlyPrice > 0
+      ? `R$ ${crmMonthlyPrice.toFixed(2).replace(".", ",")}/mês`
+      : "A definir";
     const paymentMethodLabel = planObj?.paymentMethod === "credit"
       ? "Cartão de Crédito (Adesão + 11x)"
       : "PIX / Boleto (Carnê 11x)";
@@ -153,6 +159,8 @@ Deno.serve(async (req) => {
     const internalNote = [
       `► USO DO VEÍCULO: ${usageLabel}`,
       `► PLANO SELECIONADO: ${planName}`,
+      `► PLANO CRM: ${crmPlanName}`,
+      `► VALOR CRM: ${crmPriceLabel}`,
       `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
     ].join("\n");
 
@@ -162,9 +170,13 @@ Deno.serve(async (req) => {
       `>>> DESTAQUE — INFORMAÇÕES DO CLIENTE <<<`,
       `► USO DO VEÍCULO: ${usageLabel}`,
       `► PLANO SELECIONADO: ${planName}`,
+      `► PLANO CRM: ${crmPlanName}`,
+      `► VALOR CRM: ${crmPriceLabel}`,
       `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
       ``,
       `=== PLANO: ${planName} ===`,
+      `Plano CRM: ${crmPlanName}`,
+      `Valor mensal CRM: ${crmPriceLabel}`,
       `Valor: R$ ${totalValue ? totalValue.toFixed(2).replace(".", ",") : "A definir"}/${billingLabel === "Anual" ? "ano" : "mês"}`,
       `Periodicidade: ${billingLabel}`,
       `Forma de pagamento: ${paymentMethodLabel}`,

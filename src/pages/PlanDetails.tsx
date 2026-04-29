@@ -83,6 +83,9 @@ const PlanDetails = () => {
           address: quote.address,
           plan: {
             planName: quote.planName,
+            crmPlanName: selectedPlan?.name || quote.planName,
+            crmMonthlyPrice: selectedPlan?.monthlyPrice || 0,
+            crmAnnualPrice: selectedPlan?.annualPrice || 0,
             paymentMethod: quote.paymentMethod,
             billingPeriod: quote.billingPeriod,
             total: getTotal(),
