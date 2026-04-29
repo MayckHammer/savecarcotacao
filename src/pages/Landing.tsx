@@ -23,7 +23,7 @@ const Landing = () => {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col justify-between overflow-hidden bg-background">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
       {/* Decorative background */}
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden select-none" aria-hidden="true">
         <motion.img
@@ -49,20 +49,20 @@ const Landing = () => {
         variants={container}
         initial="hidden"
         animate="show"
-        className="relative z-10 flex flex-col items-center px-6 pt-6"
+        className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 py-12"
       >
         <motion.img
           variants={item}
           src={logo}
           alt="SAVE CAR BRASIL"
-          className="h-40 mb-3 object-contain drop-shadow-sm"
+          className="h-56 mb-6 object-contain drop-shadow-sm"
           whileHover={{ scale: 1.03, rotate: -1 }}
           transition={{ type: "spring", stiffness: 200, damping: 15 }}
         />
 
         <motion.div
           variants={item}
-          className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary"
+          className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary"
         >
           <ShieldCheck className="h-3.5 w-3.5" />
           Proteção 100% confiável
@@ -70,13 +70,13 @@ const Landing = () => {
 
         <motion.h1
           variants={item}
-          className="text-2xl font-bold text-center text-foreground mb-2 tracking-tight"
+          className="text-2xl font-bold text-center text-foreground mb-3 tracking-tight"
         >
           Proteção Veicular <span className="text-primary">de Verdade</span>
         </motion.h1>
         <motion.p
           variants={item}
-          className="text-muted-foreground text-center mb-5 max-w-xs leading-relaxed"
+          className="text-muted-foreground text-center mb-10 max-w-xs leading-relaxed"
         >
           Proteja seu veículo com as melhores coberturas do mercado. Simples, rápido e seguro.
         </motion.p>
@@ -89,7 +89,7 @@ const Landing = () => {
           >
             <Button
               onClick={() => navigate("/cotacao")}
-              className="group relative w-full h-12 text-base font-bold rounded-xl shadow-lg shadow-primary/25 overflow-hidden"
+              className="group relative w-full h-14 text-base font-bold rounded-xl shadow-lg shadow-primary/25 overflow-hidden"
               size="lg"
             >
               <span className="relative z-10 flex items-center justify-center">
@@ -115,7 +115,7 @@ const Landing = () => {
         variants={container}
         initial="hidden"
         animate="show"
-        className="relative z-10 px-6 pb-4 space-y-2 max-w-xs mx-auto w-full"
+        className="relative z-10 px-6 pb-8 space-y-3 max-w-xs mx-auto w-full"
       >
         <motion.a
           variants={item}
@@ -123,7 +123,7 @@ const Landing = () => {
           whileTap={{ scale: 0.98 }}
           transition={{ type: "spring", stiffness: 400, damping: 20 }}
           href="#"
-          className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur p-3 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"
+          className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur p-4 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"
         >
           <HelpCircle className="h-5 w-5 text-primary" />
           Dúvidas sobre a cotação?
@@ -136,7 +136,7 @@ const Landing = () => {
           href="https://wa.me/5534998679585"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur p-3 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"
+          className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur p-4 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"
         >
           <MessageCircle className="h-5 w-5 text-primary" />
           Atendimento pelo WhatsApp
@@ -148,9 +148,9 @@ const Landing = () => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.6, duration: 0.6 }}
-        className="relative z-10 px-6 pb-4 text-center"
+        className="relative z-10 px-6 pb-6 text-center"
       >
-        <div className="flex items-center justify-center gap-5 mb-3">
+        <div className="flex items-center justify-center gap-6 mb-4">
           {/* Instagram com gradiente nativo + pulse */}
           <motion.a
             whileHover={{ scale: 1.15, rotate: -5 }}

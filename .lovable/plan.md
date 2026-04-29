@@ -1,18 +1,50 @@
-## Problema
-No mobile, há um espaço vazio grande entre o botão "Fazer Cotação" e o bloco "Dúvidas / WhatsApp / redes sociais". Isso acontece porque o hero usa `flex-1` + `justify-center`, esticando o container e empurrando o CTA para cima do centro vertical, enquanto o resto fica ancorado ao fim da página.
+## Objetivo
+Aumentar os ícones sociais do rodapé da Landing e dar a eles as cores nativas das marcas (Instagram com gradiente rosa/laranja/roxo, LinkedIn com azul `#0A66C2`), com um efeito de **pulsar** contínuo em volta de cada ícone.
 
-## Solução
-Em `src/pages/Landing.tsx`, alterar apenas o container do hero (linha 52) para que ele não estique mais — todo o conteúdo flui de cima pra baixo de forma harmonizada e contínua.
+## Alterações em `src/pages/Landing.tsx` (rodapé social, linhas ~153-174)
 
-### Mudança
-- Linha 52: `className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 py-6"`
-  → `className="relative z-10 flex flex-col items-center px-6 pt-8 pb-4"`
+Substituir os dois `<motion.a>` atuais por versões maiores e com cor de marca:
 
-Removemos `flex-1` e `justify-center` (que causavam o vão) e usamos paddings explícitos (`pt-8 pb-4`) para dar respiro consistente entre logo, CTA e a seção de links logo abaixo.
+- **Container**: `gap-6` (mais espaço entre ícones).
+- **Botões**: caixa quadrada arredondada `h-12 w-12 rounded-2xl`, ícone `h-6 w-6` (antes `h-5 w-5`), `strokeWidth={2.2}` para ficar mais nítido.
+- **Cores nativas**:
+  - Instagram: `linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)` aplicado via `style`.
+  - LinkedIn: `bg-[#0A66C2]`.
+- **Pulse**: `<span>` absoluto irmão do ícone com `animate-ping opacity-40` na mesma cor de fundo, criando o anel pulsante por trás.
+- **Sombra colorida** + leve aumento no hover/tap mantidos via `framer-motion`.
+- `aria-label` adicionado em cada link.
 
-Nenhum outro elemento precisa mudar — espaçamentos internos do hero (mb-3, mb-2, mb-5) e da seção de links (`space-y-2 pb-4`) já estão calibrados.
+### Snippet resultante
+```tsx
+<div className="flex items-center justify-center gap-6 mb-4">
+  {/* Instagram */}
+  <motion.a
+    whileHover={{ scale: 1.15, rotate: -5 }}
+    whileTap={{ scale: 0.9 }}
+    href="https://www.instagram.com/savecarbrasil?igsh=dWJjbnVhbGF1MzZz"
+    target="_blank" rel="noopener noreferrer"
+    aria-label="Instagram Save Car Brasil"
+    className="relative inline-flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg shadow-pink-500/30 hover:shadow-xl hover:shadow-pink-500/50 transition-shadow"
+    style={{ background: "linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%)" }}
+  >
+    <span className="absolute inset-0 rounded-2xl animate-ping opacity-40"
+          style={{ background: "linear-gradient(45deg,#f09433,#dc2743,#bc1888)" }} aria-hidden />
+    <Instagram className="relative h-6 w-6" strokeWidth={2.2} />
+  </motion.a>
 
-## Resultado
-- Botão CTA fica naturalmente próximo dos cards "Dúvidas" e "WhatsApp".
-- Ícones sociais permanecem no rodapé com seu pulse.
-- Layout fluido sem o "buraco" visual atual, sem perder espaços confortáveis.
+  {/* LinkedIn */}
+  <motion.a
+    whileHover={{ scale: 1.15, rotate: 5 }}
+    whileTap={{ scale: 0.9 }}
+    href="https://www.linkedin.com/company/save-car-brasil/"
+    target="_blank" rel="noopener noreferrer"
+    aria-label="LinkedIn Save Car Brasil"
+    className="relative inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0A66C2] text-white shadow-lg shadow-[#0A66C2]/30 hover:shadow-xl hover:shadow-[#0A66C2]/50 transition-shadow"
+  >
+    <span className="absolute inset-0 rounded-2xl bg-[#0A66C2] animate-ping opacity-40" aria-hidden />
+    <Linkedin className="relative h-6 w-6" strokeWidth={2.2} />
+  </motion.a>
+</div>
+```
+
+Nota: usamos as cores oficiais das marcas inline (não fazem parte da paleta semântica do app), pois é o uso pretendido pelo usuário e essas cores são padrão de identidade dos serviços externos.
