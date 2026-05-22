@@ -210,6 +210,9 @@ Deno.serve(async (req) => {
       Array.isArray(planObj?.coverages) ? (planObj.coverages as string[]).join(", ") : "A definir",
     ].join("\n");
 
+    // Observações internas (campo amarelo) = mesmo conteúdo completo
+    const internalNote = observation;
+
     const cityCode = await getCityCode(address.state || "", address.city || "");
 
     const crmPayload: Record<string, unknown> = {
