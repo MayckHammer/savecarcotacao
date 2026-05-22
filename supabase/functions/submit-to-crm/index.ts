@@ -370,6 +370,10 @@ Deno.serve(async (req) => {
       console.log("Using existing CRM codes, will update quotation:", crmQuotationCode, crmNegotiationCode);
 
       if (crmQuotationCode && token) {
+        // IMPORTANTE: NÃO reenviar plates/plts no update — o CRM rejeita com
+        // 412 "Placa já cadastrada para outro consultor" porque revalida
+        // unicidade mesmo em update do próprio card. A placa já foi gravada
+        // na criação (consulta-placa-crm), então omitimos aqui.
         const updatePayload: Record<string, unknown> = {
           code: crmQuotationCode,
           name: personal.name,
@@ -377,8 +381,6 @@ Deno.serve(async (req) => {
           email: personal.email,
           registration: cpfDigits,
           phoneMobile1: phone,
-          plates: vehicle.plate,
-          plts: vehicle.plate,
           workVehicle: vehicle.type === "caminhao" || vehicle.usage === "aplicativo",
           addressZipcode: address.cep?.replace(/\D/g, ""),
           addressAddress: address.street,
@@ -388,6 +390,7 @@ Deno.serve(async (req) => {
           protectedValue: vehicle.fipeValue || 0,
           observation,
           noteContract: internalNote,
+          noteContractInternal: internalNote,
         };
         if (cityCode) updatePayload.city = cityCode;
         // Reinforce vehicle type in case it was lost between steps
