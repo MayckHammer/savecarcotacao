@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
     const usageRaw = (vehicle.usage || "").toString().toLowerCase();
     const usageLabel = usageMap[usageRaw] || vehicle.usage || "N/A";
 
-    const internalNote = [
+    const internalNoteHeader = [
       `► USO DO VEÍCULO: ${usageLabel}`,
       `► PLANO SELECIONADO: ${planName}`,
       `► PLANO CRM: ${crmPlanLabel}`,
@@ -209,6 +209,9 @@ Deno.serve(async (req) => {
       `=== COBERTURAS ===`,
       Array.isArray(planObj?.coverages) ? (planObj.coverages as string[]).join(", ") : "A definir",
     ].join("\n");
+
+    // Observações internas (campo amarelo) = mesmo conteúdo completo
+    const internalNote = observation;
 
     const cityCode = await getCityCode(address.state || "", address.city || "");
 
