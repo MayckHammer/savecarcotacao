@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
     const usageRaw = (vehicle.usage || "").toString().toLowerCase();
     const usageLabel = usageMap[usageRaw] || vehicle.usage || "N/A";
 
-    const internalNote = [
+    const internalNoteHeader = [
       `► USO DO VEÍCULO: ${usageLabel}`,
       `► PLANO SELECIONADO: ${planName}`,
       `► PLANO CRM: ${crmPlanLabel}`,
