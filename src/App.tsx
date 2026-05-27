@@ -7,7 +7,7 @@ import { QuoteProvider } from "@/contexts/QuoteContext";
 import Landing from "./pages/Landing";
 import Quote from "./pages/Quote";
 import Result from "./pages/Result";
-import PlanDetails from "./pages/PlanDetails";
+
 import Aguardando from "./pages/Aguardando";
 import Payment from "./pages/Payment";
 import Inspection from "./pages/Inspection";
@@ -34,7 +34,7 @@ const App = () => (
             <Route path="/cotacao" element={<QuoteExpress />} />
             <Route path="/cotacao-detalhada" element={<Quote />} />
             <Route path="/resultado" element={<Result />} />
-            <Route path="/detalhes" element={<PlanDetails />} />
+            
             <Route path="/aguardando" element={<Aguardando />} />
             <Route path="/pagamento" element={<Payment />} />
             <Route path="/vistoria" element={<Inspection />} />

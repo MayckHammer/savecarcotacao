@@ -41,7 +41,6 @@ const CrmQuoteForm = () => {
     updatePersonal,
     updateVehicle,
     updateAddress,
-    setCrmPlans,
     setCrmQuotationCode,
   } = useQuote();
 
@@ -186,25 +185,25 @@ const CrmQuoteForm = () => {
       });
       updateAddress({ state: stateText, city: cityText, cep: "", street: "", neighborhood: "", number: "", complement: "", noNumber: false });
 
-      // 3) Busca os valores reais (compareTables) — pode levar alguns segundos
-      try {
-        const plansRes = await call("plans", { qttnCd });
-        const plans = (plansRes.plans || []).map(
-          (p: { name: string; monthlyPrice: number; annualPrice: number }) => ({
-            id: null,
-            name: p.name,
-            monthlyPrice: p.monthlyPrice,
-            annualPrice: p.annualPrice,
-            coverages: [],
-          }),
-        );
-        setCrmPlans(plans);
-      } catch (err) {
-        console.warn("plans fetch warning:", err);
+      // 3) Redireciona direto para a página oficial do CRM (mesma lógica do script.pwrcrm.js)
+      const PWR = "https://app.powercrm.com.br";
+      let target = submitRes.redirecTo;
+      if (!target) {
+        if (Number(submitRes.isPlan) === 1) {
+          if (submitRes.specificTable || Number(submitRes.planPriority) === 2) {
+            target = `${PWR}/newQuotation?h=${encodeURIComponent(qttnCd)}`;
+          } else {
+            target = `${PWR}/compareTables?h=${encodeURIComponent(qttnCd)}`;
+          }
+        } else if (Number(submitRes.isPlan) > 0) {
+          target = `${PWR}/receivedQuotation?h=${encodeURIComponent(qttnCd)}`;
+        } else {
+          target = `${PWR}/noPlan?h=${encodeURIComponent(qttnCd)}`;
+        }
       }
 
-      toast.success("Cotação enviada! Veja seus planos.");
-      navigate("/detalhes");
+      toast.success("Cotação enviada! Carregando seus planos...");
+      window.location.href = target;
     } catch (err) {
       console.error("submit pwrcrm error", err);
       toast.error(
