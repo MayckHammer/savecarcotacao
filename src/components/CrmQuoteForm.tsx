@@ -344,7 +344,7 @@ const CrmQuoteForm = () => {
 
       <button
         type="button"
-        onClick={() => navigate("/cotacao")}
+        onClick={() => navigate("/cotacao-detalhada")}
         className="block w-full text-center text-xs text-muted-foreground underline mt-2"
       >
         Problemas? Usar o formulário detalhado
