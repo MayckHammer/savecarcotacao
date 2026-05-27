@@ -7,7 +7,7 @@ import { QuoteProvider } from "@/contexts/QuoteContext";
 import Landing from "./pages/Landing";
 import Quote from "./pages/Quote";
 import Result from "./pages/Result";
-import PlanDetails from "./pages/PlanDetails";
+
 import Aguardando from "./pages/Aguardando";
 import Payment from "./pages/Payment";
 import Inspection from "./pages/Inspection";
