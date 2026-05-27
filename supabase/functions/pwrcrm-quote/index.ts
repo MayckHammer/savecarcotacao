@@ -326,7 +326,7 @@ Deno.serve(async (req) => {
         `${PWRCRM_BASE}/newQuotation?h=${encodeURIComponent(qttnCd)}`,
       ];
 
-      let plans: ReturnType<typeof parsePlansFromHtml> = [];
+      let parsed: ReturnType<typeof parsePlansFromHtml> | null = null;
       let sourceUrl = "";
       for (const url of urls) {
         try {
@@ -338,8 +338,9 @@ Deno.serve(async (req) => {
           });
           if (!r.ok) continue;
           const html = await r.text();
-          plans = parsePlansFromHtml(html);
-          if (plans.length) {
+          const p = parsePlansFromHtml(html, String(qttnCd));
+          if (p.plans.length) {
+            parsed = p;
             sourceUrl = url;
             break;
           }
@@ -349,7 +350,13 @@ Deno.serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ plans, sourceUrl }),
+        JSON.stringify({
+          plans: parsed?.plans || [],
+          coverages: parsed?.coverages || [],
+          client: parsed?.client || null,
+          sourceUrl,
+          fallbackUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(String(qttnCd))}`,
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
