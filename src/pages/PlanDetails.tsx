@@ -62,11 +62,16 @@ const CHIPS_PREMIUM: CoverageChip[] = [
 
 const PlanDetails = () => {
   const navigate = useNavigate();
-  const { quote, setPlanName } = useQuote();
+  const { quote, crmPlans, setPlanName } = useQuote();
   const [showUserInfo, setShowUserInfo] = useState(false);
   const [continuing, setContinuing] = useState(false);
 
   const chips = quote.planName === "PREMIUM" ? CHIPS_PREMIUM : CHIPS_COMPLETO;
+
+  const getPlanPrice = (planName: "COMPLETO" | "PREMIUM") => {
+    const p = crmPlans.find((c) => c.name?.toUpperCase().includes(planName));
+    return p?.monthlyPrice || 0;
+  };
 
   const handleContinue = async () => {
     setContinuing(true);
