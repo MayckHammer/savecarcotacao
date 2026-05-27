@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.consulta-cep]
 verify_jwt = false
+
+[functions.pwrcrm-quote]
+verify_jwt = false
