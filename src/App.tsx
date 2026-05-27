@@ -16,6 +16,7 @@ import Confirmation from "./pages/Confirmation";
 import NotFound from "./pages/NotFound";
 import Codebase from "./pages/Codebase";
 import QuickQuote from "./pages/QuickQuote";
+import QuoteExpress from "./pages/QuoteExpress";
 import ScrollToTop from "./components/ScrollToTop";
 
 const queryClient = new QueryClient();
