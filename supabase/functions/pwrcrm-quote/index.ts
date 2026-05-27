@@ -7,12 +7,12 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 const PWRCRM_BASE = "https://app.powercrm.com.br";
 const PWRCRM_UTIL = "https://utilities.powercrm.com.br";
 
-// Hashes do formulário público cotacao.me/xQDAWXlZ (Save Car Brasil).
+// Hashes oficiais do formulário público cotacao.me/xQDAWXlZ (Save Car Brasil).
 const FORM_HASHES = {
   companyHash: "Sav3c4r1Czwe3",
   formCode: "xQDAWXlZ",
-  pipelineColumn: "1",
-  funnelStage: "6834bcae-ecd3-4387-8bc2-dfd03dbaea0c",
+  pipelineColumn: "2",
+  funnelStage: "3b586660-c63e-4f35-b40c-d8e62260945c",
   leadSource: "23684",
 };
 

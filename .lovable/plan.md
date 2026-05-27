@@ -1,35 +1,35 @@
-## Objetivo
+## Plano para corrigir o fluxo CRM
 
-Remover a tela `/detalhes` (PlanDetails) do fluxo da cotação express. Após o submit do formulário, o usuário é levado **direto para a página oficial do PowerCRM** (`compareTables` / `newQuotation`), que já mostra COMPLETO e PREMIUM com os valores reais calculados.
+1. **Atualizar os identificadores oficiais do formulário CRM**
+   - Trocar os campos ocultos usados na integração para exatamente os dados enviados agora:
+     - `companyHash`: `Sav3c4r1Czwe3`
+     - `formCode`: `xQDAWXlZ`
+     - `pipelineColumn`: `2`
+     - `funnelStage`: `3b586660-c63e-4f35-b40c-d8e62260945c`
+     - `leadSource`: `23684`
+   - Isso deve fazer a cotação cair no mesmo funil/etapa do formulário externo que gerou a página correta do segundo print.
 
-## Mudanças
+2. **Evitar embed/iframe da página de planos do PowerCRM**
+   - O primeiro print mostra que `app.powercrm.com.br` recusou conexão dentro do preview/iframe.
+   - Então o app não deve tentar mostrar a página do CRM embutida.
+   - O fluxo correto será abrir/redirecionar a aba atual para a URL oficial do CRM, como no segundo print:
+     - `https://app.powercrm.com.br/compareTables?h={codigo_da_cotacao}`
 
-### 1. `src/components/CrmQuoteForm.tsx`
-- Remover a chamada `pwrcrm-quote/plans` (não precisamos mais raspar valores — o CRM mostra direto).
-- Remover `setCrmPlans` do contexto.
-- Após receber `qttnCd` do `pwrcrm-quote/submit`, redirecionar a aba atual usando a mesma lógica do `script.pwrcrm.js`:
-  - Se `redirecTo` veio na resposta → `window.location = redirecTo`
-  - Senão, se `isPlan == 1` → `https://app.powercrm.com.br/compareTables?h={qttnCd}` (ou `/newQuotation?h={qttnCd}` quando `planPriority == 2` ou `specificTable`)
-  - Senão → `https://app.powercrm.com.br/receivedQuotation?h={qttnCd}`
-- Manter o `updatePersonal/updateVehicle/updateAddress` antes do redirect (caso o usuário volte com botão Voltar).
+3. **Manter a UX/UI personalizada do app na primeira etapa**
+   - Continuar usando o formulário nativo do app com visual Loovi/Save Car.
+   - Manter os selects dinâmicos de tipo, marca, ano, modelo, estado e cidade usando os dados oficiais do CRM.
+   - Não usar o CSS/HTML bruto do CRM na tela, apenas replicar os campos e enviar os mesmos dados.
 
-### 2. `src/App.tsx`
-- Remover rota `/detalhes` e o import de `PlanDetails`.
+4. **Ajustar a regra de redirecionamento após envio**
+   - Após o CRM retornar `qttnCd`, priorizar sempre a página de comparação de planos:
+     - `compareTables?h={qttnCd}`
+   - Só usar `redirecTo` se o CRM retornar uma URL explícita e válida para outra página oficial.
+   - Isso evita cair em uma tela incorreta/recusada e aproxima o fluxo do teste externo bem-sucedido.
 
-### 3. Limpeza
-- `src/pages/PlanDetails.tsx` pode ser apagado (não é mais usado em lugar nenhum do fluxo express). O fluxo `/cotacao-detalhada` (fallback manual) também navegava para `/detalhes` — vou redirecioná-lo também para o CRM oficial quando tiver `crmQuotationCode`, ou manter um caminho mínimo. Para não quebrar nada, mantenho `PlanDetails.tsx` como arquivo mas removo a rota; quem chamar `/detalhes` cai no NotFound. Edito `Quote.tsx` para também redirecionar ao CRM em vez de `/detalhes`.
+5. **Limpar lógica não usada**
+   - Remover ou deixar sem uso a ação antiga de raspagem `plans`, já que os valores serão exibidos pela própria página oficial do CRM.
+   - Manter o formulário detalhado antigo como fallback em `/cotacao-detalhada`.
 
-### 4. Edge function `pwrcrm-quote`
-- A action `plans` continua existindo (não custa nada), mas não é mais usada pelo front. Sem mudança de código.
+## Resultado esperado
 
-## Arquivos editados
-
-- `src/components/CrmQuoteForm.tsx`
-- `src/pages/Quote.tsx` (navegar para o CRM em vez de `/detalhes` quando houver `crmQuotationCode`)
-- `src/App.tsx` (remover rota e import de `PlanDetails`)
-- `src/pages/PlanDetails.tsx` — deletar
-- `mem://integrations/power-crm` — atualizar dizendo que o app redireciona para o CRM, sem tela intermediária
-
-## Resultado
-
-Cliente preenche `/cotacao` → clica "Ver meus planos" → é levado direto para `app.powercrm.com.br/compareTables?h=...` com os planos COMPLETO/PREMIUM e valores reais. Toda a continuação (escolha, contato, pagamento) acontece no próprio CRM.
+O usuário preenche a cotação dentro do app com a UX/UI personalizada, clica em **Ver meus planos**, a cotação é enviada para o CRM usando os mesmos parâmetros do formulário oficial e a aba atual abre diretamente a tela oficial de planos, como no segundo print, mostrando COMPLETO e PREMIUM com os valores calculados pelo CRM.
