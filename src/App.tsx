@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound";
 import Codebase from "./pages/Codebase";
 import QuickQuote from "./pages/QuickQuote";
 import QuoteExpress from "./pages/QuoteExpress";
+import PlansFromCrm from "./pages/PlansFromCrm";
 import ScrollToTop from "./components/ScrollToTop";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="/cotacao" element={<QuoteExpress />} />
             <Route path="/cotacao-detalhada" element={<Quote />} />
+            <Route path="/planos" element={<PlansFromCrm />} />
             <Route path="/resultado" element={<Result />} />
             
             <Route path="/aguardando" element={<Aguardando />} />

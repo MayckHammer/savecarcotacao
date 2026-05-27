@@ -1,35 +1,68 @@
-## Plano para corrigir o fluxo CRM
+# Plano: Página /planos com layout Loovi
 
-1. **Atualizar os identificadores oficiais do formulário CRM**
-   - Trocar os campos ocultos usados na integração para exatamente os dados enviados agora:
-     - `companyHash`: `Sav3c4r1Czwe3`
-     - `formCode`: `xQDAWXlZ`
-     - `pipelineColumn`: `2`
-     - `funnelStage`: `3b586660-c63e-4f35-b40c-d8e62260945c`
-     - `leadSource`: `23684`
-   - Isso deve fazer a cotação cair no mesmo funil/etapa do formulário externo que gerou a página correta do segundo print.
+## 1. Edge Function `pwrcrm-quote` — action `plans`
+Aprimorar o scraping de `compareTables?h={qttnCd}` para retornar estrutura mais rica:
 
-2. **Evitar embed/iframe da página de planos do PowerCRM**
-   - O primeiro print mostra que `app.powercrm.com.br` recusou conexão dentro do preview/iframe.
-   - Então o app não deve tentar mostrar a página do CRM embutida.
-   - O fluxo correto será abrir/redirecionar a aba atual para a URL oficial do CRM, como no segundo print:
-     - `https://app.powercrm.com.br/compareTables?h={codigo_da_cotacao}`
+```ts
+{
+  client: { name, vehicleDescription, fipeValue },
+  plans: [
+    {
+      name: "COMPLETO" | "PREMIUM",
+      monthlyPrice: number,
+      annualPrice: number,
+      adhesion: number,
+      participation: string,
+      acceptUrl: string  // URL oficial de aceite no CRM
+    }
+  ],
+  coverages: [
+    { label: string, completo: boolean | string, premium: boolean | string, highlight: boolean }
+  ],
+  sourceUrl: string
+}
+```
 
-3. **Manter a UX/UI personalizada do app na primeira etapa**
-   - Continuar usando o formulário nativo do app com visual Loovi/Save Car.
-   - Manter os selects dinâmicos de tipo, marca, ano, modelo, estado e cidade usando os dados oficiais do CRM.
-   - Não usar o CSS/HTML bruto do CRM na tela, apenas replicar os campos e enviar os mesmos dados.
+`coverages[].highlight = true` para as 6 principais (Colisão, Roubo/Furto, Incêndio, RCF, Fenômenos da Natureza, Assistência 24h). As demais ficam ocultas no resumo e aparecem ao expandir.
 
-4. **Ajustar a regra de redirecionamento após envio**
-   - Após o CRM retornar `qttnCd`, priorizar sempre a página de comparação de planos:
-     - `compareTables?h={qttnCd}`
-   - Só usar `redirecTo` se o CRM retornar uma URL explícita e válida para outra página oficial.
-   - Isso evita cair em uma tela incorreta/recusada e aproxima o fluxo do teste externo bem-sucedido.
+## 2. Nova página `src/pages/PlansFromCrm.tsx` → rota `/planos?h={qttnCd}`
 
-5. **Limpar lógica não usada**
-   - Remover ou deixar sem uso a ação antiga de raspagem `plans`, já que os valores serão exibidos pela própria página oficial do CRM.
-   - Manter o formulário detalhado antigo como fallback em `/cotacao-detalhada`.
+Layout mobile-first com identidade Loovi (verde #0D5C3E, amarelo #F2B705, glassmorphism):
 
-## Resultado esperado
+```text
+[Header dark]
+[Resumo veículo + FIPE]
+[Card PREMIUM]            [Card COMPLETO]   ← stacked no mobile
+  R$ XX,XX/mês               R$ XX,XX/mês
+  Adesão · Participação      Adesão · Participação
+  [Contratar Agora] (verde, abre acceptUrl em nova aba)
+  [Negociar valores] (outline amarelo, abre WhatsApp wa.me/5534998679585
+                      com mensagem pré-preenchida + redireciona para /aguardando)
 
-O usuário preenche a cotação dentro do app com a UX/UI personalizada, clica em **Ver meus planos**, a cotação é enviada para o CRM usando os mesmos parâmetros do formulário oficial e a aba atual abre diretamente a tela oficial de planos, como no segundo print, mostrando COMPLETO e PREMIUM com os valores calculados pelo CRM.
+[Coberturas — 6 principais com ✓/✗ por plano]
+[▼ Ver tabela completa] (Collapsible com todas as coberturas)
+```
+
+### Botões (especificação)
+- **Contratar Agora**: `window.open(plan.acceptUrl, "_blank")` — fluxo oficial CRM.
+- **Negociar valores**: 
+  1. Monta mensagem: `Olá! Quero negociar valores do plano ${plan.name} para meu ${vehicle} (Cotação ${qttnCd}).`
+  2. `window.open("https://wa.me/5534998679585?text=" + encodeURIComponent(msg), "_blank")`
+  3. `navigate("/aguardando")` na mesma aba imediatamente após.
+
+### Estados
+- Loading: skeletons nos cards e tabela.
+- Erro/sem dados: mostra fallback com botão "Abrir cotação oficial" → `compareTables?h=...`.
+
+## 3. `CrmQuoteForm.tsx`
+Substituir o `window.open(compareTables)` por `navigate('/planos?h=' + qttnCd)`. Dados do cliente/veículo continuam no `QuoteContext` (já são gravados).
+
+## 4. Rota
+Adicionar `/planos` em `src/App.tsx` importando `PlansFromCrm`.
+
+## Detalhes técnicos
+- Componente `Collapsible` (já existe em `ui/collapsible.tsx`) para tabela expandida.
+- Ícones `Check`/`X` do lucide-react com cores `text-green-600` / `text-muted-foreground`.
+- Cards usando tokens do design system (`bg-card`, `border`, `shadow-elegant`).
+- Página `/aguardando` já existe — sem alterações.
+- WhatsApp já é o mesmo número do `WhatsAppButton` (5534998679585).

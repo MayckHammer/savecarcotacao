@@ -185,22 +185,8 @@ const CrmQuoteForm = () => {
       });
       updateAddress({ state: stateText, city: cityText, cep: "", street: "", neighborhood: "", number: "", complement: "", noNumber: false });
 
-      // 3) Redireciona para a página oficial do CRM (sempre compareTables)
-      const PWR = "https://app.powercrm.com.br";
-      let target = `${PWR}/compareTables?h=${encodeURIComponent(qttnCd)}`;
-      if (submitRes.redirecTo && /^https?:\/\//i.test(submitRes.redirecTo)) {
-        target = submitRes.redirecTo;
-      }
-
-      toast.success("Cotação enviada! Abrindo seus planos...");
-      // Abre em nova aba para evitar bloqueio de iframe do preview
-      const win = window.open(target, "_blank", "noopener,noreferrer");
-      if (!win) {
-        // fallback: navega na mesma aba (top) se popup foi bloqueado
-        window.top
-          ? (window.top.location.href = target)
-          : (window.location.href = target);
-      }
+      toast.success("Cotação enviada! Carregando seus planos...");
+      navigate(`/planos?h=${encodeURIComponent(qttnCd)}`);
     } catch (err) {
       console.error("submit pwrcrm error", err);
       toast.error(
