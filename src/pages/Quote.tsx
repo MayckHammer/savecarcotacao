@@ -426,10 +426,21 @@ const Quote = () => {
           if (error) throw error;
           if (data?.session_id) setSessionId(data.session_id);
         }
-        navigate("/detalhes");
+        // Redireciona direto para a página oficial do CRM (planos com valores reais)
+        const code = quote.crmQuotationCode;
+        if (code) {
+          window.location.href = `https://app.powercrm.com.br/compareTables?h=${encodeURIComponent(code)}`;
+          return;
+        }
+        navigate("/");
       } catch (e) {
         console.error("Submit error:", e);
-        navigate("/detalhes");
+        const code = quote.crmQuotationCode;
+        if (code) {
+          window.location.href = `https://app.powercrm.com.br/compareTables?h=${encodeURIComponent(code)}`;
+          return;
+        }
+        navigate("/");
       } finally {
         setSubmitting(false);
       }
