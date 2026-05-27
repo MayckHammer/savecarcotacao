@@ -16,6 +16,7 @@ import Confirmation from "./pages/Confirmation";
 import NotFound from "./pages/NotFound";
 import Codebase from "./pages/Codebase";
 import QuickQuote from "./pages/QuickQuote";
+import QuoteExpress from "./pages/QuoteExpress";
 import ScrollToTop from "./components/ScrollToTop";
 
 const queryClient = new QueryClient();
@@ -30,7 +31,8 @@ const App = () => (
           <ScrollToTop />
           <Routes>
             <Route path="/" element={<Landing />} />
-            <Route path="/cotacao" element={<Quote />} />
+            <Route path="/cotacao" element={<QuoteExpress />} />
+            <Route path="/cotacao-detalhada" element={<Quote />} />
             <Route path="/resultado" element={<Result />} />
             <Route path="/detalhes" element={<PlanDetails />} />
             <Route path="/aguardando" element={<Aguardando />} />

@@ -62,11 +62,16 @@ const CHIPS_PREMIUM: CoverageChip[] = [
 
 const PlanDetails = () => {
   const navigate = useNavigate();
-  const { quote, setPlanName } = useQuote();
+  const { quote, crmPlans, setPlanName } = useQuote();
   const [showUserInfo, setShowUserInfo] = useState(false);
   const [continuing, setContinuing] = useState(false);
 
   const chips = quote.planName === "PREMIUM" ? CHIPS_PREMIUM : CHIPS_COMPLETO;
+
+  const getPlanPrice = (planName: "COMPLETO" | "PREMIUM") => {
+    const p = crmPlans.find((c) => c.name?.toUpperCase().includes(planName));
+    return p?.monthlyPrice || 0;
+  };
 
   const handleContinue = async () => {
     setContinuing(true);
@@ -209,9 +214,22 @@ const PlanDetails = () => {
                 >
                   {plan}
                 </span>
-                <span className="text-[11px] font-semibold text-muted-foreground leading-tight">
-                  Valor confirmado pelo consultor
-                </span>
+                {getPlanPrice(plan) > 0 ? (
+                  <span className="text-base font-extrabold text-primary leading-tight">
+                    R${" "}
+                    {getPlanPrice(plan).toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      /mês
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-semibold text-muted-foreground leading-tight">
+                    Valor confirmado pelo consultor
+                  </span>
+                )}
               </div>
             </button>
           ))}
