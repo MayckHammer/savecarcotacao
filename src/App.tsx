@@ -31,7 +31,8 @@ const App = () => (
           <ScrollToTop />
           <Routes>
             <Route path="/" element={<Landing />} />
-            <Route path="/cotacao" element={<Quote />} />
+            <Route path="/cotacao" element={<QuoteExpress />} />
+            <Route path="/cotacao-detalhada" element={<Quote />} />
             <Route path="/resultado" element={<Result />} />
             <Route path="/detalhes" element={<PlanDetails />} />
             <Route path="/aguardando" element={<Aguardando />} />
