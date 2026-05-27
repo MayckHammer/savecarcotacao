@@ -214,9 +214,22 @@ const PlanDetails = () => {
                 >
                   {plan}
                 </span>
-                <span className="text-[11px] font-semibold text-muted-foreground leading-tight">
-                  Valor confirmado pelo consultor
-                </span>
+                {getPlanPrice(plan) > 0 ? (
+                  <span className="text-base font-extrabold text-primary leading-tight">
+                    R${" "}
+                    {getPlanPrice(plan).toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      /mês
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-semibold text-muted-foreground leading-tight">
+                    Valor confirmado pelo consultor
+                  </span>
+                )}
               </div>
             </button>
           ))}
