@@ -48,7 +48,7 @@ const PlansFromCrm = () => {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const qttnCd = params.get("h") || "";
-  const { quoteData } = useQuote();
+  const { quote } = useQuote();
 
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<Plan[]>([]);
