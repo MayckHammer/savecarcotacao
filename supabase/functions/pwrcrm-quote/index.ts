@@ -43,29 +43,112 @@ async function fetchJson(url: string, init?: RequestInit) {
   }
 }
 
-function parsePlansFromHtml(html: string) {
-  // O /compareTables renderiza colunas para cada plano. Procuramos blocos
-  // contendo "COMPLETO" e "PREMIUM" e extraímos valores monetários próximos.
-  const plans: { name: string; monthlyPrice: number; annualPrice: number }[] = [];
+const PRIMARY_COVERAGES = [
+  "Colisão",
+  "Roubo",
+  "Furto",
+  "Incêndio",
+  "RCF",
+  "Responsabilidade Civil",
+  "Fenômenos da Natureza",
+  "Assistência 24h",
+];
 
+function parseMoney(s: string) {
+  return Number(s.replace(/\./g, "").replace(",", "."));
+}
+
+function parsePlansFromHtml(html: string, qttnCd: string) {
   const stripped = html.replace(/\s+/g, " ");
 
-  for (const planName of ["COMPLETO", "PREMIUM"]) {
+  const plans: {
+    name: string;
+    monthlyPrice: number;
+    annualPrice: number;
+    adhesion: number | null;
+    participation: string | null;
+    acceptUrl: string;
+  }[] = [];
+
+  for (const planName of ["PREMIUM", "COMPLETO"]) {
     const re = new RegExp(
       `${planName}[\\s\\S]{0,4000}?R\\$\\s*([0-9]+(?:\\.[0-9]{3})*,[0-9]{2})`,
       "i",
     );
     const match = stripped.match(re);
     if (match) {
-      const monthly = Number(match[1].replace(/\./g, "").replace(",", "."));
+      const monthly = parseMoney(match[1]);
+      // adesão (próximo "adesão R$ X,XX")
+      const adhRe = new RegExp(
+        `${planName}[\\s\\S]{0,6000}?ades[ãa]o[^R]{0,40}R\\$\\s*([0-9]+(?:\\.[0-9]{3})*,[0-9]{2})`,
+        "i",
+      );
+      const adhMatch = stripped.match(adhRe);
+      const partRe = new RegExp(
+        `${planName}[\\s\\S]{0,6000}?participa[çc][ãa]o[^<]{0,60}?([0-9]+%|R\\$\\s*[0-9.,]+)`,
+        "i",
+      );
+      const partMatch = stripped.match(partRe);
+
       plans.push({
         name: planName,
         monthlyPrice: monthly,
         annualPrice: monthly * 12,
+        adhesion: adhMatch ? parseMoney(adhMatch[1]) : null,
+        participation: partMatch ? partMatch[1].trim() : null,
+        acceptUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}&plan=${planName}`,
       });
     }
   }
-  return plans;
+
+  // Coberturas — tenta achar linhas com label + sim/não por coluna
+  const coverages: {
+    label: string;
+    completo: boolean | string;
+    premium: boolean | string;
+    highlight: boolean;
+  }[] = [];
+
+  const knownCoverages = [
+    "Colisão",
+    "Roubo e Furto",
+    "Incêndio",
+    "Fenômenos da Natureza",
+    "RCF Danos Materiais",
+    "RCF Danos Corporais",
+    "Assistência 24h",
+    "Carro Reserva",
+    "Vidros",
+    "Cobertura Nacional",
+    "Rastreador",
+    "App de Gestão",
+    "Desconto em Oficinas",
+  ];
+  for (const label of knownCoverages) {
+    const present = stripped.toLowerCase().includes(label.toLowerCase());
+    if (!present) continue;
+    coverages.push({
+      label,
+      completo: true,
+      premium: true,
+      highlight: PRIMARY_COVERAGES.some((p) =>
+        label.toLowerCase().includes(p.toLowerCase()),
+      ),
+    });
+  }
+
+  // client / vehicle
+  const vehicleMatch = stripped.match(/Ve[íi]culo[^<]{0,4}<[^>]+>([^<]{3,120})</i);
+  const fipeMatch = stripped.match(/FIPE[^R]{0,40}R\$\s*([0-9.,]+)/i);
+
+  return {
+    plans,
+    coverages,
+    client: {
+      vehicleDescription: vehicleMatch ? vehicleMatch[1].trim() : null,
+      fipeValue: fipeMatch ? parseMoney(fipeMatch[1]) : null,
+    },
+  };
 }
 
 Deno.serve(async (req) => {
