@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound";
 import Codebase from "./pages/Codebase";
 import QuickQuote from "./pages/QuickQuote";
 import QuoteExpress from "./pages/QuoteExpress";
+import PlansFromCrm from "./pages/PlansFromCrm";
 import ScrollToTop from "./components/ScrollToTop";
 
 const queryClient = new QueryClient();
