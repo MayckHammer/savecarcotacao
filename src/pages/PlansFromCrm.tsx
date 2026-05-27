@@ -94,9 +94,9 @@ const PlansFromCrm = () => {
   const extraCoverages = coverages.filter((c) => !c.highlight);
 
   const vehicleLabel = [
-    quoteData.vehicle?.brand,
-    quoteData.vehicle?.model,
-    quoteData.vehicle?.year,
+    quote.vehicle?.brand,
+    quote.vehicle?.model,
+    quote.vehicle?.year,
   ]
     .filter(Boolean)
     .join(" ");
