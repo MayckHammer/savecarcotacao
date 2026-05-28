@@ -354,6 +354,7 @@ Deno.serve(async (req) => {
         JSON.stringify({
           plans: parsed?.plans || [],
           coverages: parsed?.coverages || [],
+          planNames: parsed?.planNames || [],
           client: parsed?.client || null,
           sourceUrl,
           fallbackUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(String(qttnCd))}`,
