@@ -184,6 +184,9 @@ const Landing = () => {
         <p className="text-xs text-muted-foreground">
           © 2026 SAVE CAR BRASIL. Todos os direitos reservados.
         </p>
+        <p className="mt-2 text-[11px] text-muted-foreground/80">
+          By <span className="font-semibold text-foreground/80">Hammer</span>
+        </p>
       </motion.footer>
     </div>
   );
