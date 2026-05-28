@@ -75,10 +75,17 @@ function parseMoney(s: string | null | undefined): number | null {
   return Number(m[1].replace(/\./g, "").replace(",", "."));
 }
 
+interface ApiGroup {
+  originalAccessPrice: number | null;
+  forcedAccessPrice: number | null;
+  plans: ApiPlan[];
+  coverages?: Array<{ id: number; text: string; status: boolean | null }>;
+  assistances?: Array<{ id: number; text: string; status: boolean | null }>;
+  benefits?: Array<{ id: number; text: string; status: boolean | null }>;
+  optionals?: Array<{ id: number; text: string; status: boolean | null }> | null;
+}
+
 interface ApiPlan {
-  planId: number;
-  name: string;
-  tppId: number;
   price: string;
   priceValue: number;
   accessPrice: string;
