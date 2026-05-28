@@ -43,111 +43,149 @@ async function fetchJson(url: string, init?: RequestInit) {
   }
 }
 
-const PRIMARY_COVERAGES = [
-  "Colisão",
-  "Roubo",
-  "Furto",
-  "Incêndio",
-  "RCF",
-  "Responsabilidade Civil",
-  "Fenômenos da Natureza",
-  "Assistência 24h",
+const PRIMARY_COVERAGE_KEYS = [
+  "colisão",
+  "roubo",
+  "incêndio",
+  "fenômenos",
+  "rcf",
+  "assistência",
 ];
 
-function parseMoney(s: string) {
-  return Number(s.replace(/\./g, "").replace(",", "."));
+const BROWSER_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
+  "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+};
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&aacute;/g, "á").replace(/&eacute;/g, "é").replace(/&iacute;/g, "í")
+    .replace(/&oacute;/g, "ó").replace(/&uacute;/g, "ú").replace(/&atilde;/g, "ã")
+    .replace(/&otilde;/g, "õ").replace(/&ccedil;/g, "ç").replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&Aacute;/g, "Á").replace(/&Eacute;/g, "É").replace(/&Atilde;/g, "Ã");
 }
 
-function parsePlansFromHtml(html: string, qttnCd: string) {
-  const stripped = html.replace(/\s+/g, " ");
+function parseMoney(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const m = String(s).replace(/\u00a0/g, " ").match(/([0-9]+(?:\.[0-9]{3})*,[0-9]{2})/);
+  if (!m) return null;
+  return Number(m[1].replace(/\./g, "").replace(",", "."));
+}
 
-  const plans: {
-    name: string;
-    monthlyPrice: number;
-    annualPrice: number;
-    adhesion: number | null;
-    participation: string | null;
-    acceptUrl: string;
-  }[] = [];
+interface ApiGroup {
+  originalAccessPrice: number | null;
+  forcedAccessPrice: number | null;
+  plans: ApiPlan[];
+  coverages?: Array<{ id: number; text: string; status: boolean | null }>;
+  assistances?: Array<{ id: number; text: string; status: boolean | null }>;
+  benefits?: Array<{ id: number; text: string; status: boolean | null }>;
+  optionals?: Array<{ id: number; text: string; status: boolean | null }> | null;
+}
 
-  for (const planName of ["PREMIUM", "COMPLETO"]) {
-    const re = new RegExp(
-      `${planName}[\\s\\S]{0,4000}?R\\$\\s*([0-9]+(?:\\.[0-9]{3})*,[0-9]{2})`,
-      "i",
-    );
-    const match = stripped.match(re);
-    if (match) {
-      const monthly = parseMoney(match[1]);
-      // adesão (próximo "adesão R$ X,XX")
-      const adhRe = new RegExp(
-        `${planName}[\\s\\S]{0,6000}?ades[ãa]o[^R]{0,40}R\\$\\s*([0-9]+(?:\\.[0-9]{3})*,[0-9]{2})`,
-        "i",
-      );
-      const adhMatch = stripped.match(adhRe);
-      const partRe = new RegExp(
-        `${planName}[\\s\\S]{0,6000}?participa[çc][ãa]o[^<]{0,60}?([0-9]+%|R\\$\\s*[0-9.,]+)`,
-        "i",
-      );
-      const partMatch = stripped.match(partRe);
+interface ApiPlan {
+  planId: number;
+  name: string;
+  tppId: number;
+  price: string;
+  priceValue: number;
+  accessPrice: string;
+  franchisePrice: string;
+  coverages: Array<{ id: number; text: string; status: boolean | null }>;
+}
 
-      plans.push({
-        name: planName,
-        monthlyPrice: monthly,
-        annualPrice: monthly * 12,
-        adhesion: adhMatch ? parseMoney(adhMatch[1]) : null,
-        participation: partMatch ? partMatch[1].trim() : null,
-        acceptUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}&plan=${planName}`,
-      });
+async function fetchPlansData(qttnCd: string) {
+  const pageUrl = `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}`;
+  const pageRes = await fetch(pageUrl, { headers: BROWSER_HEADERS });
+  if (!pageRes.ok) throw new Error(`page fetch ${pageRes.status}`);
+  const html = await pageRes.text();
+
+  const idMatch = html.match(/\/quotationTablesAndPlans\?i=(\d+)/);
+  if (!idMatch) throw new Error("internal quotation id not found in page");
+  const internalId = idMatch[1];
+
+  const clientNameMatch = html.match(/<h2[^>]*>\s*([^<]+?)\s*<\/h2>/);
+  const clientName = clientNameMatch
+    ? decodeEntities(clientNameMatch[1]).replace(/^Olá,\s*/i, "").trim()
+    : null;
+  const vehicleMatch = html.match(/class="corPrimary"[^>]*>([^<]+)</);
+  const vehicleDescription = vehicleMatch ? decodeEntities(vehicleMatch[1]).trim() : null;
+  const fipeMatch = html.match(/class="corSecondary"[^>]*>([^<]+)</);
+  const fipeFormatted = fipeMatch ? decodeEntities(fipeMatch[1]).trim() : null;
+  const fipeValue = parseMoney(fipeFormatted);
+
+  const dataRes = await fetch(
+    `${PWRCRM_BASE}/quotationTablesAndPlans?i=${internalId}`,
+    { headers: BROWSER_HEADERS },
+  );
+  if (!dataRes.ok) throw new Error(`data fetch ${dataRes.status}`);
+  const groups: ApiGroup[] = await dataRes.json();
+
+  // Flatten: cada plano herda coverages/assistances/benefits do seu grupo
+  type FlatPlan = ApiPlan & {
+    _coverages: { id: number; text: string; status: boolean | null }[];
+  };
+  const flat: FlatPlan[] = [];
+  for (const g of groups) {
+    const groupItems = [
+      ...(g.coverages || []),
+      ...(g.assistances || []),
+      ...(g.benefits || []),
+    ];
+    for (const p of g.plans || []) {
+      flat.push({ ...p, _coverages: groupItems });
     }
   }
 
-  // Coberturas — tenta achar linhas com label + sim/não por coluna
-  const coverages: {
-    label: string;
-    completo: boolean | string;
-    premium: boolean | string;
-    highlight: boolean;
-  }[] = [];
+  const planNames = flat.map((p) => (p.name || "").toUpperCase());
 
-  const knownCoverages = [
-    "Colisão",
-    "Roubo e Furto",
-    "Incêndio",
-    "Fenômenos da Natureza",
-    "RCF Danos Materiais",
-    "RCF Danos Corporais",
-    "Assistência 24h",
-    "Carro Reserva",
-    "Vidros",
-    "Cobertura Nacional",
-    "Rastreador",
-    "App de Gestão",
-    "Desconto em Oficinas",
-  ];
-  for (const label of knownCoverages) {
-    const present = stripped.toLowerCase().includes(label.toLowerCase());
-    if (!present) continue;
-    coverages.push({
-      label,
-      completo: true,
-      premium: true,
-      highlight: PRIMARY_COVERAGES.some((p) =>
-        label.toLowerCase().includes(p.toLowerCase()),
-      ),
-    });
+  const plans = flat.map((p) => {
+    const priceValue = Number(p.priceValue) || parseMoney(p.price) || 0;
+    return {
+      name: (p.name || "").toUpperCase(),
+      monthlyPrice: priceValue,
+      annualPrice: priceValue * 12,
+      adhesion: parseMoney(p.accessPrice),
+      participation: p.franchisePrice || null,
+      planId: String(p.planId),
+      tppId: String(p.tppId),
+      acceptUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}&plan=${(p.name || "").toUpperCase()}`,
+    };
+  });
+
+  const seen = new Set<number>();
+  const ordered: { id: number; text: string }[] = [];
+  for (const p of flat) {
+    for (const c of p._coverages) {
+      if (!seen.has(c.id)) {
+        seen.add(c.id);
+        ordered.push({ id: c.id, text: c.text });
+      }
+    }
   }
 
-  // client / vehicle
-  const vehicleMatch = stripped.match(/Ve[íi]culo[^<]{0,4}<[^>]+>([^<]{3,120})</i);
-  const fipeMatch = stripped.match(/FIPE[^R]{0,40}R\$\s*([0-9.,]+)/i);
+  const coverages = ordered.map(({ id, text }) => {
+    const values = flat.map((p) => {
+      const found = p._coverages.find((c) => c.id === id);
+      // status pode vir null — presença no grupo do plano já significa "incluso"
+      return !!found && found.status !== false;
+    });
+    const lower = text.toLowerCase();
+    return {
+      label: text,
+      values,
+      highlight: PRIMARY_COVERAGE_KEYS.some((k) => lower.includes(k)),
+    };
+  });
+
 
   return {
     plans,
     coverages,
-    client: {
-      vehicleDescription: vehicleMatch ? vehicleMatch[1].trim() : null,
-      fipeValue: fipeMatch ? parseMoney(fipeMatch[1]) : null,
-    },
+    planNames,
+    client: { name: clientName, vehicleDescription, fipeValue, fipeFormatted },
   };
 }
 
@@ -315,44 +353,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ---------- PLANS (scrape compareTables) ----------
+    // ---------- PLANS (oficial CRM data) ----------
     if (action === "plans") {
       const qttnCd = body.qttnCd;
       if (!qttnCd) throw new Error("qttnCd required");
 
-      // tenta compareTables primeiro, depois newQuotation
-      const urls = [
-        `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}`,
-        `${PWRCRM_BASE}/newQuotation?h=${encodeURIComponent(qttnCd)}`,
-      ];
-
-      let parsed: ReturnType<typeof parsePlansFromHtml> | null = null;
+      let parsed: Awaited<ReturnType<typeof fetchPlansData>> | null = null;
       let sourceUrl = "";
-      for (const url of urls) {
-        try {
-          const r = await fetch(url, {
-            headers: {
-              "User-Agent":
-                "Mozilla/5.0 (compatible; LooviBot/1.0; +https://savecarcotacao.lovable.app)",
-            },
-          });
-          if (!r.ok) continue;
-          const html = await r.text();
-          const p = parsePlansFromHtml(html, String(qttnCd));
-          if (p.plans.length) {
-            parsed = p;
-            sourceUrl = url;
-            break;
-          }
-        } catch (e) {
-          console.error("scrape error", url, e);
-        }
+      try {
+        parsed = await fetchPlansData(String(qttnCd));
+        sourceUrl = `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(String(qttnCd))}`;
+      } catch (e) {
+        console.error("fetchPlansData error", e);
       }
 
       return new Response(
         JSON.stringify({
           plans: parsed?.plans || [],
           coverages: parsed?.coverages || [],
+          planNames: parsed?.planNames || [],
           client: parsed?.client || null,
           sourceUrl,
           fallbackUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(String(qttnCd))}`,
