@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { ChevronsDown, ArrowUp } from "lucide-react";
 
 const ScrollHint = () => {
+  const { pathname } = useLocation();
   const [scrollable, setScrollable] = useState(false);
   const [atBottom, setAtBottom] = useState(false);
 
@@ -25,7 +27,7 @@ const ScrollHint = () => {
     };
   }, []);
 
-  if (!scrollable) return null;
+  if (pathname === "/" || !scrollable) return null;
 
   const handleClick = () => {
     if (atBottom) {
