@@ -334,12 +334,17 @@ Deno.serve(async (req) => {
           const r = await fetch(url, {
             headers: {
               "User-Agent":
-                "Mozilla/5.0 (compatible; LooviBot/1.0; +https://savecarcotacao.lovable.app)",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
             },
           });
+          console.log("scrape", url, "status=", r.status);
           if (!r.ok) continue;
           const html = await r.text();
+          console.log("scrape html length", html.length, "has t-first-row=", html.includes("t-first-row"));
           const p = parsePlansFromHtml(html, String(qttnCd));
+          console.log("parsed plans=", p.plans.length, "coverages=", p.coverages.length);
           if (p.plans.length) {
             parsed = p;
             sourceUrl = url;
