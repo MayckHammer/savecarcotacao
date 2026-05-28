@@ -165,7 +165,7 @@ const CrmQuoteForm = () => {
           vehicleModel: model,
           vehicleYear: year,
           vehicleIsWork: isWork,
-          observation: "Lead via app Loovi (cotação express)",
+          observation: "",
         },
       });
       const qttnCd = submitRes.qttnCd;
