@@ -127,19 +127,6 @@ const Landing = () => {
           rel="noopener noreferrer"
           className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur p-4 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"
         >
-          <HelpCircle className="h-5 w-5 text-primary" />
-          Dúvidas sobre a cotação?
-        </motion.a>
-        <motion.a
-          variants={item}
-          whileHover={{ y: -2, scale: 1.01 }}
-          whileTap={{ scale: 0.98 }}
-          transition={{ type: "spring", stiffness: 400, damping: 20 }}
-          href="https://wa.me/5534998679585"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur p-4 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"
-        >
           <MessageCircle className="h-5 w-5 text-primary" />
           Atendimento pelo WhatsApp
         </motion.a>
