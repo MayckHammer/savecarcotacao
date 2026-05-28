@@ -124,20 +124,32 @@ const CrmQuoteForm = () => {
       .finally(() => setLoading(null));
   }, [stateId]);
 
-  const canSubmit =
-    name.trim().length > 1 &&
-    phone.replace(/\D/g, "").length >= 10 &&
-    vehicleType &&
-    brand &&
-    year &&
-    model &&
-    stateId &&
-    cityId &&
-    !submitting;
+  const getValidationErrors = (): string[] => {
+    const errors: string[] = [];
+    if (name.trim().length <= 1) errors.push("Nome");
+    if (phone.replace(/\D/g, "").length < 10) errors.push("Telefone");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errors.push("E-mail inválido");
+    if (!vehicleType) errors.push("Tipo do veículo");
+    if (!brand) errors.push("Marca");
+    if (!year) errors.push("Ano");
+    if (!model) errors.push("Modelo");
+    if (!stateId) errors.push("Estado");
+    if (!cityId) errors.push("Cidade");
+    return errors;
+  };
+
+  const canSubmit = !submitting;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (submitting) return;
+    const errors = getValidationErrors();
+    if (errors.length > 0) {
+      toast.error("Informações incompletas ou erradas para gerar cotação", {
+        description: `Verifique: ${errors.join(", ")}`,
+      });
+      return;
+    }
     setSubmitting(true);
     try {
       // 1) Cria cotação oficial no PowerCRM
@@ -190,13 +202,14 @@ const CrmQuoteForm = () => {
       navigate(`/planos?h=${encodeURIComponent(qttnCd)}`);
     } catch (err) {
       console.error("submit pwrcrm error", err);
-      toast.error(
-        "Não foi possível enviar agora. Tente o formulário detalhado abaixo.",
-      );
+      toast.error("Informações incompletas ou erradas para gerar cotação", {
+        description: "Revise os dados preenchidos e tente novamente.",
+      });
     } finally {
       setSubmitting(false);
     }
   };
+
 
   return (
     <motion.form
