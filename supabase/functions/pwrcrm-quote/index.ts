@@ -3,6 +3,7 @@
 // e raspa /compareTables para extrair os valores reais de COMPLETO e PREMIUM.
 
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { DOMParser, Element } from "https://deno.land/x/deno_dom@v0.1.46/deno-dom-wasm.ts";
 
 const PWRCRM_BASE = "https://app.powercrm.com.br";
 const PWRCRM_UTIL = "https://utilities.powercrm.com.br";
