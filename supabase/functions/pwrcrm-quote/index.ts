@@ -53,101 +53,111 @@ const PRIMARY_COVERAGE_KEYS = [
   "assistência",
 ];
 
-function parseMoney(s: string): number | null {
-  const m = s.replace(/\u00a0/g, " ").match(/([0-9]+(?:\.[0-9]{3})*,[0-9]{2})/);
+const BROWSER_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
+  "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+};
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&aacute;/g, "á").replace(/&eacute;/g, "é").replace(/&iacute;/g, "í")
+    .replace(/&oacute;/g, "ó").replace(/&uacute;/g, "ú").replace(/&atilde;/g, "ã")
+    .replace(/&otilde;/g, "õ").replace(/&ccedil;/g, "ç").replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&Aacute;/g, "Á").replace(/&Eacute;/g, "É").replace(/&Atilde;/g, "Ã");
+}
+
+function parseMoney(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const m = String(s).replace(/\u00a0/g, " ").match(/([0-9]+(?:\.[0-9]{3})*,[0-9]{2})/);
   if (!m) return null;
   return Number(m[1].replace(/\./g, "").replace(",", "."));
 }
 
-function txt(el: Element | null | undefined): string {
-  return (el?.textContent || "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+interface ApiPlan {
+  planId: number;
+  name: string;
+  tppId: number;
+  price: string;
+  priceValue: number;
+  accessPrice: string;
+  franchisePrice: string;
+  coverages: Array<{ id: number; text: string; status: boolean | null }>;
 }
 
-function parseCellValue(cellValue: Element | null): boolean | string {
-  if (!cellValue) return "";
-  const img = cellValue.querySelector("img");
-  if (img) {
-    const alt = (img.getAttribute("alt") || "").toLowerCase();
-    if (alt.includes("nao") || alt.includes("não")) return false;
-    if (alt.includes("tem")) return true;
-  }
-  const t = txt(cellValue);
-  if (!t) return false;
-  return t;
-}
+async function fetchPlansData(qttnCd: string) {
+  const pageUrl = `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}`;
+  const pageRes = await fetch(pageUrl, { headers: BROWSER_HEADERS });
+  if (!pageRes.ok) throw new Error(`page fetch ${pageRes.status}`);
+  const html = await pageRes.text();
 
-function parsePlansFromHtml(html: string, qttnCd: string) {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  if (!doc) return { plans: [], coverages: [], client: null };
+  const idMatch = html.match(/\/quotationTablesAndPlans\?i=(\d+)/);
+  if (!idMatch) throw new Error("internal quotation id not found in page");
+  const internalId = idMatch[1];
 
-  const h2 = doc.querySelector("h2");
-  const clientName = txt(h2).replace(/^Olá,\s*/i, "") || null;
-  const vehicleDescription = txt(doc.querySelector(".corPrimary")) || null;
-  const fipeFormatted = txt(doc.querySelector(".corSecondary")) || null;
-  const fipeValue = fipeFormatted ? parseMoney(fipeFormatted) : null;
+  const clientNameMatch = html.match(/<h2[^>]*>\s*([^<]+?)\s*<\/h2>/);
+  const clientName = clientNameMatch
+    ? decodeEntities(clientNameMatch[1]).replace(/^Olá,\s*/i, "").trim()
+    : null;
+  const vehicleMatch = html.match(/class="corPrimary"[^>]*>([^<]+)</);
+  const vehicleDescription = vehicleMatch ? decodeEntities(vehicleMatch[1]).trim() : null;
+  const fipeMatch = html.match(/class="corSecondary"[^>]*>([^<]+)</);
+  const fipeFormatted = fipeMatch ? decodeEntities(fipeMatch[1]).trim() : null;
+  const fipeValue = parseMoney(fipeFormatted);
 
-  const firstRow = doc.querySelector(".t-first-row");
-  const headerCells = firstRow
-    ? Array.from(firstRow.querySelectorAll(".t-row-cell"))
-    : [];
+  const dataRes = await fetch(
+    `${PWRCRM_BASE}/quotationTablesAndPlans?i=${internalId}`,
+    { headers: BROWSER_HEADERS },
+  );
+  if (!dataRes.ok) throw new Error(`data fetch ${dataRes.status}`);
+  const apiPlans: ApiPlan[] = await dataRes.json();
 
-  const headers = headerCells.map((cell) => {
-    const el = cell as Element;
-    const name = txt(el.querySelector(".name_plan")).toUpperCase();
-    const priceTxt = txt(el.querySelector(".price_plan"));
-    const a = el.querySelector("a.open_modal_contratar");
+  const planNames = apiPlans.map((p) => p.name.toUpperCase());
+
+  const plans = apiPlans.map((p) => {
+    const priceValue = Number(p.priceValue) || parseMoney(p.price) || 0;
     return {
-      name,
-      monthlyPrice: parseMoney(priceTxt),
-      planId: a?.getAttribute("planid") || null,
-      tppId: a?.getAttribute("tppid") || null,
+      name: p.name.toUpperCase(),
+      monthlyPrice: priceValue,
+      annualPrice: priceValue * 12,
+      adhesion: parseMoney(p.accessPrice),
+      participation: p.franchisePrice || null,
+      planId: String(p.planId),
+      tppId: String(p.tppId),
+      acceptUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}&plan=${p.name.toUpperCase()}`,
     };
   });
 
-  const wrappers = Array.from(doc.querySelectorAll(".t-row-content-wrapper")).slice(1);
-
-  const adhesionByCol: (number | null)[] = headers.map(() => null);
-  const participationByCol: (string | null)[] = headers.map(() => null);
-  const coverages: { label: string; values: (boolean | string)[]; highlight: boolean }[] = [];
-
-  for (const wrap of wrappers) {
-    const wrapEl = wrap as Element;
-    const label = txt(wrapEl.querySelector(".t-row-desc .t-cell-desc-l"));
-    if (!label) continue;
-    const cells = Array.from(wrapEl.querySelectorAll(".t-row-values .t-row-cell"));
-    const values = cells.map((c) => parseCellValue((c as Element).querySelector(".t-cell-value")));
-
-    const lower = label.toLowerCase();
-    if (lower.startsWith("adesão") || lower.startsWith("adesao")) {
-      values.forEach((v, i) => { if (typeof v === "string") adhesionByCol[i] = parseMoney(v); });
-      continue;
+  const seen = new Set<number>();
+  const ordered: { id: number; text: string }[] = [];
+  for (const p of apiPlans) {
+    for (const c of p.coverages || []) {
+      if (!seen.has(c.id)) {
+        seen.add(c.id);
+        ordered.push({ id: c.id, text: c.text });
+      }
     }
-    if (lower.startsWith("cota") || lower.includes("participação") || lower.includes("participacao")) {
-      values.forEach((v, i) => { if (typeof v === "string") participationByCol[i] = v; });
-      continue;
-    }
-    coverages.push({
-      label,
-      values,
-      highlight: PRIMARY_COVERAGE_KEYS.some((k) => lower.includes(k)),
-    });
   }
 
-  const plans = headers.map((h, i) => ({
-    name: h.name,
-    monthlyPrice: h.monthlyPrice ?? 0,
-    annualPrice: (h.monthlyPrice ?? 0) * 12,
-    adhesion: adhesionByCol[i],
-    participation: participationByCol[i],
-    planId: h.planId,
-    tppId: h.tppId,
-    acceptUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}&plan=${h.name}`,
-  }));
+  const coverages = ordered.map(({ id, text }) => {
+    const values = apiPlans.map((p) => {
+      const found = (p.coverages || []).find((c) => c.id === id);
+      return found ? found.status === true : false;
+    });
+    const lower = text.toLowerCase();
+    return {
+      label: text,
+      values,
+      highlight: PRIMARY_COVERAGE_KEYS.some((k) => lower.includes(k)),
+    };
+  });
 
   return {
     plans,
     coverages,
-    planNames: headers.map((h) => h.name),
+    planNames,
     client: { name: clientName, vehicleDescription, fipeValue, fipeFormatted },
   };
 }
