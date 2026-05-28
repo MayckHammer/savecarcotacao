@@ -86,6 +86,9 @@ interface ApiGroup {
 }
 
 interface ApiPlan {
+  planId: number;
+  name: string;
+  tppId: number;
   price: string;
   priceValue: number;
   accessPrice: string;
