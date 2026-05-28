@@ -8,7 +8,6 @@ import {
   MessageCircle,
   ChevronDown,
   ShieldCheck,
-  Loader2,
 } from "lucide-react";
 import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
@@ -31,14 +30,22 @@ type Plan = {
   annualPrice: number;
   adhesion: number | null;
   participation: string | null;
+  planId: string | null;
+  tppId: string | null;
   acceptUrl: string;
 };
 
 type Coverage = {
   label: string;
-  completo: boolean | string;
-  premium: boolean | string;
+  values: (boolean | string)[];
   highlight: boolean;
+};
+
+type ClientInfo = {
+  name: string | null;
+  vehicleDescription: string | null;
+  fipeValue: number | null;
+  fipeFormatted: string | null;
 };
 
 const brl = (n: number) =>
@@ -53,6 +60,8 @@ const PlansFromCrm = () => {
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [coverages, setCoverages] = useState<Coverage[]>([]);
+  const [planNames, setPlanNames] = useState<string[]>([]);
+  const [client, setClient] = useState<ClientInfo | null>(null);
   const [fallbackUrl, setFallbackUrl] = useState("");
   const [openAll, setOpenAll] = useState(false);
 
@@ -70,6 +79,8 @@ const PlansFromCrm = () => {
         if (error) throw error;
         setPlans(data?.plans || []);
         setCoverages(data?.coverages || []);
+        setPlanNames(data?.planNames || (data?.plans || []).map((p: Plan) => p.name));
+        setClient(data?.client || null);
         setFallbackUrl(data?.fallbackUrl || "");
       } catch (e) {
         console.error(e);
@@ -83,23 +94,23 @@ const PlansFromCrm = () => {
     })();
   }, [qttnCd, navigate]);
 
-  const sortedPlans = useMemo(() => {
-    const order = ["PREMIUM", "COMPLETO"];
-    return [...plans].sort(
-      (a, b) => order.indexOf(a.name) - order.indexOf(b.name),
-    );
+  // Ordena com PREMIUM primeiro mas preservando indices originais para coverages
+  const orderedIndexes = useMemo(() => {
+    const idx = plans.map((_, i) => i);
+    return idx.sort((a, b) => {
+      const order = (n: string) => (n === "PREMIUM" ? 0 : n === "COMPLETO" ? 1 : 2);
+      return order(plans[a].name) - order(plans[b].name);
+    });
   }, [plans]);
 
   const primaryCoverages = coverages.filter((c) => c.highlight).slice(0, 6);
-  const extraCoverages = coverages.filter((c) => !c.highlight);
+  const extraCoverages = coverages.filter((c) => !primaryCoverages.includes(c));
 
-  const vehicleLabel = [
-    quote.vehicle?.brand,
-    quote.vehicle?.model,
-    quote.vehicle?.year,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const vehicleLabel =
+    client?.vehicleDescription ||
+    [quote.vehicle?.brand, quote.vehicle?.model, quote.vehicle?.year]
+      .filter(Boolean)
+      .join(" ");
 
   const handleContratar = (plan: Plan) => {
     window.open(plan.acceptUrl, "_blank", "noopener,noreferrer");
@@ -119,16 +130,16 @@ const PlansFromCrm = () => {
     <div className="flex min-h-screen flex-col bg-background pb-24">
       <Header dark />
       <main className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full space-y-6">
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="text-2xl font-bold text-foreground">
             Seus planos Save Car
           </h1>
           {vehicleLabel && (
-            <p className="text-sm text-muted-foreground mt-1">
-              {vehicleLabel}
+            <p className="text-sm text-muted-foreground mt-1">{vehicleLabel}</p>
+          )}
+          {client?.fipeFormatted && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Avaliação FIPE: {client.fipeFormatted}
             </p>
           )}
         </motion.div>
@@ -138,16 +149,13 @@ const PlansFromCrm = () => {
             <Skeleton className="h-72 rounded-2xl" />
             <Skeleton className="h-72 rounded-2xl" />
           </div>
-        ) : sortedPlans.length === 0 ? (
+        ) : plans.length === 0 ? (
           <div className="rounded-2xl border border-border bg-card p-6 text-center space-y-4">
             <p className="text-sm text-muted-foreground">
-              Não conseguimos exibir os valores aqui. Você pode abrir a cotação
-              oficial:
+              Não conseguimos exibir os valores aqui. Abra a cotação oficial:
             </p>
             <Button
-              onClick={() =>
-                window.open(fallbackUrl, "_blank", "noopener,noreferrer")
-              }
+              onClick={() => window.open(fallbackUrl, "_blank", "noopener,noreferrer")}
               className="rounded-xl"
             >
               <ExternalLink className="mr-2 h-4 w-4" /> Abrir cotação oficial
@@ -156,14 +164,15 @@ const PlansFromCrm = () => {
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {sortedPlans.map((plan) => {
+              {orderedIndexes.map((i) => {
+                const plan = plans[i];
                 const isPremium = plan.name === "PREMIUM";
                 return (
                   <motion.div
                     key={plan.name}
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className={`relative rounded-2xl border p-5 backdrop-blur-sm ${
+                    className={`relative rounded-2xl border p-5 ${
                       isPremium
                         ? "border-[#F2B705] bg-card shadow-lg"
                         : "border-border bg-card"
@@ -177,21 +186,19 @@ const PlansFromCrm = () => {
                     <p className="text-xs font-semibold tracking-widest text-[#0D5C3E]">
                       PLANO
                     </p>
-                    <h2 className="text-xl font-extrabold mt-0.5">
-                      {plan.name}
-                    </h2>
+                    <h2 className="text-xl font-extrabold mt-0.5">{plan.name}</h2>
                     <div className="mt-3">
                       <p className="text-3xl font-bold text-foreground">
                         {brl(plan.monthlyPrice)}
                       </p>
-                      <p className="text-xs text-muted-foreground">por mês</p>
+                      <p className="text-xs text-muted-foreground">Mensalidade</p>
                     </div>
                     <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                       {plan.adhesion !== null && (
-                        <p>Adesão: {brl(plan.adhesion)}</p>
+                        <p>Adesão: <span className="text-foreground font-medium">{brl(plan.adhesion)}</span></p>
                       )}
                       {plan.participation && (
-                        <p>Participação: {plan.participation}</p>
+                        <p>Cota de participação: <span className="text-foreground font-medium">{plan.participation}</span></p>
                       )}
                     </div>
 
@@ -218,12 +225,11 @@ const PlansFromCrm = () => {
 
             {coverages.length > 0 && (
               <section className="rounded-2xl border border-border bg-card p-5">
-                <h3 className="text-base font-bold mb-3">
-                  Principais coberturas
-                </h3>
+                <h3 className="text-base font-bold mb-3">Principais coberturas</h3>
+                <CoverageHeader planNames={planNames} orderedIndexes={orderedIndexes} />
                 <ul className="divide-y divide-border">
                   {primaryCoverages.map((c) => (
-                    <CoverageRow key={c.label} c={c} />
+                    <CoverageRow key={c.label} c={c} orderedIndexes={orderedIndexes} />
                   ))}
                 </ul>
 
@@ -232,7 +238,7 @@ const PlansFromCrm = () => {
                     <CollapsibleContent>
                       <ul className="divide-y divide-border mt-1">
                         {extraCoverages.map((c) => (
-                          <CoverageRow key={c.label} c={c} />
+                          <CoverageRow key={c.label} c={c} orderedIndexes={orderedIndexes} />
                         ))}
                       </ul>
                     </CollapsibleContent>
@@ -250,8 +256,7 @@ const PlansFromCrm = () => {
             )}
 
             <p className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-              <ShieldCheck className="h-3 w-3" /> Cotação oficial Save Car Brasil ·
-              {" "}#{qttnCd}
+              <ShieldCheck className="h-3 w-3" /> Cotação oficial Save Car Brasil · #{qttnCd}
             </p>
           </>
         )}
@@ -261,23 +266,47 @@ const PlansFromCrm = () => {
   );
 };
 
+const CoverageHeader = ({
+  planNames,
+  orderedIndexes,
+}: {
+  planNames: string[];
+  orderedIndexes: number[];
+}) => (
+  <div className="grid grid-cols-[1fr_repeat(var(--cols),4rem)] items-center gap-2 pb-2 border-b border-border text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
+    style={{ ["--cols" as never]: orderedIndexes.length } as React.CSSProperties}>
+    <span>Cobertura</span>
+    {orderedIndexes.map((i) => (
+      <span key={i} className="text-center">{planNames[i]}</span>
+    ))}
+  </div>
+);
+
 const CoverageIcon = ({ value }: { value: boolean | string }) => {
   if (value === true)
-    return <Check className="h-4 w-4 text-[#0D5C3E]" strokeWidth={3} />;
+    return <Check className="h-4 w-4 text-[#0D5C3E] mx-auto" strokeWidth={3} />;
   if (value === false || value === "" || value == null)
-    return <X className="h-4 w-4 text-muted-foreground/60" />;
-  return <span className="text-xs font-medium">{String(value)}</span>;
+    return <X className="h-4 w-4 text-muted-foreground/50 mx-auto" />;
+  return <span className="text-[11px] font-medium text-foreground text-center block">{String(value)}</span>;
 };
 
-const CoverageRow = ({ c }: { c: Coverage }) => (
-  <li className="grid grid-cols-[1fr_auto_auto] items-center gap-4 py-2.5">
-    <span className="text-sm text-foreground">{c.label}</span>
-    <span className="flex w-16 items-center justify-center text-center">
-      <CoverageIcon value={c.premium} />
-    </span>
-    <span className="flex w-16 items-center justify-center text-center">
-      <CoverageIcon value={c.completo} />
-    </span>
+const CoverageRow = ({
+  c,
+  orderedIndexes,
+}: {
+  c: Coverage;
+  orderedIndexes: number[];
+}) => (
+  <li
+    className="grid grid-cols-[1fr_repeat(var(--cols),4rem)] items-center gap-2 py-2.5"
+    style={{ ["--cols" as never]: orderedIndexes.length } as React.CSSProperties}
+  >
+    <span className="text-sm text-foreground leading-snug">{c.label}</span>
+    {orderedIndexes.map((i) => (
+      <span key={i} className="flex items-center justify-center">
+        <CoverageIcon value={c.values[i]} />
+      </span>
+    ))}
   </li>
 );
 
