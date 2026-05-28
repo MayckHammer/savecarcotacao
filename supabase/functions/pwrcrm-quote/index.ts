@@ -44,111 +44,111 @@ async function fetchJson(url: string, init?: RequestInit) {
   }
 }
 
-const PRIMARY_COVERAGES = [
-  "Colisão",
-  "Roubo",
-  "Furto",
-  "Incêndio",
-  "RCF",
-  "Responsabilidade Civil",
-  "Fenômenos da Natureza",
-  "Assistência 24h",
+const PRIMARY_COVERAGE_KEYS = [
+  "colisão",
+  "roubo",
+  "incêndio",
+  "fenômenos",
+  "rcf",
+  "assistência",
 ];
 
-function parseMoney(s: string) {
-  return Number(s.replace(/\./g, "").replace(",", "."));
+function parseMoney(s: string): number | null {
+  const m = s.replace(/\u00a0/g, " ").match(/([0-9]+(?:\.[0-9]{3})*,[0-9]{2})/);
+  if (!m) return null;
+  return Number(m[1].replace(/\./g, "").replace(",", "."));
+}
+
+function txt(el: Element | null | undefined): string {
+  return (el?.textContent || "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function parseCellValue(cellValue: Element | null): boolean | string {
+  if (!cellValue) return "";
+  const img = cellValue.querySelector("img");
+  if (img) {
+    const alt = (img.getAttribute("alt") || "").toLowerCase();
+    if (alt.includes("nao") || alt.includes("não")) return false;
+    if (alt.includes("tem")) return true;
+  }
+  const t = txt(cellValue);
+  if (!t) return false;
+  return t;
 }
 
 function parsePlansFromHtml(html: string, qttnCd: string) {
-  const stripped = html.replace(/\s+/g, " ");
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  if (!doc) return { plans: [], coverages: [], client: null };
 
-  const plans: {
-    name: string;
-    monthlyPrice: number;
-    annualPrice: number;
-    adhesion: number | null;
-    participation: string | null;
-    acceptUrl: string;
-  }[] = [];
+  const h2 = doc.querySelector("h2");
+  const clientName = txt(h2).replace(/^Olá,\s*/i, "") || null;
+  const vehicleDescription = txt(doc.querySelector(".corPrimary")) || null;
+  const fipeFormatted = txt(doc.querySelector(".corSecondary")) || null;
+  const fipeValue = fipeFormatted ? parseMoney(fipeFormatted) : null;
 
-  for (const planName of ["PREMIUM", "COMPLETO"]) {
-    const re = new RegExp(
-      `${planName}[\\s\\S]{0,4000}?R\\$\\s*([0-9]+(?:\\.[0-9]{3})*,[0-9]{2})`,
-      "i",
-    );
-    const match = stripped.match(re);
-    if (match) {
-      const monthly = parseMoney(match[1]);
-      // adesão (próximo "adesão R$ X,XX")
-      const adhRe = new RegExp(
-        `${planName}[\\s\\S]{0,6000}?ades[ãa]o[^R]{0,40}R\\$\\s*([0-9]+(?:\\.[0-9]{3})*,[0-9]{2})`,
-        "i",
-      );
-      const adhMatch = stripped.match(adhRe);
-      const partRe = new RegExp(
-        `${planName}[\\s\\S]{0,6000}?participa[çc][ãa]o[^<]{0,60}?([0-9]+%|R\\$\\s*[0-9.,]+)`,
-        "i",
-      );
-      const partMatch = stripped.match(partRe);
+  const firstRow = doc.querySelector(".t-first-row");
+  const headerCells = firstRow
+    ? Array.from(firstRow.querySelectorAll(".t-row-cell"))
+    : [];
 
-      plans.push({
-        name: planName,
-        monthlyPrice: monthly,
-        annualPrice: monthly * 12,
-        adhesion: adhMatch ? parseMoney(adhMatch[1]) : null,
-        participation: partMatch ? partMatch[1].trim() : null,
-        acceptUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}&plan=${planName}`,
-      });
+  const headers = headerCells.map((cell) => {
+    const el = cell as Element;
+    const name = txt(el.querySelector(".name_plan")).toUpperCase();
+    const priceTxt = txt(el.querySelector(".price_plan"));
+    const a = el.querySelector("a.open_modal_contratar");
+    return {
+      name,
+      monthlyPrice: parseMoney(priceTxt),
+      planId: a?.getAttribute("planid") || null,
+      tppId: a?.getAttribute("tppid") || null,
+    };
+  });
+
+  const wrappers = Array.from(doc.querySelectorAll(".t-row-content-wrapper")).slice(1);
+
+  const adhesionByCol: (number | null)[] = headers.map(() => null);
+  const participationByCol: (string | null)[] = headers.map(() => null);
+  const coverages: { label: string; values: (boolean | string)[]; highlight: boolean }[] = [];
+
+  for (const wrap of wrappers) {
+    const wrapEl = wrap as Element;
+    const label = txt(wrapEl.querySelector(".t-row-desc .t-cell-desc-l"));
+    if (!label) continue;
+    const cells = Array.from(wrapEl.querySelectorAll(".t-row-values .t-row-cell"));
+    const values = cells.map((c) => parseCellValue((c as Element).querySelector(".t-cell-value")));
+
+    const lower = label.toLowerCase();
+    if (lower.startsWith("adesão") || lower.startsWith("adesao")) {
+      values.forEach((v, i) => { if (typeof v === "string") adhesionByCol[i] = parseMoney(v); });
+      continue;
     }
-  }
-
-  // Coberturas — tenta achar linhas com label + sim/não por coluna
-  const coverages: {
-    label: string;
-    completo: boolean | string;
-    premium: boolean | string;
-    highlight: boolean;
-  }[] = [];
-
-  const knownCoverages = [
-    "Colisão",
-    "Roubo e Furto",
-    "Incêndio",
-    "Fenômenos da Natureza",
-    "RCF Danos Materiais",
-    "RCF Danos Corporais",
-    "Assistência 24h",
-    "Carro Reserva",
-    "Vidros",
-    "Cobertura Nacional",
-    "Rastreador",
-    "App de Gestão",
-    "Desconto em Oficinas",
-  ];
-  for (const label of knownCoverages) {
-    const present = stripped.toLowerCase().includes(label.toLowerCase());
-    if (!present) continue;
+    if (lower.startsWith("cota") || lower.includes("participação") || lower.includes("participacao")) {
+      values.forEach((v, i) => { if (typeof v === "string") participationByCol[i] = v; });
+      continue;
+    }
     coverages.push({
       label,
-      completo: true,
-      premium: true,
-      highlight: PRIMARY_COVERAGES.some((p) =>
-        label.toLowerCase().includes(p.toLowerCase()),
-      ),
+      values,
+      highlight: PRIMARY_COVERAGE_KEYS.some((k) => lower.includes(k)),
     });
   }
 
-  // client / vehicle
-  const vehicleMatch = stripped.match(/Ve[íi]culo[^<]{0,4}<[^>]+>([^<]{3,120})</i);
-  const fipeMatch = stripped.match(/FIPE[^R]{0,40}R\$\s*([0-9.,]+)/i);
+  const plans = headers.map((h, i) => ({
+    name: h.name,
+    monthlyPrice: h.monthlyPrice ?? 0,
+    annualPrice: (h.monthlyPrice ?? 0) * 12,
+    adhesion: adhesionByCol[i],
+    participation: participationByCol[i],
+    planId: h.planId,
+    tppId: h.tppId,
+    acceptUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}&plan=${h.name}`,
+  }));
 
   return {
     plans,
     coverages,
-    client: {
-      vehicleDescription: vehicleMatch ? vehicleMatch[1].trim() : null,
-      fipeValue: fipeMatch ? parseMoney(fipeMatch[1]) : null,
-    },
+    planNames: headers.map((h) => h.name),
+    client: { name: clientName, vehicleDescription, fipeValue, fipeFormatted },
   };
 }
 
