@@ -325,43 +325,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ---------- PLANS (scrape compareTables) ----------
+    // ---------- PLANS (oficial CRM data) ----------
     if (action === "plans") {
       const qttnCd = body.qttnCd;
       if (!qttnCd) throw new Error("qttnCd required");
 
-      // tenta compareTables primeiro, depois newQuotation
-      const urls = [
-        `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}`,
-        `${PWRCRM_BASE}/newQuotation?h=${encodeURIComponent(qttnCd)}`,
-      ];
-
-      let parsed: ReturnType<typeof parsePlansFromHtml> | null = null;
+      let parsed: Awaited<ReturnType<typeof fetchPlansData>> | null = null;
       let sourceUrl = "";
-      for (const url of urls) {
-        try {
-          const r = await fetch(url, {
-            headers: {
-              "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-              "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-            },
-          });
-          console.log("scrape", url, "status=", r.status);
-          if (!r.ok) continue;
-          const html = await r.text();
-          console.log("scrape html length", html.length, "has t-first-row=", html.includes("t-first-row"));
-          const p = parsePlansFromHtml(html, String(qttnCd));
-          console.log("parsed plans=", p.plans.length, "coverages=", p.coverages.length);
-          if (p.plans.length) {
-            parsed = p;
-            sourceUrl = url;
-            break;
-          }
-        } catch (e) {
-          console.error("scrape error", url, e);
-        }
+      try {
+        parsed = await fetchPlansData(String(qttnCd));
+        sourceUrl = `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(String(qttnCd))}`;
+      } catch (e) {
+        console.error("fetchPlansData error", e);
       }
 
       return new Response(
