@@ -26,12 +26,10 @@ const Inspection = () => {
     }
 
     const fetchStatus = async () => {
-      // First check DB for current status
-      const { data } = await supabase
-        .from("quotes")
-        .select("inspection_status, inspection_link")
-        .eq("session_id", sessionId)
-        .single();
+      // First check DB for current status (via secure edge function)
+      const { data } = await supabase.functions.invoke("get-quote-status", {
+        body: { session_id: sessionId },
+      });
 
       if (data) {
         setStatus(data.inspection_status as InspectionStatus);

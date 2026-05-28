@@ -44,11 +44,9 @@ const Result = () => {
         await new Promise((r) => setTimeout(r, 1500));
         if (cancelled) return;
 
-        const { data } = await supabase
-          .from("quotes")
-          .select("crm_quotation_code")
-          .eq("session_id", quote.sessionId)
-          .single();
+        const { data } = await supabase.functions.invoke("get-quote-status", {
+          body: { session_id: quote.sessionId },
+        });
 
         if (!data?.crm_quotation_code) {
           setLoadingPlans(false);

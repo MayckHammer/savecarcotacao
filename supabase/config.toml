@@ -23,3 +23,9 @@ verify_jwt = false
 
 [functions.pwrcrm-quote]
 verify_jwt = false
+
+[functions.get-quote-status]
+verify_jwt = false
+
+[functions.admin-list-quotes]
+verify_jwt = false
