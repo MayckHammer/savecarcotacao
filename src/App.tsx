@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { QuoteProvider } from "@/contexts/QuoteContext";
 import Landing from "./pages/Landing";
 import Quote from "./pages/Quote";
@@ -24,16 +24,26 @@ import ScrollHint from "./components/ScrollHint";
 
 const queryClient = new QueryClient();
 
+const GlobalOverlays = () => {
+  const { pathname } = useLocation();
+  if (pathname === "/") return null;
+  return (
+    <>
+      <GradualBlur target="page" position="bottom" height="5rem" strength={2} divCount={5} curve="bezier" />
+      <ScrollHint />
+    </>
+  );
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <QuoteProvider>
         <Toaster />
         <Sonner />
-        <GradualBlur target="page" position="bottom" height="5rem" strength={2} divCount={5} curve="bezier" />
-        <ScrollHint />
         <BrowserRouter>
           <ScrollToTop />
+          <GlobalOverlays />
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/cotacao" element={<QuoteExpress />} />
