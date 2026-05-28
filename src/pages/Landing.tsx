@@ -49,7 +49,7 @@ const Landing = () => {
         variants={container}
         initial="hidden"
         animate="show"
-        className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 py-12"
+        className="relative z-10 flex flex-col items-center px-6 pt-10 pb-4"
       >
         <motion.img
           variants={item}
@@ -115,7 +115,7 @@ const Landing = () => {
         variants={container}
         initial="hidden"
         animate="show"
-        className="relative z-10 px-6 pb-8 space-y-3 max-w-xs mx-auto w-full"
+        className="relative z-10 px-6 pb-4 space-y-3 max-w-xs mx-auto w-full"
       >
         <motion.a
           variants={item}
