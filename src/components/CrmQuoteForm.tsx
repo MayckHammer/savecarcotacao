@@ -243,65 +243,69 @@ const CrmQuoteForm = () => {
 
         <div>
           <Label>Marca</Label>
-          <Select value={brand} onValueChange={setBrand} disabled={!vehicleType || loading === "brands"}>
-            <SelectTrigger><SelectValue placeholder={loading === "brands" ? "Carregando..." : "Selecione a marca"} /></SelectTrigger>
-            <SelectContent>
-              {brands.map((b) => (
-                <SelectItem key={b.id} value={String(b.id)}>{b.text}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            options={brands.map((b) => ({ code: String(b.id), name: b.text }))}
+            value={brand}
+            onValueChange={setBrand}
+            disabled={!vehicleType}
+            loading={loading === "brands"}
+            placeholder="Selecione a marca"
+            searchPlaceholder="Buscar marca..."
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Ano</Label>
-            <Select value={year} onValueChange={setYear} disabled={!brand || loading === "years"}>
-              <SelectTrigger><SelectValue placeholder={loading === "years" ? "..." : "Ano"} /></SelectTrigger>
-              <SelectContent>
-                {years.map((y) => (
-                  <SelectItem key={y.id} value={String(y.id)}>{y.text}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={years.map((y) => ({ code: String(y.id), name: y.text }))}
+              value={year}
+              onValueChange={setYear}
+              disabled={!brand}
+              loading={loading === "years"}
+              placeholder="Ano"
+              searchPlaceholder="Buscar ano..."
+            />
           </div>
           <div>
             <Label>Modelo</Label>
-            <Select value={model} onValueChange={setModel} disabled={!year || loading === "models"}>
-              <SelectTrigger><SelectValue placeholder={loading === "models" ? "..." : "Modelo"} /></SelectTrigger>
-              <SelectContent>
-                {models.map((m) => (
-                  <SelectItem key={m.id} value={String(m.id)}>{m.text}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={models.map((m) => ({ code: String(m.id), name: m.text }))}
+              value={model}
+              onValueChange={setModel}
+              disabled={!year}
+              loading={loading === "models"}
+              placeholder="Modelo"
+              searchPlaceholder="Buscar modelo..."
+            />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Estado</Label>
-            <Select value={stateId} onValueChange={setStateId}>
-              <SelectTrigger><SelectValue placeholder="UF" /></SelectTrigger>
-              <SelectContent>
-                {states.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>{s.text}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={states.map((s) => ({ code: String(s.id), name: s.text }))}
+              value={stateId}
+              onValueChange={setStateId}
+              placeholder="UF"
+              searchPlaceholder="Buscar estado..."
+            />
           </div>
           <div>
             <Label>Cidade</Label>
-            <Select value={cityId} onValueChange={setCityId} disabled={!stateId || loading === "cities"}>
-              <SelectTrigger><SelectValue placeholder={loading === "cities" ? "..." : "Cidade"} /></SelectTrigger>
-              <SelectContent>
-                {cities.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>{c.text}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={cities.map((c) => ({ code: String(c.id), name: c.text }))}
+              value={cityId}
+              onValueChange={setCityId}
+              disabled={!stateId}
+              loading={loading === "cities"}
+              placeholder="Cidade"
+              searchPlaceholder="Buscar cidade..."
+            />
           </div>
         </div>
+
 
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={isWork} onCheckedChange={(v) => setIsWork(Boolean(v))} />
