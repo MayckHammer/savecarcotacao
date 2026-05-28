@@ -169,7 +169,8 @@ async function fetchPlansData(qttnCd: string) {
   const coverages = ordered.map(({ id, text }) => {
     const values = flat.map((p) => {
       const found = p._coverages.find((c) => c.id === id);
-      return found ? found.status === true : false;
+      // status pode vir null — presença no grupo do plano já significa "incluso"
+      return !!found && found.status !== false;
     });
     const lower = text.toLowerCase();
     return {
