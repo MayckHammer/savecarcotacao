@@ -27,11 +27,9 @@ const Payment = () => {
       return;
     }
     const check = async () => {
-      const { data } = await supabase
-        .from("quotes")
-        .select("inspection_status")
-        .eq("session_id", sessionId)
-        .single();
+      const { data } = await supabase.functions.invoke("get-quote-status", {
+        body: { session_id: sessionId },
+      });
       if (!data || data.inspection_status !== "approved") {
         navigate("/vistoria");
       }

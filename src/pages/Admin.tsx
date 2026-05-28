@@ -24,23 +24,29 @@ const Admin = () => {
   const [loading, setLoading] = useState(false);
   const [linkInputs, setLinkInputs] = useState<Record<string, string>>({});
   const [updating, setUpdating] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
-  const ADMIN_PASSWORD = "Save@2026";
-
-  const handleLogin = () => {
-    if (password === ADMIN_PASSWORD) {
-      setAuthenticated(true);
-      fetchQuotes();
+  const handleLogin = async () => {
+    setLoginError(null);
+    setLoading(true);
+    const { data, error } = await supabase.functions.invoke("admin-list-quotes", {
+      body: { password },
+    });
+    setLoading(false);
+    if (error || !data?.quotes) {
+      setLoginError("Senha incorreta.");
+      return;
     }
+    setAuthenticated(true);
+    setQuotes(data.quotes as Quote[]);
   };
 
   const fetchQuotes = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("quotes")
-      .select("*")
-      .order("created_at", { ascending: false });
-    setQuotes((data as Quote[]) || []);
+    const { data } = await supabase.functions.invoke("admin-list-quotes", {
+      body: { password },
+    });
+    setQuotes((data?.quotes as Quote[]) || []);
     setLoading(false);
   };
 
