@@ -121,28 +121,44 @@ async function fetchPlansData(qttnCd: string) {
     { headers: BROWSER_HEADERS },
   );
   if (!dataRes.ok) throw new Error(`data fetch ${dataRes.status}`);
-  const apiPlans: ApiPlan[] = await dataRes.json();
+  const groups: ApiGroup[] = await dataRes.json();
 
-  const planNames = apiPlans.map((p) => p.name.toUpperCase());
+  // Flatten: cada plano herda coverages/assistances/benefits do seu grupo
+  type FlatPlan = ApiPlan & {
+    _coverages: { id: number; text: string; status: boolean | null }[];
+  };
+  const flat: FlatPlan[] = [];
+  for (const g of groups) {
+    const groupItems = [
+      ...(g.coverages || []),
+      ...(g.assistances || []),
+      ...(g.benefits || []),
+    ];
+    for (const p of g.plans || []) {
+      flat.push({ ...p, _coverages: groupItems });
+    }
+  }
 
-  const plans = apiPlans.map((p) => {
+  const planNames = flat.map((p) => (p.name || "").toUpperCase());
+
+  const plans = flat.map((p) => {
     const priceValue = Number(p.priceValue) || parseMoney(p.price) || 0;
     return {
-      name: p.name.toUpperCase(),
+      name: (p.name || "").toUpperCase(),
       monthlyPrice: priceValue,
       annualPrice: priceValue * 12,
       adhesion: parseMoney(p.accessPrice),
       participation: p.franchisePrice || null,
       planId: String(p.planId),
       tppId: String(p.tppId),
-      acceptUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}&plan=${p.name.toUpperCase()}`,
+      acceptUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}&plan=${(p.name || "").toUpperCase()}`,
     };
   });
 
   const seen = new Set<number>();
   const ordered: { id: number; text: string }[] = [];
-  for (const p of apiPlans) {
-    for (const c of p.coverages || []) {
+  for (const p of flat) {
+    for (const c of p._coverages) {
       if (!seen.has(c.id)) {
         seen.add(c.id);
         ordered.push({ id: c.id, text: c.text });
@@ -151,8 +167,8 @@ async function fetchPlansData(qttnCd: string) {
   }
 
   const coverages = ordered.map(({ id, text }) => {
-    const values = apiPlans.map((p) => {
-      const found = (p.coverages || []).find((c) => c.id === id);
+    const values = flat.map((p) => {
+      const found = p._coverages.find((c) => c.id === id);
       return found ? found.status === true : false;
     });
     const lower = text.toLowerCase();
@@ -162,6 +178,7 @@ async function fetchPlansData(qttnCd: string) {
       highlight: PRIMARY_COVERAGE_KEYS.some((k) => lower.includes(k)),
     };
   });
+
 
   return {
     plans,
