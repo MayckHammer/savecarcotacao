@@ -97,6 +97,25 @@ const useIntersectionObserver = (ref, shouldObserve = false) => {
 function GradualBlur(props) {
   const containerRef = useRef(null);
   const [isHovered, setIsHovered] = useState(false);
+  const [atEdge, setAtEdge] = useState(false);
+
+  useEffect(() => {
+    if (props.target !== 'page' || (props.position !== 'bottom' && props.position !== 'top')) return;
+    const update = () => {
+      const sh = document.documentElement.scrollHeight;
+      const ih = window.innerHeight;
+      const sy = window.scrollY;
+      if (props.position === 'bottom') setAtEdge(sy + ih >= sh - 8);
+      else setAtEdge(sy <= 8);
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [props.target, props.position]);
 
   const config = useMemo(() => {
     const presetConfig = props.preset && PRESETS[props.preset] ? PRESETS[props.preset] : {};
@@ -166,8 +185,8 @@ function GradualBlur(props) {
     const baseStyle = {
       position: isPageTarget ? 'fixed' : 'absolute',
       pointerEvents: config.hoverIntensity ? 'auto' : 'none',
-      opacity: isVisible ? 1 : 0,
-      transition: config.animated ? `opacity ${config.duration} ${config.easing}` : undefined,
+      opacity: isVisible ? (atEdge ? 0 : 1) : 0,
+      transition: `opacity ${config.duration || '0.3s'} ${config.easing || 'ease-out'}`,
       zIndex: isPageTarget ? config.zIndex + 100 : config.zIndex,
       ...config.style
     };
@@ -187,7 +206,7 @@ function GradualBlur(props) {
     }
 
     return baseStyle;
-  }, [config, responsiveHeight, responsiveWidth, isVisible]);
+  }, [config, responsiveHeight, responsiveWidth, isVisible, atEdge]);
 
   const { hoverIntensity, animated, onAnimationComplete, duration } = config;
 

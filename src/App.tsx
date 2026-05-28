@@ -20,6 +20,7 @@ import QuoteExpress from "./pages/QuoteExpress";
 import PlansFromCrm from "./pages/PlansFromCrm";
 import ScrollToTop from "./components/ScrollToTop";
 import GradualBlur from "./components/GradualBlur";
+import ScrollHint from "./components/ScrollHint";
 
 const queryClient = new QueryClient();
 
@@ -29,8 +30,8 @@ const App = () => (
       <QuoteProvider>
         <Toaster />
         <Sonner />
-        <GradualBlur target="page" position="top" height="5rem" strength={2} divCount={5} curve="bezier" />
         <GradualBlur target="page" position="bottom" height="5rem" strength={2} divCount={5} curve="bezier" />
+        <ScrollHint />
         <BrowserRouter>
           <ScrollToTop />
           <Routes>
