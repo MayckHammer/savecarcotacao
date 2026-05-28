@@ -162,56 +162,12 @@ Deno.serve(async (req) => {
     const usageRaw = (vehicle.usage || "").toString().toLowerCase();
     const usageLabel = usageMap[usageRaw] || vehicle.usage || "N/A";
 
-    const internalNoteHeader = [
-      `► USO DO VEÍCULO: ${usageLabel}`,
-      `► PLANO SELECIONADO: ${planName}`,
-      `► PLANO CRM: ${crmPlanLabel}`,
-      `► VALOR CRM: ${crmPriceLabel}`,
-      `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
-    ].join("\n");
+    const internalNoteHeader = "";
 
-    const observation = [
-      `[TAG: 30 seg]`,
-      ``,
-      `>>> DESTAQUE — INFORMAÇÕES DO CLIENTE <<<`,
-      `► USO DO VEÍCULO: ${usageLabel}`,
-      `► PLANO SELECIONADO: ${planName}`,
-      `► PLANO CRM: ${crmPlanLabel}`,
-      `► VALOR CRM: ${crmPriceLabel}`,
-      `► PRETENSÃO DE PAGAMENTO: ${paymentMethodLabel}`,
-      ``,
-      `=== PLANO: ${planName} ===`,
-      `Plano CRM: ${crmPlanLabel}`,
-      `Valor mensal CRM: ${crmPriceLabel}`,
-      `Valor: R$ ${totalValue ? totalValue.toFixed(2).replace(".", ",") : "A definir"}/${billingLabel === "Anual" ? "ano" : "mês"}`,
-      `Periodicidade: ${billingLabel}`,
-      `Forma de pagamento: ${paymentMethodLabel}`,
-      ``,
-      `=== ASSOCIADO ===`,
-      `Nome: ${personal.name || "N/A"}`,
-      `Telefone: ${personal.phone || "N/A"}`,
-      `CPF: ${personal.cpf || "N/A"}`,
-      `Email: ${personal.email || "N/A"}`,
-      ``,
-      `=== VEÍCULO ===`,
-      `Marca: ${vehicle.brand || "N/A"}`,
-      `Modelo: ${vehicle.model || "N/A"}`,
-      `Ano: ${vehicle.year || "N/A"}`,
-      `Cor: ${vehicle.color || "N/A"}`,
-      `Placa: ${vehicle.plate || "N/A"}`,
-      `Valor FIPE: ${vehicle.fipeFormatted || "N/A"}`,
-      `Uso: ${vehicle.usage || "N/A"}`,
-      ``,
-      `=== ENDEREÇO ===`,
-      `${address.street || ""}, ${address.number || "S/N"} — ${address.neighborhood || ""}, ${address.city || ""}/${address.state || ""}`,
-      `CEP: ${address.cep || "N/A"}`,
-      ``,
-      `=== COBERTURAS ===`,
-      Array.isArray(planObj?.coverages) ? (planObj.coverages as string[]).join(", ") : "A definir",
-    ].join("\n");
+    const observation = "";
 
-    // Observações internas (campo amarelo) = mesmo conteúdo completo
-    const internalNote = observation;
+    // Observações internas (campo amarelo) — removido a pedido
+    const internalNote = "";
 
     const cityCode = await getCityCode(address.state || "", address.city || "");
 
