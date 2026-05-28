@@ -27,7 +27,7 @@ const ScrollHint = () => {
     };
   }, []);
 
-  if (!scrollable) return null;
+  if (pathname === "/" || !scrollable) return null;
 
   const handleClick = () => {
     if (atBottom) {
