@@ -73,7 +73,10 @@ const Admin = () => {
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleLogin()}
             />
-            <Button onClick={handleLogin} className="w-full">Entrar</Button>
+            {loginError && <p className="text-xs text-destructive text-center">{loginError}</p>}
+            <Button onClick={handleLogin} disabled={loading} className="w-full">
+              {loading ? "Verificando..." : "Entrar"}
+            </Button>
           </CardContent>
         </Card>
       </div>
