@@ -304,7 +304,7 @@ const CoverageRow = ({
     <span className="text-sm text-foreground leading-snug">{c.label}</span>
     {orderedIndexes.map((i) => (
       <span key={i} className="flex items-center justify-center">
-        <CoverageIcon value={c.values[i]} />
+        <CoverageIcon value={c.values?.[i] ?? false} />
       </span>
     ))}
   </li>
