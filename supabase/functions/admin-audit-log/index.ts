@@ -27,25 +27,34 @@ Deno.serve(async (req) => {
     if (!expected || !timingSafeEqual(password, expected)) {
       await logQuoteAudit({
         action: "edge_fn_denied",
-        functionName: "admin-list-quotes",
+        functionName: "admin-audit-log",
         req,
-        details: { reason: "bad_password", attempted_length: password.length },
+        details: { reason: "bad_password" },
       });
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    const limit = Math.min(Number(body?.limit) || 200, 1000);
+    const action = typeof body?.action === "string" ? body.action : null;
+    const sessionId = typeof body?.session_id === "string" ? body.session_id : null;
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data, error } = await supabase
-      .from("quotes")
+    let q = supabase
+      .from("quotes_audit_log")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(500);
+      .limit(limit);
+
+    if (action) q = q.eq("action", action);
+    if (sessionId) q = q.eq("session_id", sessionId);
+
+    const { data, error } = await q;
 
     if (error) {
       return new Response(JSON.stringify({ error: error.message }), {
@@ -55,12 +64,12 @@ Deno.serve(async (req) => {
 
     await logQuoteAudit({
       action: "edge_fn_call",
-      functionName: "admin-list-quotes",
+      functionName: "admin-audit-log",
       req,
-      details: { count: data?.length ?? 0 },
+      details: { returned: data?.length ?? 0, filter_action: action, filter_session: sessionId },
     });
 
-    return new Response(JSON.stringify({ quotes: data ?? [] }), {
+    return new Response(JSON.stringify({ logs: data ?? [] }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

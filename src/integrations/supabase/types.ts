@@ -71,12 +71,65 @@ export type Database = {
         }
         Relationships: []
       }
+      quotes_audit_log: {
+        Row: {
+          action: string
+          actor_role: string | null
+          created_at: string
+          details: Json
+          function_name: string | null
+          id: string
+          ip_address: string | null
+          quote_id: string | null
+          session_id: string | null
+          source: string
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          actor_role?: string | null
+          created_at?: string
+          details?: Json
+          function_name?: string | null
+          id?: string
+          ip_address?: string | null
+          quote_id?: string | null
+          session_id?: string | null
+          source: string
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          actor_role?: string | null
+          created_at?: string
+          details?: Json
+          function_name?: string | null
+          id?: string
+          ip_address?: string | null
+          quote_id?: string | null
+          session_id?: string | null
+          source?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      log_quote_audit: {
+        Args: {
+          p_action: string
+          p_details?: Json
+          p_function_name?: string
+          p_ip?: string
+          p_quote_id?: string
+          p_session_id?: string
+          p_user_agent?: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

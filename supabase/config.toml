@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.admin-list-quotes]
 verify_jwt = false
+
+[functions.admin-audit-log]
+verify_jwt = false
