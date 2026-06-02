@@ -94,9 +94,25 @@ const PlansFromCrm = () => {
     })();
   }, [qttnCd, navigate]);
 
-  // Ordena com PREMIUM primeiro mas preservando indices originais para coverages
+  // Ordena com PREMIUM primeiro mas preservando indices originais para coverages.
+  // Quando o modelo existe em mais de uma categoria do CRM (ex.: leve/utilitário),
+  // a API retorna planos duplicados (2 PREMIUM + 2 COMPLETO). Mantemos apenas o
+  // mais caro de cada nome.
   const orderedIndexes = useMemo(() => {
-    const idx = plans.map((_, i) => i);
+    const bestByName = new Map<string, number>();
+    plans.forEach((p, i) => {
+      const current = bestByName.get(p.name);
+      if (current === undefined) {
+        bestByName.set(p.name, i);
+        return;
+      }
+      const prev = plans[current];
+      const better =
+        p.monthlyPrice > prev.monthlyPrice ||
+        (p.monthlyPrice === prev.monthlyPrice && p.annualPrice > prev.annualPrice);
+      if (better) bestByName.set(p.name, i);
+    });
+    const idx = Array.from(bestByName.values());
     return idx.sort((a, b) => {
       const order = (n: string) => (n === "PREMIUM" ? 0 : n === "COMPLETO" ? 1 : 2);
       return order(plans[a].name) - order(plans[b].name);
