@@ -85,6 +85,7 @@ const BodySchema = z.object({
   skipCrm: z.boolean().optional(),
   crmQuotationCode: z.string().optional().nullable(),
   crmNegotiationCode: z.string().optional().nullable(),
+  attendantSlug: z.string().max(40).optional().nullable(),
 });
 
 Deno.serve(async (req) => {
@@ -101,7 +102,7 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const { personal, vehicle, address, plan, skipCrm, crmQuotationCode: existingQuotationCode, crmNegotiationCode: existingNegotiationCode } = parsed.data;
+    const { personal, vehicle, address, plan, skipCrm, crmQuotationCode: existingQuotationCode, crmNegotiationCode: existingNegotiationCode, attendantSlug } = parsed.data;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -120,6 +121,7 @@ Deno.serve(async (req) => {
       inspection_status: "pending",
       crm_submitted: false,
       vehicle_type: vehicle.type || null,
+      attendant_slug: attendantSlug || null,
     });
 
     if (dbError) {
