@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, XCircle, Camera, Loader2, Plus, Trash2, Copy, Power } from "lucide-react";
+import { CheckCircle2, XCircle, Camera, Loader2, Plus, Trash2, Copy, Power, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
