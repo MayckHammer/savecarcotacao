@@ -12,12 +12,13 @@ const slugRe = /^[a-z0-9][a-z0-9-]{1,40}$/;
 
 const ActionSchema = z.object({
   password: z.string().min(1),
-  action: z.enum(["list", "create", "update", "delete"]),
+  action: z.enum(["list", "create", "update", "delete", "report"]),
   id: z.string().uuid().optional(),
   slug: z.string().optional(),
   name: z.string().min(1).max(100).optional(),
   phone: z.string().optional(),
   active: z.boolean().optional(),
+  days: z.number().int().min(1).max(365).optional(),
 });
 
 const normalizePhone = (s: string) => s.replace(/\D/g, "");
