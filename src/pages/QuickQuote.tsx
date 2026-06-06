@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuote } from "@/contexts/QuoteContext";
+import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import logo from "@/assets/logo-savecar.png";
 
 const UFS = [
