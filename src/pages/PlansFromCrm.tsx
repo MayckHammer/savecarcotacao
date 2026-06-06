@@ -55,6 +55,7 @@ const PlansFromCrm = () => {
   const navigate = useNavigate();
   const qttnCd = params.get("h") || "";
   const { quote } = useQuote();
+  const { whatsapp: WHATSAPP } = useAttendant();
 
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<Plan[]>([]);
