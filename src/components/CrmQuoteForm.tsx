@@ -17,6 +17,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuote } from "@/contexts/QuoteContext";
+import { useAttendant } from "@/contexts/AttendantContext";
 import { maskPhone, maskPlate } from "@/lib/masks";
 
 type Opt = { id: number | string; text: string };
@@ -44,6 +45,7 @@ const CrmQuoteForm = () => {
     updateAddress,
     setCrmQuotationCode,
   } = useQuote();
+  const { attendant } = useAttendant();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -165,8 +167,9 @@ const CrmQuoteForm = () => {
           vehicleModel: model,
           vehicleYear: year,
           vehicleIsWork: isWork,
-          observation: "",
+          observation: attendant ? `Atendente: ${attendant.name} (${attendant.slug})` : "",
         },
+        attendantSlug: attendant?.slug || null,
       });
       const qttnCd = submitRes.qttnCd;
       if (!qttnCd) throw new Error("CRM não retornou código de cotação");
