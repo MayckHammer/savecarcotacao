@@ -48,6 +48,17 @@ const Admin = () => {
   const [newPhone, setNewPhone] = useState("");
   const [creating, setCreating] = useState(false);
 
+  // Report tab state
+  interface ReportRow {
+    slug: string; name: string; active: boolean;
+    leads: number; crm: number; released: number;
+    approved: number; rejected: number; pending: number; conversion: number;
+  }
+  const [report, setReport] = useState<ReportRow[]>([]);
+  const [totals, setTotals] = useState<{ leads: number; crm: number; released: number; approved: number; rejected: number; pending: number } | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportDays, setReportDays] = useState(30);
+
   const handleLogin = async () => {
     setLoginError(null);
     setLoading(true);
