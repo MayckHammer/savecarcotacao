@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuote } from "@/contexts/QuoteContext";
+import { toast } from "sonner";
 import { useAttendant } from "@/contexts/AttendantContext";
 
 type Plan = {
