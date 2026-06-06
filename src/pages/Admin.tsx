@@ -194,6 +194,7 @@ const Admin = () => {
         <TabsList>
           <TabsTrigger value="vistorias">Vistorias</TabsTrigger>
           <TabsTrigger value="atendentes">Atendentes</TabsTrigger>
+          <TabsTrigger value="relatorio" onClick={() => loadReport()}>Relatório</TabsTrigger>
         </TabsList>
 
         <TabsContent value="vistorias" className="space-y-3 mt-4">
