@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { QuoteProvider } from "@/contexts/QuoteContext";
+import { AttendantProvider } from "@/contexts/AttendantContext";
 import Landing from "./pages/Landing";
 import Quote from "./pages/Quote";
 import Result from "./pages/Result";
@@ -18,6 +19,7 @@ import Codebase from "./pages/Codebase";
 import QuickQuote from "./pages/QuickQuote";
 import QuoteExpress from "./pages/QuoteExpress";
 import PlansFromCrm from "./pages/PlansFromCrm";
+import AttendantLanding from "./pages/AttendantLanding";
 import ScrollToTop from "./components/ScrollToTop";
 import GradualBlur from "./components/GradualBlur";
 import ScrollHint from "./components/ScrollHint";
@@ -38,30 +40,34 @@ const GlobalOverlays = () => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <QuoteProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <ScrollToTop />
-          <GlobalOverlays />
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/cotacao" element={<QuoteExpress />} />
-            <Route path="/cotacao-detalhada" element={<Quote />} />
-            <Route path="/planos" element={<PlansFromCrm />} />
-            <Route path="/resultado" element={<Result />} />
-            
-            <Route path="/aguardando" element={<Aguardando />} />
-            <Route path="/pagamento" element={<Payment />} />
-            <Route path="/vistoria" element={<Inspection />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/confirmacao" element={<Confirmation />} />
-            <Route path="/codebase" element={<Codebase />} />
-            <Route path="/simulacao" element={<QuickQuote />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </QuoteProvider>
+      <AttendantProvider>
+        <QuoteProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <ScrollToTop />
+            <GlobalOverlays />
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/cotacao" element={<QuoteExpress />} />
+              <Route path="/cotacao-detalhada" element={<Quote />} />
+              <Route path="/planos" element={<PlansFromCrm />} />
+              <Route path="/resultado" element={<Result />} />
+
+              <Route path="/aguardando" element={<Aguardando />} />
+              <Route path="/pagamento" element={<Payment />} />
+              <Route path="/vistoria" element={<Inspection />} />
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/confirmacao" element={<Confirmation />} />
+              <Route path="/codebase" element={<Codebase />} />
+              <Route path="/simulacao" element={<QuickQuote />} />
+              {/* Personalized attendant link: /josi, /joao, etc. */}
+              <Route path="/:attendantSlug" element={<AttendantLanding />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </QuoteProvider>
+      </AttendantProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

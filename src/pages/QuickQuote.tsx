@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuote } from "@/contexts/QuoteContext";
+import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import logo from "@/assets/logo-savecar.png";
 
 const UFS = [
@@ -84,6 +85,7 @@ const PLAN_COVERAGES = {
 const QuickQuote = () => {
   const navigate = useNavigate();
   const { updateVehicle } = useQuote();
+  const whatsapp = useWhatsAppNumber();
 
   const [uf, setUf] = useState("");
   const [vehicleType, setVehicleType] = useState("carro");
@@ -109,7 +111,7 @@ const QuickQuote = () => {
 
   const handleWhatsApp = () => {
     window.open(
-      "https://wa.me/5534998679585?text=Olá!%20Quero%20cotar%20meu%20veículo%20com%20a%20SaveCar%20Brasil.",
+      `https://wa.me/${whatsapp}?text=Olá!%20Quero%20cotar%20meu%20veículo%20com%20a%20SaveCar%20Brasil.`,
       "_blank",
     );
   };

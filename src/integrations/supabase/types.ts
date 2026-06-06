@@ -14,9 +14,40 @@ export type Database = {
   }
   public: {
     Tables: {
+      attendants: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          phone: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          phone: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          phone?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       quotes: {
         Row: {
           address_data: Json
+          attendant_slug: string | null
           created_at: string
           crm_error: string | null
           crm_quotation_code: string | null
@@ -35,6 +66,7 @@ export type Database = {
         }
         Insert: {
           address_data?: Json
+          attendant_slug?: string | null
           created_at?: string
           crm_error?: string | null
           crm_quotation_code?: string | null
@@ -53,6 +85,7 @@ export type Database = {
         }
         Update: {
           address_data?: Json
+          attendant_slug?: string | null
           created_at?: string
           crm_error?: string | null
           crm_quotation_code?: string | null

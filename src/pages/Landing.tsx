@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo-savecar.png";
 import bordaSuperior from "@/assets/borda-superior.png";
 import bordaMaior from "@/assets/borda-maior.png";
+import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 
 const Landing = () => {
   const navigate = useNavigate();
+  const whatsapp = useWhatsAppNumber();
 
   const container = {
     hidden: { opacity: 0 },
@@ -122,7 +124,7 @@ const Landing = () => {
           whileHover={{ y: -2, scale: 1.01 }}
           whileTap={{ scale: 0.98 }}
           transition={{ type: "spring", stiffness: 400, damping: 20 }}
-          href="https://wa.me/5534998679585"
+          href={`https://wa.me/${whatsapp}`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 rounded-xl border border-border bg-card/80 backdrop-blur p-4 text-sm text-foreground hover:bg-muted hover:border-primary/30 transition-colors shadow-sm"

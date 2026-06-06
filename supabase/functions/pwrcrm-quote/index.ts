@@ -3,6 +3,7 @@
 // e raspa /compareTables para extrair os valores reais de COMPLETO e PREMIUM.
 
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const PWRCRM_BASE = "https://app.powercrm.com.br";
 const PWRCRM_UTIL = "https://utilities.powercrm.com.br";
@@ -338,6 +339,27 @@ Deno.serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           },
         );
+      }
+
+      // Audit: log attendant attribution (best-effort)
+      const attendantSlug = typeof body.attendantSlug === "string" ? body.attendantSlug : null;
+      if (data?.qttnCd) {
+        try {
+          const sb = createClient(
+            Deno.env.get("SUPABASE_URL")!,
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+          );
+          await sb.rpc("log_quote_audit", {
+            p_action: "crm_submit",
+            p_function_name: "pwrcrm-quote",
+            p_session_id: String(data.qttnCd),
+            p_ip: req.headers.get("x-forwarded-for") || null,
+            p_user_agent: req.headers.get("user-agent") || null,
+            p_details: { attendant_slug: attendantSlug, qttnCd: data.qttnCd },
+          });
+        } catch (e) {
+          console.error("audit log failed:", e);
+        }
       }
 
       return new Response(
