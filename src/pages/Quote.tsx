@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import Header from "@/components/Header";
 import ProgressSteps from "@/components/ProgressSteps";
 import { CrmModelOption, useQuote } from "@/contexts/QuoteContext";
+import { useAttendant } from "@/contexts/AttendantContext";
 import { toast } from "sonner";
 import { maskCPF, maskPhone, maskCEP, maskPlate, validateCPF } from "@/lib/masks";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,6 +24,7 @@ interface FipeOption {
 const Quote = () => {
   const navigate = useNavigate();
   const { quote, updatePersonal, updateVehicle, updateAddress, setSessionId, setCrmQuotationCode, setCrmQuotationId, setCrmNegotiationCode } = useQuote();
+  const { attendant } = useAttendant();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -411,6 +413,7 @@ const Quote = () => {
               skipCrm: true,
               crmQuotationCode: quote.crmQuotationCode,
               crmNegotiationCode: quote.crmNegotiationCode,
+              attendantSlug: attendant?.slug || null,
             },
           });
           if (data?.session_id) setSessionId(data.session_id);
@@ -421,6 +424,7 @@ const Quote = () => {
               vehicle: quote.vehicle,
               address: quote.address,
               plan: {},
+              attendantSlug: attendant?.slug || null,
             },
           });
           if (error) throw error;
