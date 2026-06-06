@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, XCircle, Camera, Loader2, Plus, Trash2, Copy, Power } from "lucide-react";
+import { CheckCircle2, XCircle, Camera, Loader2, Plus, Trash2, Copy, Power, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,17 @@ const Admin = () => {
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Report tab state
+  interface ReportRow {
+    slug: string; name: string; active: boolean;
+    leads: number; crm: number; released: number;
+    approved: number; rejected: number; pending: number; conversion: number;
+  }
+  const [report, setReport] = useState<ReportRow[]>([]);
+  const [totals, setTotals] = useState<{ leads: number; crm: number; released: number; approved: number; rejected: number; pending: number } | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportDays, setReportDays] = useState(30);
 
   const handleLogin = async () => {
     setLoginError(null);
@@ -108,6 +119,17 @@ const Admin = () => {
     toast.success("Atendente criado");
     setNewSlug(""); setNewName(""); setNewPhone("");
     loadAttendants();
+  };
+
+  const loadReport = async (days = reportDays) => {
+    setReportLoading(true);
+    const { data, error } = await supabase.functions.invoke("admin-attendants", {
+      body: { password, action: "report", days },
+    });
+    setReportLoading(false);
+    if (error) { toast.error("Falha ao carregar relatório"); return; }
+    setReport((data?.report as ReportRow[]) || []);
+    setTotals(data?.totals || null);
   };
 
   const toggleActive = async (a: Attendant) => {
@@ -172,6 +194,7 @@ const Admin = () => {
         <TabsList>
           <TabsTrigger value="vistorias">Vistorias</TabsTrigger>
           <TabsTrigger value="atendentes">Atendentes</TabsTrigger>
+          <TabsTrigger value="relatorio" onClick={() => loadReport()}>Relatório</TabsTrigger>
         </TabsList>
 
         <TabsContent value="vistorias" className="space-y-3 mt-4">
@@ -294,6 +317,102 @@ const Admin = () => {
                 </CardContent>
               </Card>
             ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="relatorio" className="space-y-4 mt-4">
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-sm font-bold flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" /> Conversão por atendente
+                </h2>
+                <div className="flex items-center gap-2">
+                  {[7, 30, 90].map((d) => (
+                    <Button
+                      key={d}
+                      size="sm"
+                      variant={reportDays === d ? "default" : "outline"}
+                      onClick={() => { setReportDays(d); loadReport(d); }}
+                    >
+                      {d}d
+                    </Button>
+                  ))}
+                  <Button size="sm" variant="outline" onClick={() => loadReport()}>Atualizar</Button>
+                </div>
+              </div>
+
+              {totals && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                  <div className="rounded-md bg-muted p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Leads</p>
+                    <p className="text-lg font-bold">{totals.leads}</p>
+                  </div>
+                  <div className="rounded-md bg-muted p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">No CRM</p>
+                    <p className="text-lg font-bold">{totals.crm}</p>
+                  </div>
+                  <div className="rounded-md bg-muted p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Aprovadas</p>
+                    <p className="text-lg font-bold text-green-600">{totals.approved}</p>
+                  </div>
+                  <div className="rounded-md bg-muted p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Conversão</p>
+                    <p className="text-lg font-bold">
+                      {totals.leads ? Math.round((totals.approved / totals.leads) * 1000) / 10 : 0}%
+                    </p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {reportLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+          ) : report.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Sem dados no período.</p>
+          ) : (
+            <div className="space-y-2">
+              {report.map((r) => (
+                <Card key={r.slug} className={r.active ? "" : "opacity-60"}>
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                      <div>
+                        <p className="text-sm font-bold">
+                          {r.name}
+                          {r.slug !== "__direct__" && (
+                            <span className="text-xs text-muted-foreground ml-1">/{r.slug}</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {r.leads} leads • {r.crm} no CRM • {r.approved} aprovadas
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase text-muted-foreground">Conversão</p>
+                        <p className="text-lg font-bold text-primary">{r.conversion}%</p>
+                      </div>
+                    </div>
+                    <div className="flex h-2 rounded-full overflow-hidden bg-muted">
+                      {r.leads > 0 && (
+                        <>
+                          <div className="bg-green-500" style={{ width: `${(r.approved / r.leads) * 100}%` }} />
+                          <div className="bg-blue-500" style={{ width: `${(r.released / r.leads) * 100}%` }} />
+                          <div className="bg-yellow-500" style={{ width: `${(r.pending / r.leads) * 100}%` }} />
+                          <div className="bg-red-500" style={{ width: `${(r.rejected / r.leads) * 100}%` }} />
+                        </>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-4 gap-1 text-[10px] text-center">
+                      <div><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Aprov. {r.approved}</div>
+                      <div><span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />Liber. {r.released}</div>
+                      <div><span className="inline-block w-2 h-2 rounded-full bg-yellow-500 mr-1" />Pend. {r.pending}</div>
+                      <div><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />Reprov. {r.rejected}</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </TabsContent>
       </Tabs>

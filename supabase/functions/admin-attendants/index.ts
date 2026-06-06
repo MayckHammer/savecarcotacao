@@ -12,12 +12,13 @@ const slugRe = /^[a-z0-9][a-z0-9-]{1,40}$/;
 
 const ActionSchema = z.object({
   password: z.string().min(1),
-  action: z.enum(["list", "create", "update", "delete"]),
+  action: z.enum(["list", "create", "update", "delete", "report"]),
   id: z.string().uuid().optional(),
   slug: z.string().optional(),
   name: z.string().min(1).max(100).optional(),
   phone: z.string().optional(),
   active: z.boolean().optional(),
+  days: z.number().int().min(1).max(365).optional(),
 });
 
 const normalizePhone = (s: string) => s.replace(/\D/g, "");
@@ -154,6 +155,77 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    if (action === "report") {
+      const days = parsed.data.days ?? 30;
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+      const [{ data: atts }, { data: rows }] = await Promise.all([
+        supabase.from("attendants").select("slug, name, phone, active"),
+        supabase
+          .from("quotes")
+          .select("attendant_slug, crm_submitted, inspection_status, created_at")
+          .gte("created_at", since),
+      ]);
+
+      type Stat = {
+        slug: string;
+        name: string;
+        active: boolean;
+        leads: number;
+        crm: number;
+        released: number;
+        approved: number;
+        rejected: number;
+        pending: number;
+        conversion: number; // approved / leads
+      };
+
+      const byKey: Record<string, Stat> = {};
+      const ensure = (slug: string, name: string, active = true): Stat => {
+        if (!byKey[slug]) {
+          byKey[slug] = {
+            slug, name, active,
+            leads: 0, crm: 0, released: 0, approved: 0, rejected: 0, pending: 0, conversion: 0,
+          };
+        }
+        return byKey[slug];
+      };
+
+      (atts || []).forEach((a) => ensure(a.slug, a.name, a.active));
+      // bucket for leads without attendant
+      ensure("__direct__", "Sem atendente (link direto)", true);
+
+      (rows || []).forEach((q: any) => {
+        const slug = q.attendant_slug || "__direct__";
+        const stat = ensure(slug, slug === "__direct__" ? "Sem atendente (link direto)" : slug);
+        stat.leads++;
+        if (q.crm_submitted) stat.crm++;
+        const s = q.inspection_status;
+        if (s === "approved") stat.approved++;
+        else if (s === "rejected") stat.rejected++;
+        else if (s === "released") stat.released++;
+        else stat.pending++;
+      });
+
+      const report = Object.values(byKey)
+        .map((s) => ({ ...s, conversion: s.leads ? Math.round((s.approved / s.leads) * 1000) / 10 : 0 }))
+        .sort((a, b) => b.leads - a.leads);
+
+      const totals = report.reduce(
+        (acc, s) => {
+          acc.leads += s.leads; acc.crm += s.crm; acc.released += s.released;
+          acc.approved += s.approved; acc.rejected += s.rejected; acc.pending += s.pending;
+          return acc;
+        },
+        { leads: 0, crm: 0, released: 0, approved: 0, rejected: 0, pending: 0 },
+      );
+
+      return new Response(
+        JSON.stringify({ report, totals, days, since }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     return new Response(JSON.stringify({ error: "unknown action" }), {
