@@ -121,6 +121,17 @@ const Admin = () => {
     loadAttendants();
   };
 
+  const loadReport = async (days = reportDays) => {
+    setReportLoading(true);
+    const { data, error } = await supabase.functions.invoke("admin-attendants", {
+      body: { password, action: "report", days },
+    });
+    setReportLoading(false);
+    if (error) { toast.error("Falha ao carregar relatório"); return; }
+    setReport((data?.report as ReportRow[]) || []);
+    setTotals(data?.totals || null);
+  };
+
   const toggleActive = async (a: Attendant) => {
     await supabase.functions.invoke("admin-attendants", {
       body: { password, action: "update", id: a.id, active: !a.active },
