@@ -20,9 +20,7 @@ import {
 } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuote } from "@/contexts/QuoteContext";
-import { toast } from "sonner";
-
-const WHATSAPP = "5534998679585";
+import { useAttendant } from "@/contexts/AttendantContext";
 
 type Plan = {
   name: string;
