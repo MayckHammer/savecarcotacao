@@ -145,6 +145,23 @@ const PlansFromCrm = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-background pb-24">
+      <Helmet>
+        <title>Nossos Planos de Proteção Veicular — Save Car Brasil</title>
+        <meta name="description" content="Compare os planos Completo e Premium da Save Car Brasil e escolha a proteção veicular ideal para o seu veículo." />
+        <link rel="canonical" href="https://savecarcotacao.com/planos" />
+        <meta property="og:title" content="Nossos Planos de Proteção Veicular — Save Car Brasil" />
+        <meta property="og:description" content="Compare os planos Completo e Premium da Save Car Brasil." />
+        <meta property="og:url" content="https://savecarcotacao.com/planos" />
+        <script type="application/ld+json">{JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Service",
+          "serviceType": "Proteção veicular",
+          "provider": { "@type": "Organization", "name": "Save Car Brasil", "url": "https://savecarcotacao.com/" },
+          "areaServed": "BR",
+          "name": "Planos de Proteção Veicular Save Car",
+          "description": "Planos Completo e Premium com cobertura contra roubo, furto, colisão e assistência 24h."
+        })}</script>
+      </Helmet>
       <Header dark />
       <main className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full space-y-6">
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
