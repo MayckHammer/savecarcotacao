@@ -1,0 +1,13 @@
+# Save Car Brasil
+
+> Proteção veicular acessível para carros, motos e utilitários. Cotação online em 30 segundos, vistoria digital e assistência 24h em todo o Brasil.
+
+Save Car Brasil oferece planos de proteção veicular com cobertura contra roubo, furto, colisão e assistência 24 horas. O processo é 100% online: cotação rápida, vistoria digital do veículo e contratação simplificada.
+
+## Pages
+
+- [Início](/): Visão geral da Save Car Brasil e acesso à cotação online.
+- [Cotação rápida](/cotacao): Formulário express de cotação de proteção veicular em 30 segundos.
+- [Cotação detalhada](/cotacao-detalhada): Fluxo completo com dados pessoais, do veículo e endereço.
+- [Planos](/planos): Comparação entre os planos Completo e Premium de proteção veicular.
+- [Simulação](/simulacao): Simulador rápido de valores por categoria de veículo.
