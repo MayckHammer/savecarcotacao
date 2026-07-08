@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ShieldCheck,
 } from "lucide-react";
+import { Helmet } from "react-helmet-async";
 import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import { Button } from "@/components/ui/button";
