@@ -15,6 +15,7 @@ import { useAttendant } from "@/contexts/AttendantContext";
 import { toast } from "sonner";
 import { maskCPF, maskPhone, maskCEP, maskPlate, validateCPF } from "@/lib/masks";
 import { supabase } from "@/integrations/supabase/client";
+import { Helmet } from "react-helmet-async";
 
 interface FipeOption {
   code: string;
@@ -487,10 +488,19 @@ const Quote = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      <Helmet>
+        <title>Cotação Detalhada de Proteção Veicular — Save Car Brasil</title>
+        <meta name="description" content="Preencha seus dados, do veículo e endereço para receber uma cotação personalizada de proteção veicular com a Save Car Brasil." />
+        <link rel="canonical" href="https://savecarcotacao.com/cotacao-detalhada" />
+        <meta property="og:title" content="Cotação Detalhada de Proteção Veicular — Save Car Brasil" />
+        <meta property="og:description" content="Cotação personalizada de proteção veicular em poucos passos." />
+        <meta property="og:url" content="https://savecarcotacao.com/cotacao-detalhada" />
+      </Helmet>
       <Header />
       <ProgressSteps currentStep={step} />
 
-      <div className="flex-1 px-6 pb-8">
+      <main className="flex-1 px-6 pb-8">
+        <h1 className="sr-only">Cotação detalhada de proteção veicular Save Car Brasil</h1>
         {step === 1 && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-foreground">Seus Dados</h2>
@@ -862,7 +872,7 @@ const Quote = () => {
             )}
           </Button>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
