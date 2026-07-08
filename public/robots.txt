@@ -12,3 +12,10 @@ Allow: /
 
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /aguardando
+Disallow: /pagamento
+Disallow: /vistoria
+Disallow: /confirmacao
+
+Sitemap: https://savecarcotacao.com/sitemap.xml
