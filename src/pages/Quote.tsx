@@ -15,6 +15,7 @@ import { useAttendant } from "@/contexts/AttendantContext";
 import { toast } from "sonner";
 import { maskCPF, maskPhone, maskCEP, maskPlate, validateCPF } from "@/lib/masks";
 import { supabase } from "@/integrations/supabase/client";
+import { Helmet } from "react-helmet-async";
 
 interface FipeOption {
   code: string;
