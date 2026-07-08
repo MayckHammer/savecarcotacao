@@ -164,7 +164,7 @@ const Result = () => {
             Nova cotação
           </Button>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
