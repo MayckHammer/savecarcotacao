@@ -85,9 +85,17 @@ const Result = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      <Helmet>
+        <title>Resultado da Cotação — Save Car Brasil</title>
+        <meta name="description" content="Veja o resultado da sua cotação de proteção veicular Save Car Brasil e escolha o melhor plano para o seu veículo." />
+        <link rel="canonical" href="https://savecarcotacao.com/resultado" />
+        <meta property="og:title" content="Resultado da Cotação — Save Car Brasil" />
+        <meta property="og:description" content="Confira o resultado da sua cotação de proteção veicular." />
+        <meta property="og:url" content="https://savecarcotacao.com/resultado" />
+      </Helmet>
       <Header dark />
 
-      <div className="flex-1 px-6 py-8">
+      <main className="flex-1 px-6 py-8">
         <h1 className="text-xl font-bold text-foreground mb-1">
           Olá, {quote.personal.name.split(" ")[0] || "Associado"}!
         </h1>
