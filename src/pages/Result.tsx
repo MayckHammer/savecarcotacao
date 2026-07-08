@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import Header from "@/components/Header";
 import { useQuote } from "@/contexts/QuoteContext";
 import { supabase } from "@/integrations/supabase/client";
+import { Helmet } from "react-helmet-async";
 
 const Result = () => {
   const navigate = useNavigate();
