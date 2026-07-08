@@ -872,7 +872,7 @@ const Quote = () => {
             )}
           </Button>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
