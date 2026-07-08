@@ -86,7 +86,7 @@ const Admin = () => {
 
   const updateStatus = async (sessionId: string, status: string, link?: string) => {
     setUpdating(sessionId);
-    const body: Record<string, string> = { session_id: sessionId, inspection_status: status };
+    const body: Record<string, string> = { password, session_id: sessionId, inspection_status: status };
     if (link) body.inspection_link = link;
     await supabase.functions.invoke("update-inspection", { body });
     await fetchQuotes();

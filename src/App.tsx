@@ -15,7 +15,7 @@ import Inspection from "./pages/Inspection";
 import Admin from "./pages/Admin";
 import Confirmation from "./pages/Confirmation";
 import NotFound from "./pages/NotFound";
-import Codebase from "./pages/Codebase";
+
 import QuickQuote from "./pages/QuickQuote";
 import QuoteExpress from "./pages/QuoteExpress";
 import PlansFromCrm from "./pages/PlansFromCrm";
@@ -59,7 +59,7 @@ const App = () => (
               <Route path="/vistoria" element={<Inspection />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/confirmacao" element={<Confirmation />} />
-              <Route path="/codebase" element={<Codebase />} />
+              
               <Route path="/simulacao" element={<QuickQuote />} />
               {/* Personalized attendant link: /josi, /joao, etc. */}
               <Route path="/:attendantSlug" element={<AttendantLanding />} />
