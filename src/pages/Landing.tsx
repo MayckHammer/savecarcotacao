@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, HelpCircle, MessageCircle, Instagram, Linkedin, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
@@ -10,6 +11,10 @@ import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 const Landing = () => {
   const navigate = useNavigate();
   const whatsapp = useWhatsAppNumber();
+
+  useEffect(() => {
+    window.location.href = `https://wa.me/${whatsapp}`;
+  }, [whatsapp]);
 
   const container = {
     hidden: { opacity: 0 },
