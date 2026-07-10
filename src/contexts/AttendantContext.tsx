@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type Attendant = { slug: string; name: string; phone: string };
 
-const DEFAULT_PHONE = "5534998679585";
+const DEFAULT_PHONE = "34998679585";
 const STORAGE_KEY = "savecar_attendant";
 
 type Ctx = {
