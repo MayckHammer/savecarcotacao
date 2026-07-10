@@ -38,6 +38,14 @@ const GlobalOverlays = () => {
   );
 };
 
+const NeutralLanding = () => {
+  const { clear } = useAttendant();
+  useEffect(() => {
+    clear();
+  }, [clear]);
+  return <Landing />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
