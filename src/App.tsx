@@ -57,7 +57,7 @@ const App = () => (
             <ScrollToTop />
             <GlobalOverlays />
             <Routes>
-              <Route path="/" element={<Landing />} />
+              <Route path="/" element={<NeutralLanding />} />
               <Route path="/cotacao" element={<QuoteExpress />} />
               <Route path="/cotacao-detalhada" element={<Quote />} />
               <Route path="/planos" element={<PlansFromCrm />} />
