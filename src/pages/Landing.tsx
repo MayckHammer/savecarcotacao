@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
   ArrowRight,
   MessageCircle,
@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import logo from "@/assets/logo-savecar.png";
+import logoAsset from "@/assets/logo-savecar.png.asset.json";
 import heroEstrada from "@/assets/hero-estrada-2.svg.asset.json";
 import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import SectionHeading from "@/components/lp/SectionHeading";
@@ -96,11 +96,21 @@ const Landing = () => {
         />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,255,255,0.08),transparent_60%)]" aria-hidden="true" />
 
+        <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-center px-4 py-4 sm:justify-start sm:px-6 lg:px-8">
+          <Link to="/" aria-label="SaveCar Brasil - Página inicial">
+            <img
+              src={logoAsset.url}
+              alt="SaveCar Brasil"
+              className="h-12 object-contain sm:h-14"
+            />
+          </Link>
+        </header>
+
         <motion.div
           variants={container}
           initial="hidden"
           animate="show"
-          className="container-page relative z-10 flex flex-col items-center py-12 text-center sm:py-16"
+          className="container-page relative z-10 flex flex-col items-center pt-24 pb-12 text-center sm:pt-28 sm:pb-16"
         >
 
 
@@ -278,7 +288,7 @@ const Landing = () => {
           <div className="grid gap-10 md:grid-cols-3">
             <div className="space-y-3">
               <div className="inline-block rounded-2xl bg-white px-4 py-2">
-                <img src={logo} alt="SaveCar Brasil" className="h-14 object-contain" />
+                <img src={logoAsset.url} alt="SaveCar Brasil" className="h-14 object-contain" />
               </div>
               <p className="text-sm text-white/75">Associação de proteção veicular desde {SITE.foundedYear}.</p>
               <p className="flex items-center gap-2 text-sm text-white/75">

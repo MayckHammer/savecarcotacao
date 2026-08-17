@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useQuote } from "@/contexts/QuoteContext";
 import { useWhatsAppNumber } from "@/contexts/AttendantContext";
-import logo from "@/assets/logo-savecar.png";
+import logoAsset from "@/assets/logo-savecar.png.asset.json";
 
 const UFS = [
   "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT",
@@ -127,7 +127,7 @@ const QuickQuote = () => {
       {/* Header */}
       <header className="flex items-center justify-between px-5 py-4 border-b border-border">
         <img
-          src={logo}
+          src={logoAsset.url}
           alt="SAVE CAR BRASIL"
           className="h-10 object-contain cursor-pointer"
           onClick={() => navigate("/")}
