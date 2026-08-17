@@ -15,6 +15,8 @@ import logoAsset from "@/assets/logo-savecar.png.asset.json";
 import heroEstrada from "@/assets/hero-estrada-2.svg.asset.json";
 import reclameAquiBadge from "@/assets/selo-reclame-aqui.webp.asset.json";
 import susepBadge from "@/assets/susep.png.asset.json";
+import certidaoSusep from "@/assets/certidao-susep.pdf.asset.json";
+
 import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
