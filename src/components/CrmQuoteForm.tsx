@@ -82,9 +82,10 @@ const CrmQuoteForm = () => {
   };
 
   // Captura o lead parcial assim que houver telefone válido + consentimento LGPD
-  const captureLead = async (converted = false) => {
+  const captureLead = async (converted = false, consentOverride?: boolean) => {
     const digits = phone.replace(/\D/g, "");
-    if (!lgpdConsent || digits.length < 10) return;
+    if (!(consentOverride ?? lgpdConsent) || digits.length < 10) return;
+
     try {
       await supabase.functions.invoke("capture-lead", {
         body: {
