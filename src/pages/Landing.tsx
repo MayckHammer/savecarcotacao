@@ -26,6 +26,7 @@ import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
 import FaqSection from "@/components/lp/FaqSection";
 import { BENEFITS, FAQ, SITE, STATS } from "@/lib/lp-content";
+import { trackQuoteClick, trackWhatsAppClick } from "@/lib/analytics";
 
 const benefitIcons: Record<string, LucideIcon> = {
   zap: Zap,
@@ -115,13 +116,21 @@ const Landing = () => {
               variant="cta"
               size="xl"
               className="group w-full sm:flex-1"
-              onClick={() => navigate("/cotacao")}
+              onClick={() => {
+                trackQuoteClick("hero");
+                navigate("/cotacao");
+              }}
             >
               Fazer minha cotação agora
               <ArrowRight className="transition-transform group-hover:translate-x-1" />
             </Button>
             <Button variant="onDark" size="xl" className="w-full sm:flex-1" asChild>
-              <a href={waHref} target="_blank" rel="noopener noreferrer">
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackWhatsAppClick("hero")}
+              >
                 <MessageCircle />
                 Falar no WhatsApp
               </a>
@@ -167,7 +176,14 @@ const Landing = () => {
         />
         <CoverageGrid />
         <div className="text-center">
-          <Button variant="cta" size="lg" onClick={() => navigate("/cotacao")}>
+          <Button
+            variant="cta"
+            size="lg"
+            onClick={() => {
+              trackQuoteClick("coberturas");
+              navigate("/cotacao");
+            }}
+          >
             Quero essas coberturas no meu veículo
           </Button>
         </div>
@@ -220,7 +236,15 @@ const Landing = () => {
           <p className="mx-auto mt-3 max-w-xl text-white/70">
             Sem burocracia e sem compromisso. Você vê o valor na hora.
           </p>
-          <Button variant="cta" size="xl" className="mt-8" onClick={() => navigate("/cotacao")}>
+          <Button
+            variant="cta"
+            size="xl"
+            className="mt-8"
+            onClick={() => {
+              trackQuoteClick("cta_final");
+              navigate("/cotacao");
+            }}
+          >
             Fazer cotação agora
             <ArrowRight />
           </Button>
@@ -254,7 +278,13 @@ const Landing = () => {
                   <span className="text-xs text-white/60">{SITE.phones.assistance.label}</span>
                 </span>
               </a>
-              <a href={waHref} target="_blank" rel="noopener noreferrer" className="flex items-start gap-3">
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackWhatsAppClick("rodape")}
+                className="flex items-start gap-3"
+              >
                 <MessageCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />
                 <span>
                   <span className="block font-semibold text-white">Falar no WhatsApp</span>
@@ -311,11 +341,23 @@ const Landing = () => {
       {/* 7. STICKY MOBILE */}
       {showSticky && (
         <div className="fixed inset-x-0 bottom-0 z-50 flex gap-2 border-t border-border bg-card/95 p-3 backdrop-blur sm:hidden">
-          <Button variant="cta" className="h-12 flex-1" onClick={() => navigate("/cotacao")}>
+          <Button
+            variant="cta"
+            className="h-12 flex-1"
+            onClick={() => {
+              trackQuoteClick("sticky_mobile");
+              navigate("/cotacao");
+            }}
+          >
             Fazer cotação
           </Button>
           <Button variant="outline" size="icon" className="h-12 w-12" aria-label="Falar no WhatsApp" asChild>
-            <a href={waHref} target="_blank" rel="noopener noreferrer">
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => trackWhatsAppClick("sticky_mobile")}
+            >
               <MessageCircle />
             </a>
           </Button>
