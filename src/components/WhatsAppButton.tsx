@@ -1,4 +1,5 @@
 import { useWhatsAppNumber } from "@/contexts/AttendantContext";
+import { trackWhatsAppClick } from "@/lib/analytics";
 
 const WhatsAppButton = () => {
   const phone = useWhatsAppNumber();
@@ -7,6 +8,7 @@ const WhatsAppButton = () => {
       href={`https://wa.me/${phone}`}
       target="_blank"
       rel="noopener noreferrer"
+      onClick={() => trackWhatsAppClick("botao_flutuante", { page_path: window.location.pathname })}
       className="fixed bottom-6 right-6 z-[1300] flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg hover:bg-[#20bd5a] transition-colors"
       aria-label="Atendimento WhatsApp"
     >
