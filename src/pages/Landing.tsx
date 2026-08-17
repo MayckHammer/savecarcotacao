@@ -196,14 +196,20 @@ const Landing = () => {
               edgeSensitivity={20}
               colors={["#F2B705", "#FFFFFF", "#0D5C3E"]}
             >
-              <div className="flex h-16 items-center justify-center rounded-[18px] bg-white/35 px-5 py-2.5 shadow-[0_8px_40px_rgba(255,255,255,0.22)] backdrop-blur-xl">
+              <a
+                href="https://www.reclameaqui.com.br/empresa/save-car-brasil/"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Ver perfil da SaveCar Brasil no Reclame Aqui"
+                className="flex h-16 items-center justify-center rounded-[18px] bg-white/35 px-5 py-2.5 shadow-[0_8px_40px_rgba(255,255,255,0.22)] backdrop-blur-xl"
+              >
                 <img
                   src={reclameAquiBadge.url}
                   alt="Empresa verificada pelo Reclame Aqui"
                   className="max-h-11 w-auto object-contain"
                   loading="lazy"
                 />
-              </div>
+              </a>
             </BorderGlow>
             <BorderGlow
               className="flex-1 sm:max-w-[240px]"
