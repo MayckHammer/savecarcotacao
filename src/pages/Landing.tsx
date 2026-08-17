@@ -155,14 +155,14 @@ const Landing = () => {
             </Button>
           </motion.div>
 
-          <motion.p variants={fadeUp} className="mt-4 text-sm text-white/70">
+          <motion.p variants={fadeUp} className="mt-6 text-sm text-white/70">
             Grátis · Sem compromisso · Resposta na hora
           </motion.p>
 
           <motion.a
             variants={fadeUp}
             href={SITE.phones.assistance.href}
-            className="mt-3 inline-flex items-center gap-2 text-sm text-white/80 hover:text-white"
+            className="mt-5 inline-flex items-center gap-2 text-sm text-white/80 hover:text-white"
           >
             <Clock className="size-4 text-amber-500" />
             <span>Assistência 24h:</span>
