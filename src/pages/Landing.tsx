@@ -104,7 +104,7 @@ const Landing = () => {
 
           <motion.span
             variants={fadeUp}
-            className="mb-5 inline-flex items-center rounded-full border border-white/20 bg-black/25 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-500 backdrop-blur-md"
+            className="mb-3 inline-flex items-center rounded-full border border-white/20 bg-black/25 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-500 backdrop-blur-md sm:mb-5"
           >
             13 anos protegendo quem dirige
           </motion.span>
@@ -116,7 +116,7 @@ const Landing = () => {
             Sua proteção veicular cotada em <span className="text-amber-500">2 minutos</span>.
           </motion.h1>
 
-          <motion.p variants={fadeUp} className="mt-4 max-w-2xl text-base text-white/75">
+          <motion.p variants={fadeUp} className="mt-2 max-w-2xl text-base text-white/75 sm:mt-4">
             <span className="sm:hidden">Descubra o valor da sua mensalidade em menos de 2 minutos.</span>
             <span className="hidden sm:inline">
               Furto, roubo, colisão, terceiros e assistência 24h em todo o Brasil. Informe a placa e veja o valor da sua
