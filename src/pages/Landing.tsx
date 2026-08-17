@@ -116,7 +116,7 @@ const Landing = () => {
             Sua proteção veicular cotada em <span className="text-amber-500">2 minutos</span>.
           </motion.h1>
 
-          <motion.p variants={fadeUp} className="mt-2 max-w-2xl text-base text-white/75 sm:mt-4">
+          <motion.p variants={fadeUp} className="mt-5 max-w-2xl text-base text-white/75 sm:mt-7">
             <span className="sm:hidden">Descubra o valor da sua mensalidade em menos de 2 minutos.</span>
             <span className="hidden sm:inline">
               Furto, roubo, colisão, terceiros e assistência 24h em todo o Brasil. Informe a placa e veja o valor da sua
