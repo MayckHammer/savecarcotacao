@@ -136,7 +136,12 @@ const Landing = () => {
               Fazer minha cotação agora
               <ArrowRight className="transition-transform group-hover:translate-x-1" />
             </Button>
-            <Button variant="onDark" size="xl" className="w-full sm:flex-1" asChild>
+            <Button
+              variant="onDark"
+              size="xl"
+              className="w-full border-white/20 bg-black/25 backdrop-blur-md hover:bg-black/35 sm:flex-1"
+              asChild
+            >
               <a
                 href={waHref}
                 target="_blank"
