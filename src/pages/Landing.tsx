@@ -316,13 +316,6 @@ const Landing = () => {
                   <span className="text-xs text-white/60">Cotação e dúvidas</span>
                 </span>
               </a>
-              <a href={SITE.phones.commercial.href} className="flex items-start gap-3">
-                <Phone className="mt-0.5 size-4 shrink-0 text-amber-500" />
-                <span>
-                  <span className="block font-semibold text-white">{SITE.phones.commercial.display}</span>
-                  <span className="text-xs text-white/60">{SITE.phones.commercial.label}</span>
-                </span>
-              </a>
             </div>
 
             <div className="space-y-4">
