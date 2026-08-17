@@ -171,7 +171,7 @@ const Landing = () => {
 
           <motion.div
             variants={fadeUp}
-            className="mt-12 flex w-full items-center justify-center gap-4 sm:mt-14 sm:gap-6"
+            className="mt-14 flex w-full items-center justify-center gap-4 sm:mt-16 sm:gap-6"
           >
             <div className="flex h-16 flex-1 items-center justify-center rounded-[var(--radius-card)] border border-white/40 bg-white/35 px-5 py-2.5 shadow-[0_8px_40px_rgba(255,255,255,0.22)] backdrop-blur-xl sm:max-w-[240px]">
               <img
