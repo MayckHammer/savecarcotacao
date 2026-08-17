@@ -19,8 +19,7 @@ import {
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo-savecar.png";
-import bordaSuperior from "@/assets/borda-superior.png";
-import bordaMaior from "@/assets/borda-maior.png";
+import heroEstrada from "@/assets/hero-estrada.jpg";
 import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
@@ -76,10 +75,17 @@ const Landing = () => {
 
       {/* 1. HERO */}
       <section className="surface-dark relative overflow-hidden">
-        <div className="pointer-events-none absolute inset-0 select-none opacity-15" aria-hidden="true">
-          <img src={bordaSuperior} alt="" className="absolute right-0 top-0 w-[55%] max-w-[280px] object-contain" />
-          <img src={bordaMaior} alt="" className="absolute -left-8 top-[60%] w-[110%] max-w-none object-contain" />
-        </div>
+        <img
+          src={heroEstrada}
+          alt="Carro percorrendo estrada em meio a montanhas ao entardecer"
+          width={1920}
+          height={1024}
+          className="pointer-events-none absolute inset-0 size-full select-none object-cover"
+        />
+        <div
+          className="pointer-events-none absolute inset-0 bg-gradient-to-b from-teal-900/95 via-teal-900/85 to-teal-900/95"
+          aria-hidden="true"
+        />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,255,255,0.10),transparent_65%)]" aria-hidden="true" />
 
         <motion.div
@@ -88,9 +94,7 @@ const Landing = () => {
           animate="show"
           className="container-page relative z-10 flex flex-col items-center py-12 text-center sm:py-16"
         >
-          <motion.div variants={fadeUp} className="mb-6 rounded-2xl bg-white px-4 py-2">
-            <img src={logo} alt="SaveCar Brasil" className="h-20 object-contain sm:h-24" />
-          </motion.div>
+
 
           <motion.span
             variants={fadeUp}
