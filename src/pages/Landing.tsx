@@ -19,8 +19,7 @@ import {
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo-savecar.png";
-import bordaSuperior from "@/assets/borda-superior.png";
-import bordaMaior from "@/assets/borda-maior.png";
+import heroEstrada from "@/assets/hero-estrada.jpg";
 import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
