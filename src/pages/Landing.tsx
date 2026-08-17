@@ -21,6 +21,7 @@ import CoverageGrid from "@/components/lp/CoverageGrid";
 import FaqSection from "@/components/lp/FaqSection";
 import BenefitsCarousel from "@/components/lp/BenefitsCarousel";
 import BorderGlow from "@/components/BorderGlow";
+import CountUp from "@/components/CountUp";
 
 import { FAQ, SITE, STATS } from "@/lib/lp-content";
 import { trackQuoteClick, trackWhatsAppClick } from "@/lib/analytics";
@@ -229,15 +230,16 @@ const Landing = () => {
             variants={fadeUp}
             className="mt-14 grid w-full grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] bg-white/10 sm:mt-16 lg:grid-cols-4"
           >
-            {STATS.map((stat) => (
-              <div key={stat.label} className="bg-teal-900 px-6 py-7 text-center">
-                <p className="font-display text-3xl font-extrabold text-amber-500 sm:text-4xl">
-                  {stat.prefix}
-                  {stat.value}
-                </p>
-                <p className="mt-1 text-sm text-white/70">{stat.label}</p>
-              </div>
-            ))}
+          {STATS.map((stat) => (
+            <div key={stat.label} className="bg-teal-900 px-6 py-7 text-center">
+              <p className="font-display text-3xl font-extrabold text-amber-500 sm:text-4xl">
+                {stat.prefix}
+                <CountUp to={stat.value} duration={2} />
+                {stat.suffix}
+              </p>
+              <p className="mt-1 text-sm text-white/70">{stat.label}</p>
+            </div>
+          ))}
           </motion.div>
         </motion.div>
       </section>
