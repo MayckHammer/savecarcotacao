@@ -16,6 +16,7 @@ import GlassIcons from "./GlassIcons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { COVERAGES, type Coverage } from "@/lib/lp-content";
+import { trackQuoteClick } from "@/lib/analytics";
 
 const iconMap: Record<string, LucideIcon> = {
   shield: Shield,
@@ -64,7 +65,14 @@ const CoverageGrid = () => {
                   {selected.description}
                 </DialogDescription>
               </DialogHeader>
-              <Button variant="cta" className="w-full" onClick={() => navigate("/cotacao")}>
+              <Button
+                variant="cta"
+                className="w-full"
+                onClick={() => {
+                  trackQuoteClick("modal_cobertura", { cobertura: selected.title });
+                  navigate("/cotacao");
+                }}
+              >
                 Fazer cotação
               </Button>
             </>
