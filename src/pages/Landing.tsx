@@ -28,14 +28,6 @@ import BenefitsCarousel from "@/components/lp/BenefitsCarousel";
 import { FAQ, SITE, STATS } from "@/lib/lp-content";
 import { trackQuoteClick, trackWhatsAppClick } from "@/lib/analytics";
 
-const benefitIcons: Record<string, LucideIcon> = {
-  zap: Zap,
-  unlock: Unlock,
-  smartphone: Smartphone,
-  headphones: Headphones,
-  "users-round": UsersRound,
-  "badge-check": BadgeCheck,
-};
 
 const faqJsonLd = {
   "@context": "https://schema.org",
