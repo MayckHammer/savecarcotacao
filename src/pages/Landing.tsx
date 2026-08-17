@@ -20,6 +20,8 @@ import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
 import FaqSection from "@/components/lp/FaqSection";
 import BenefitsCarousel from "@/components/lp/BenefitsCarousel";
+import BorderGlow from "@/components/BorderGlow";
+
 import { FAQ, SITE, STATS } from "@/lib/lp-content";
 import { trackQuoteClick, trackWhatsAppClick } from "@/lib/analytics";
 
@@ -125,18 +127,29 @@ const Landing = () => {
           </motion.p>
 
           <motion.div variants={fadeUp} className="mt-10 flex w-full max-w-md flex-col gap-3 sm:mt-12 sm:flex-row">
-            <Button
-              variant="cta"
-              size="xl"
-              className="group w-full sm:flex-1"
-              onClick={() => {
-                trackQuoteClick("hero");
-                navigate("/cotacao");
-              }}
+            <BorderGlow
+              className="w-full sm:flex-1"
+              backgroundColor="transparent"
+              borderRadius={14}
+              glowRadius={30}
+              glowColor="45 95 60"
+              edgeSensitivity={20}
+              colors={["#F2B705", "#FFE082", "#0D5C3E"]}
             >
-              Fazer minha cotação agora
-              <ArrowRight className="transition-transform group-hover:translate-x-1" />
-            </Button>
+              <Button
+                variant="cta"
+                size="xl"
+                className="group w-full"
+                onClick={() => {
+                  trackQuoteClick("hero");
+                  navigate("/cotacao");
+                }}
+              >
+                Fazer minha cotação agora
+                <ArrowRight className="transition-transform group-hover:translate-x-1" />
+              </Button>
+            </BorderGlow>
+
             <Button
               variant="onDark"
               size="xl"
@@ -173,22 +186,43 @@ const Landing = () => {
             variants={fadeUp}
             className="mt-14 flex w-full items-center justify-center gap-4 sm:mt-16 sm:gap-6"
           >
-            <div className="flex h-16 flex-1 items-center justify-center rounded-[var(--radius-card)] border border-white/40 bg-white/35 px-5 py-2.5 shadow-[0_8px_40px_rgba(255,255,255,0.22)] backdrop-blur-xl sm:max-w-[240px]">
-              <img
-                src={reclameAquiBadge.url}
-                alt="Empresa verificada pelo Reclame Aqui"
-                className="max-h-11 w-auto object-contain"
-                loading="lazy"
-              />
-            </div>
-            <div className="flex h-16 flex-1 items-center justify-center rounded-[var(--radius-card)] border border-white/40 bg-white/35 px-5 py-2.5 shadow-[0_8px_40px_rgba(255,255,255,0.22)] backdrop-blur-xl sm:max-w-[240px]">
-              <img
-                src={susepBadge.url}
-                alt="Regulamentada pela SUSEP"
-                className="max-h-11 w-auto object-contain"
-                loading="lazy"
-              />
-            </div>
+            <BorderGlow
+              className="flex-1 sm:max-w-[240px]"
+              backgroundColor="transparent"
+              borderRadius={18}
+              glowRadius={28}
+              glowColor="45 95 65"
+              edgeSensitivity={20}
+              colors={["#F2B705", "#FFFFFF", "#0D5C3E"]}
+            >
+              <div className="flex h-16 items-center justify-center rounded-[18px] bg-white/35 px-5 py-2.5 shadow-[0_8px_40px_rgba(255,255,255,0.22)] backdrop-blur-xl">
+                <img
+                  src={reclameAquiBadge.url}
+                  alt="Empresa verificada pelo Reclame Aqui"
+                  className="max-h-11 w-auto object-contain"
+                  loading="lazy"
+                />
+              </div>
+            </BorderGlow>
+            <BorderGlow
+              className="flex-1 sm:max-w-[240px]"
+              backgroundColor="transparent"
+              borderRadius={18}
+              glowRadius={28}
+              glowColor="45 95 65"
+              edgeSensitivity={20}
+              colors={["#F2B705", "#FFFFFF", "#0D5C3E"]}
+            >
+              <div className="flex h-16 items-center justify-center rounded-[18px] bg-white/35 px-5 py-2.5 shadow-[0_8px_40px_rgba(255,255,255,0.22)] backdrop-blur-xl">
+                <img
+                  src={susepBadge.url}
+                  alt="Regulamentada pela SUSEP"
+                  className="max-h-11 w-auto object-contain"
+                  loading="lazy"
+                />
+              </div>
+            </BorderGlow>
+
           </motion.div>
 
           <motion.div
