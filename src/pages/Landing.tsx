@@ -8,13 +8,6 @@ import {
   Linkedin,
   MapPin,
   Phone,
-  Zap,
-  Unlock,
-  Smartphone,
-  Headphones,
-  UsersRound,
-  BadgeCheck,
-  type LucideIcon,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -24,17 +17,10 @@ import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
 import FaqSection from "@/components/lp/FaqSection";
-import { BENEFITS, FAQ, SITE, STATS } from "@/lib/lp-content";
+import BenefitsCarousel from "@/components/lp/BenefitsCarousel";
+import { FAQ, SITE, STATS } from "@/lib/lp-content";
 import { trackQuoteClick, trackWhatsAppClick } from "@/lib/analytics";
 
-const benefitIcons: Record<string, LucideIcon> = {
-  zap: Zap,
-  unlock: Unlock,
-  smartphone: Smartphone,
-  headphones: Headphones,
-  "users-round": UsersRound,
-  "badge-check": BadgeCheck,
-};
 
 const faqJsonLd = {
   "@context": "https://schema.org",
@@ -221,30 +207,14 @@ const Landing = () => {
       </section>
 
       {/* 3. BENEFÍCIOS */}
-      <section className="bg-teal-50">
+      <section className="overflow-hidden bg-teal-50">
         <div className="container-page section-y space-y-10">
           <SectionHeading
             eyebrow="Por que a SaveCar"
             title="Direto ao ponto: o que você ganha"
             description="Sem letra miúda e sem burocracia — do primeiro clique até a vistoria."
           />
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {BENEFITS.map((benefit) => {
-              const Icon = benefitIcons[benefit.icon] ?? Zap;
-              return (
-                <div
-                  key={benefit.title}
-                  className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-lift"
-                >
-                  <span className="grid size-11 place-items-center rounded-[var(--radius-input)] bg-teal-900 text-amber-500">
-                    <Icon className="size-5" />
-                  </span>
-                  <h3 className="mt-4 font-display text-base font-bold text-teal-900">{benefit.title}</h3>
-                  <p className="mt-1.5 text-sm text-muted-foreground">{benefit.description}</p>
-                </div>
-              );
-            })}
-          </div>
+          <BenefitsCarousel />
         </div>
       </section>
 
