@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&family=Sora:wght@600;700;800&display=swap');
 
 @layer base {
   :root {
@@ -35,6 +35,9 @@
     --ring: 153 75% 21%;
 
     --radius: 0.75rem;
+    --radius-input: 12px;
+    --radius-card: 16px;
+    --radius-hero: 24px;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -99,4 +102,17 @@
   h1, h2, h3 {
     font-family: 'Poppins', sans-serif;
   }
+}
+
+.container-page {
+  width: 100%;
+  margin-inline: auto;
+  max-width: 80rem;
+  padding-inline: 1.25rem;
+}
+.section-y { padding-block: 3.5rem; }
+@media (min-width: 768px) { .section-y { padding-block: 5.5rem; } }
+.surface-dark {
+  background-color: oklch(0.273 0.046 190.2);
+  color: oklch(0.98 0.005 190);
 }

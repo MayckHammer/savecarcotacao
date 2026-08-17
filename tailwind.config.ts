@@ -57,6 +57,28 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        teal: {
+          50: "oklch(0.947 0.011 189.8)",
+          100: "oklch(0.918 0.019 189.6)",
+          200: "oklch(0.878 0.028 189.4)",
+          500: "oklch(0.486 0.082 188.1)",
+          600: "oklch(0.44 0.075 188.5)",
+          700: "oklch(0.393 0.067 189)",
+          800: "oklch(0.332 0.056 189.6)",
+          900: "oklch(0.273 0.046 190.2)",
+          950: "oklch(0.182 0.014 187.4)",
+        },
+        amber: {
+          50: "oklch(0.964 0.052 92.9)",
+          500: "oklch(0.846 0.173 85.6)",
+          600: "oklch(0.769 0.158 82.3)",
+        },
+      },
+      fontFamily: {
+        display: ["Sora", "Poppins", "ui-sans-serif", "system-ui", "sans-serif"],
+      },
+      boxShadow: {
+        lift: "0 2px 4px oklch(0.273 0.046 190.2 / 0.06), 0 18px 40px -18px oklch(0.273 0.046 190.2 / 0.22)",
       },
       borderRadius: {
         lg: "var(--radius)",
