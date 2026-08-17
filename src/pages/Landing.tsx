@@ -119,8 +119,11 @@ const Landing = () => {
           </motion.h1>
 
           <motion.p variants={fadeUp} className="mt-4 max-w-2xl text-base text-white/75">
-            Furto, roubo, colisão, terceiros e assistência 24h em todo o Brasil. Informe a placa e veja o valor da sua
-            mensalidade agora — sem análise de perfil.
+            <span className="sm:hidden">Descubra o valor da sua mensalidade em menos de 2 minutos.</span>
+            <span className="hidden sm:inline">
+              Furto, roubo, colisão, terceiros e assistência 24h em todo o Brasil. Informe a placa e veja o valor da sua
+              mensalidade agora — sem análise de perfil.
+            </span>
           </motion.p>
 
           <motion.div variants={fadeUp} className="mt-8 flex w-full max-w-md flex-col gap-3 sm:flex-row">
