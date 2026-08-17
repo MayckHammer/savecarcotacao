@@ -53,7 +53,9 @@ const Landing = () => {
   const navigate = useNavigate();
   const whatsapp = useWhatsAppNumber();
   const [showSticky, setShowSticky] = useState(false);
-  const waHref = `https://wa.me/${whatsapp}`;
+  const waHref = `https://wa.me/${whatsapp}?text=${encodeURIComponent(
+    "Olá tenho interesse na proteção da Save Car Brasil!"
+  )}`;
 
   useEffect(() => {
     const onScroll = () => setShowSticky(window.scrollY > 600);
