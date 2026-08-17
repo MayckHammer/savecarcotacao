@@ -173,7 +173,7 @@ const Landing = () => {
             variants={fadeUp}
             className="mt-12 flex w-full items-center justify-center gap-4 sm:mt-14 sm:gap-6"
           >
-            <div className="flex h-16 flex-1 items-center justify-center rounded-[var(--radius-card)] border border-white/20 bg-black/25 px-5 py-2.5 backdrop-blur-md sm:max-w-[240px]">
+            <div className="flex h-16 flex-1 items-center justify-center rounded-[var(--radius-card)] border border-white/30 bg-white/15 px-5 py-2.5 shadow-[0_8px_32px_rgba(255,255,255,0.12)] backdrop-blur-xl sm:max-w-[240px]">
               <img
                 src={reclameAquiBadge.url}
                 alt="Empresa verificada pelo Reclame Aqui"
@@ -181,7 +181,7 @@ const Landing = () => {
                 loading="lazy"
               />
             </div>
-            <div className="flex h-16 flex-1 items-center justify-center rounded-[var(--radius-card)] border border-white/20 bg-black/25 px-5 py-2.5 backdrop-blur-md sm:max-w-[240px]">
+            <div className="flex h-16 flex-1 items-center justify-center rounded-[var(--radius-card)] border border-white/30 bg-white/15 px-5 py-2.5 shadow-[0_8px_32px_rgba(255,255,255,0.12)] backdrop-blur-xl sm:max-w-[240px]">
               <img
                 src={susepBadge.url}
                 alt="Regulamentada pela SUSEP"
