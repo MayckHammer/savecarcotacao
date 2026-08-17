@@ -87,7 +87,11 @@ const Landing = () => {
           aria-hidden="true"
         />
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900 via-teal-900/60 to-transparent"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900 via-teal-900/85 to-transparent"
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900/70 via-teal-900/40 to-transparent"
           aria-hidden="true"
         />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,255,255,0.10),transparent_65%)]" aria-hidden="true" />
