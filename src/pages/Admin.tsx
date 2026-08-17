@@ -195,7 +195,41 @@ const Admin = () => {
           <TabsTrigger value="vistorias">Vistorias</TabsTrigger>
           <TabsTrigger value="atendentes">Atendentes</TabsTrigger>
           <TabsTrigger value="relatorio" onClick={() => loadReport()}>Relatório</TabsTrigger>
+          <TabsTrigger value="leads" onClick={() => loadLeads()}>Leads</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="leads" className="space-y-3 mt-4">
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => loadLeads()} disabled={leadsLoading}>
+              {leadsLoading ? "Carregando..." : "Atualizar"}
+            </Button>
+            <span className="text-sm text-muted-foreground">{leads.length} lead(s)</span>
+          </div>
+          {leads.map((l) => (
+            <div key={l.id} className="rounded-xl border border-border p-3 text-sm space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-foreground">{l.name || "Sem nome"}</span>
+                <span className={l.converted ? "text-xs text-emerald-600" : "text-xs text-amber-600"}>
+                  {l.converted ? "Cotação concluída" : "Não finalizou"}
+                </span>
+              </div>
+              <div className="text-muted-foreground">
+                <a className="underline" href={`https://wa.me/55${l.phone.replace(/\D/g, "").slice(-11)}`} target="_blank" rel="noreferrer">
+                  {l.phone}
+                </a>
+                {l.email ? ` · ${l.email}` : ""}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {new Date(l.created_at).toLocaleString("pt-BR")}
+                {l.attendant_slug ? ` · atendente: ${l.attendant_slug}` : ""}
+              </div>
+            </div>
+          ))}
+          {!leadsLoading && leads.length === 0 && (
+            <p className="text-sm text-muted-foreground">Nenhum lead capturado ainda.</p>
+          )}
+        </TabsContent>
+
 
         <TabsContent value="vistorias" className="space-y-3 mt-4">
           <div className="flex justify-end">
