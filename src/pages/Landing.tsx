@@ -24,7 +24,8 @@ import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
 import FaqSection from "@/components/lp/FaqSection";
-import { BENEFITS, FAQ, SITE, STATS } from "@/lib/lp-content";
+import BenefitsCarousel from "@/components/lp/BenefitsCarousel";
+import { FAQ, SITE, STATS } from "@/lib/lp-content";
 import { trackQuoteClick, trackWhatsAppClick } from "@/lib/analytics";
 
 const benefitIcons: Record<string, LucideIcon> = {
