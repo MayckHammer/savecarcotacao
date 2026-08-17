@@ -87,6 +87,10 @@ const Landing = () => {
           className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900/85 via-teal-900/55 to-teal-900/25"
           aria-hidden="true"
         />
+        <div
+          className="pointer-events-none absolute bottom-0 left-0 right-0 h-[68%] bg-gradient-to-t from-teal-900 via-teal-900/95 to-teal-900/50 sm:hidden"
+          aria-hidden="true"
+        />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,255,255,0.08),transparent_60%)]" aria-hidden="true" />
 
         <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-center px-4 py-4 sm:justify-start sm:px-6 lg:px-8">
