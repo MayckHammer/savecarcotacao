@@ -5,7 +5,7 @@ const WhatsAppButton = () => {
   const phone = useWhatsAppNumber();
   return (
     <a
-      href={`https://wa.me/${phone}`}
+      href={`https://wa.me/${phone}?text=${encodeURIComponent("Olá tenho interesse na proteção da Save Car Brasil!")}`}
       target="_blank"
       rel="noopener noreferrer"
       onClick={() => trackWhatsAppClick("botao_flutuante", { page_path: window.location.pathname })}
