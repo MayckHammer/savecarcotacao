@@ -86,6 +86,10 @@ const Landing = () => {
           className="pointer-events-none absolute inset-0 bg-gradient-to-b from-teal-900/95 via-teal-900/85 to-teal-900/95"
           aria-hidden="true"
         />
+        <div
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0D5C3E]/90 via-[#0D5C3E]/40 to-transparent"
+          aria-hidden="true"
+        />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,255,255,0.10),transparent_65%)]" aria-hidden="true" />
 
         <motion.div
