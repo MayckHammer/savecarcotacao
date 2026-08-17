@@ -341,7 +341,7 @@ const Landing = () => {
                 {SITE.city}/{SITE.state} — Brasil
               </p>
               <p className="text-xs text-white/60">
-                Filiada à {SITE.affiliation.acronym} — {SITE.affiliation.name}.
+                {"\n"}
               </p>
             </div>
 
