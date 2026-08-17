@@ -20,10 +20,10 @@ export const SITE = {
 } as const;
 
 export const STATS = [
-  { prefix: "+", value: "30", label: "Filiais" },
-  { prefix: "+", value: "100 mi", label: "Indenizados" },
-  { prefix: "+", value: "90 mil", label: "Associados" },
-  { prefix: "", value: "13 anos", label: "de mercado" },
+  { prefix: "+", value: 30, suffix: "", label: "Filiais" },
+  { prefix: "+", value: 100, suffix: " mi", label: "Indenizados" },
+  { prefix: "+", value: 90, suffix: " mil", label: "Associados" },
+  { prefix: "", value: 13, suffix: " anos", label: "de mercado" },
 ] as const;
 
 export type Coverage = { title: string; description: string; icon: string };
