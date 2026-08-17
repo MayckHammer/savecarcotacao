@@ -98,13 +98,13 @@ const Landing = () => {
           variants={container}
           initial="hidden"
           animate="show"
-          className="container-page relative z-10 flex flex-col items-center pt-24 pb-12 text-center sm:pt-28 sm:pb-16"
+          className="container-page relative z-10 flex flex-col items-center pt-28 pb-16 text-center sm:pt-32 sm:pb-20"
         >
 
 
           <motion.span
             variants={fadeUp}
-            className="mb-3 inline-flex items-center rounded-full border border-white/20 bg-black/25 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-500 backdrop-blur-md sm:mb-5"
+            className="mb-5 inline-flex items-center rounded-full border border-white/20 bg-black/25 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-500 backdrop-blur-md sm:mb-7"
           >
             13 anos protegendo quem dirige
           </motion.span>
@@ -116,7 +116,7 @@ const Landing = () => {
             Sua proteção veicular cotada em <span className="text-amber-500">2 minutos</span>.
           </motion.h1>
 
-          <motion.p variants={fadeUp} className="mt-2 max-w-2xl text-base text-white/75 sm:mt-4">
+          <motion.p variants={fadeUp} className="mt-5 max-w-2xl text-base text-white/75 sm:mt-7">
             <span className="sm:hidden">Descubra o valor da sua mensalidade em menos de 2 minutos.</span>
             <span className="hidden sm:inline">
               Furto, roubo, colisão, terceiros e assistência 24h em todo o Brasil. Informe a placa e veja o valor da sua
@@ -124,7 +124,7 @@ const Landing = () => {
             </span>
           </motion.p>
 
-          <motion.div variants={fadeUp} className="mt-8 flex w-full max-w-md flex-col gap-3 sm:flex-row">
+          <motion.div variants={fadeUp} className="mt-10 flex w-full max-w-md flex-col gap-3 sm:mt-12 sm:flex-row">
             <Button
               variant="cta"
               size="xl"
@@ -155,14 +155,14 @@ const Landing = () => {
             </Button>
           </motion.div>
 
-          <motion.p variants={fadeUp} className="mt-4 text-sm text-white/70">
+          <motion.p variants={fadeUp} className="mt-6 text-sm text-white/70">
             Grátis · Sem compromisso · Resposta na hora
           </motion.p>
 
           <motion.a
             variants={fadeUp}
             href={SITE.phones.assistance.href}
-            className="mt-3 inline-flex items-center gap-2 text-sm text-white/80 hover:text-white"
+            className="mt-5 inline-flex items-center gap-2 text-sm text-white/80 hover:text-white"
           >
             <Clock className="size-4 text-amber-500" />
             <span>Assistência 24h:</span>
@@ -171,7 +171,7 @@ const Landing = () => {
 
           <motion.div
             variants={fadeUp}
-            className="mt-12 flex w-full items-center justify-center gap-4 sm:mt-14 sm:gap-6"
+            className="mt-14 flex w-full items-center justify-center gap-4 sm:mt-16 sm:gap-6"
           >
             <div className="flex h-16 flex-1 items-center justify-center rounded-[var(--radius-card)] border border-white/40 bg-white/35 px-5 py-2.5 shadow-[0_8px_40px_rgba(255,255,255,0.22)] backdrop-blur-xl sm:max-w-[240px]">
               <img
@@ -193,7 +193,7 @@ const Landing = () => {
 
           <motion.div
             variants={fadeUp}
-            className="mt-12 grid w-full grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] bg-white/10 sm:mt-14 lg:grid-cols-4"
+            className="mt-14 grid w-full grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] bg-white/10 sm:mt-16 lg:grid-cols-4"
           >
             {STATS.map((stat) => (
               <div key={stat.label} className="bg-teal-900 px-6 py-7 text-center">
