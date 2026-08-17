@@ -83,18 +83,18 @@ const Landing = () => {
           className="pointer-events-none absolute inset-0 size-full select-none object-cover"
         />
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-b from-teal-900/90 via-teal-900/75 to-teal-900/95"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-b from-teal-900/95 via-teal-900/85 to-teal-900/98"
           aria-hidden="true"
         />
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900 via-teal-900/85 to-transparent"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900 via-teal-900/95 to-teal-900/40"
           aria-hidden="true"
         />
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900/70 via-teal-900/40 to-transparent"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900/85 via-teal-900/55 to-teal-900/25"
           aria-hidden="true"
         />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,255,255,0.10),transparent_65%)]" aria-hidden="true" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,255,255,0.08),transparent_60%)]" aria-hidden="true" />
 
         <motion.div
           variants={container}
