@@ -40,6 +40,8 @@ const call = async (action: string, extra: Record<string, unknown> = {}) => {
 const CrmQuoteForm = () => {
   const navigate = useNavigate();
   const {
+    quote,
+    setSessionId,
     updatePersonal,
     updateVehicle,
     updateAddress,
@@ -58,6 +60,7 @@ const CrmQuoteForm = () => {
   const [stateId, setStateId] = useState("");
   const [cityId, setCityId] = useState("");
   const [isWork, setIsWork] = useState(false);
+  const [lgpdConsent, setLgpdConsent] = useState(false);
 
   const [brands, setBrands] = useState<Opt[]>([]);
   const [years, setYears] = useState<Opt[]>([]);
@@ -67,6 +70,39 @@ const CrmQuoteForm = () => {
 
   const [loading, setLoading] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const ensureSessionId = () => {
+    if (quote.sessionId) return quote.sessionId;
+    const id =
+      (typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    setSessionId(id);
+    return id;
+  };
+
+  // Captura o lead parcial assim que houver telefone válido + consentimento LGPD
+  const captureLead = async (converted = false) => {
+    const digits = phone.replace(/\D/g, "");
+    if (!lgpdConsent || digits.length < 10) return;
+    try {
+      await supabase.functions.invoke("capture-lead", {
+        body: {
+          sessionId: ensureSessionId(),
+          phone: digits,
+          name,
+          email,
+          attendantSlug: attendant?.slug || null,
+          lgpdConsent: true,
+          converted,
+          vehicleInfo: { plate, vehicleType, brand, year, model, stateId, cityId, isWork },
+        },
+      });
+    } catch (e) {
+      console.error("capture-lead error", e);
+    }
+  };
+
 
   // load states once
   useEffect(() => {
