@@ -17,7 +17,7 @@ import reclameAquiBadge from "@/assets/selo-reclame-aqui.webp.asset.json";
 import susepBadge from "@/assets/susep.png.asset.json";
 import certidaoSusep from "@/assets/certidao-susep.pdf.asset.json";
 
-import { useWhatsAppNumber } from "@/contexts/AttendantContext";
+import { useWhatsAppNumber, DEFAULT_WHATSAPP_MESSAGE } from "@/contexts/AttendantContext";
 import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
 import FaqSection from "@/components/lp/FaqSection";
@@ -53,9 +53,7 @@ const Landing = () => {
   const navigate = useNavigate();
   const whatsapp = useWhatsAppNumber();
   const [showSticky, setShowSticky] = useState(false);
-  const waHref = `https://wa.me/${whatsapp}?text=${encodeURIComponent(
-    "Olá tenho interesse na proteção da Save Car Brasil!"
-  )}`;
+  const waHref = `https://wa.me/${whatsapp}?text=${encodeURIComponent(DEFAULT_WHATSAPP_MESSAGE)}`;
 
   useEffect(() => {
     const onScroll = () => setShowSticky(window.scrollY > 600);
