@@ -40,6 +40,8 @@ const call = async (action: string, extra: Record<string, unknown> = {}) => {
 const CrmQuoteForm = () => {
   const navigate = useNavigate();
   const {
+    quote,
+    setSessionId,
     updatePersonal,
     updateVehicle,
     updateAddress,
@@ -58,6 +60,7 @@ const CrmQuoteForm = () => {
   const [stateId, setStateId] = useState("");
   const [cityId, setCityId] = useState("");
   const [isWork, setIsWork] = useState(false);
+  const [lgpdConsent, setLgpdConsent] = useState(false);
 
   const [brands, setBrands] = useState<Opt[]>([]);
   const [years, setYears] = useState<Opt[]>([]);
@@ -67,6 +70,40 @@ const CrmQuoteForm = () => {
 
   const [loading, setLoading] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const ensureSessionId = () => {
+    if (quote.sessionId) return quote.sessionId;
+    const id =
+      (typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    setSessionId(id);
+    return id;
+  };
+
+  // Captura o lead parcial assim que houver telefone válido + consentimento LGPD
+  const captureLead = async (converted = false, consentOverride?: boolean) => {
+    const digits = phone.replace(/\D/g, "");
+    if (!(consentOverride ?? lgpdConsent) || digits.length < 10) return;
+
+    try {
+      await supabase.functions.invoke("capture-lead", {
+        body: {
+          sessionId: ensureSessionId(),
+          phone: digits,
+          name,
+          email,
+          attendantSlug: attendant?.slug || null,
+          lgpdConsent: true,
+          converted,
+          vehicleInfo: { plate, vehicleType, brand, year, model, stateId, cityId, isWork },
+        },
+      });
+    } catch (e) {
+      console.error("capture-lead error", e);
+    }
+  };
+
 
   // load states once
   useEffect(() => {
@@ -137,6 +174,7 @@ const CrmQuoteForm = () => {
     if (!model) errors.push("Modelo");
     if (!stateId) errors.push("Estado");
     if (!cityId) errors.push("Cidade");
+    if (!lgpdConsent) errors.push("Autorização LGPD");
     return errors;
   };
 
@@ -153,7 +191,9 @@ const CrmQuoteForm = () => {
       return;
     }
     setSubmitting(true);
+    void captureLead(true);
     try {
+
       // 1) Cria cotação oficial no PowerCRM
       const submitRes = await call("submit", {
         payload: {
@@ -229,7 +269,7 @@ const CrmQuoteForm = () => {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="phone">Telefone *</Label>
-            <Input id="phone" value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} placeholder="(__) _____-____" />
+            <Input id="phone" value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} onBlur={() => void captureLead()} placeholder="(__) _____-____" />
           </div>
           <div>
             <Label htmlFor="email">E-mail</Label>
@@ -327,6 +367,23 @@ const CrmQuoteForm = () => {
           <Checkbox checked={isWork} onCheckedChange={(v) => setIsWork(Boolean(v))} />
           Veículo de trabalho (Táxi/Uber)
         </label>
+
+        <label className="flex items-start gap-2 text-sm rounded-xl border border-border/60 bg-muted/30 p-3">
+          <Checkbox
+            className="mt-0.5"
+            checked={lgpdConsent}
+            onCheckedChange={(v) => {
+              const val = Boolean(v);
+              setLgpdConsent(val);
+              if (val) void captureLead(false, true);
+            }}
+          />
+          <span className="leading-snug text-muted-foreground">
+            <span className="font-medium text-foreground">Autorizo a coleta das minhas informações</span> para
+            contato e envio da cotação, conforme a LGPD (Lei nº 13.709/2018).
+          </span>
+        </label>
+
       </div>
 
       <Button type="submit" disabled={!canSubmit} className="w-full h-12 rounded-xl font-bold">

@@ -44,6 +44,48 @@ export type Database = {
         }
         Relationships: []
       }
+      partial_leads: {
+        Row: {
+          attendant_slug: string | null
+          converted: boolean
+          created_at: string
+          email: string | null
+          id: string
+          lgpd_consent: boolean
+          name: string | null
+          phone: string
+          session_id: string
+          updated_at: string
+          vehicle_info: Json
+        }
+        Insert: {
+          attendant_slug?: string | null
+          converted?: boolean
+          created_at?: string
+          email?: string | null
+          id?: string
+          lgpd_consent?: boolean
+          name?: string | null
+          phone: string
+          session_id: string
+          updated_at?: string
+          vehicle_info?: Json
+        }
+        Update: {
+          attendant_slug?: string | null
+          converted?: boolean
+          created_at?: string
+          email?: string | null
+          id?: string
+          lgpd_consent?: boolean
+          name?: string | null
+          phone?: string
+          session_id?: string
+          updated_at?: string
+          vehicle_info?: Json
+        }
+        Relationships: []
+      }
       quotes: {
         Row: {
           address_data: Json
