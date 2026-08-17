@@ -12,7 +12,7 @@ const Header = ({ dark = false }: HeaderProps) => {
         <img
           src={logoAsset.url}
           alt="SAVE CAR BRASIL"
-          className="h-28 object-contain transition-transform hover:scale-105"
+          className="h-32 w-auto max-w-none object-contain transition-transform hover:scale-105"
         />
       </Link>
     </header>
