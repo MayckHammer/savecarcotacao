@@ -10,7 +10,7 @@ const Header = ({ dark = false }: HeaderProps) => {
     <header className="w-full h-16 px-4 flex items-center justify-center bg-white overflow-visible relative z-20">
       <Link to="/" aria-label="Voltar para a página inicial" className="block">
         <img
-          src={logo}
+          src={logoAsset.url}
           alt="SAVE CAR BRASIL"
           className="h-28 object-contain transition-transform hover:scale-105"
         />
