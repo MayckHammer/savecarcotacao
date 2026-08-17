@@ -173,6 +173,7 @@ const CrmQuoteForm = () => {
     if (!model) errors.push("Modelo");
     if (!stateId) errors.push("Estado");
     if (!cityId) errors.push("Cidade");
+    if (!lgpdConsent) errors.push("Autorização LGPD");
     return errors;
   };
 
@@ -189,7 +190,9 @@ const CrmQuoteForm = () => {
       return;
     }
     setSubmitting(true);
+    void captureLead(true);
     try {
+
       // 1) Cria cotação oficial no PowerCRM
       const submitRes = await call("submit", {
         payload: {
