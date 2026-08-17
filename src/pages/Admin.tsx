@@ -59,6 +59,24 @@ const Admin = () => {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportDays, setReportDays] = useState(30);
 
+  // Leads tab state
+  interface Lead {
+    id: string; name: string | null; phone: string; email: string | null;
+    attendant_slug: string | null; converted: boolean; created_at: string;
+  }
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+
+  const loadLeads = async () => {
+    setLeadsLoading(true);
+    const { data } = await supabase.functions.invoke("admin-list-leads", {
+      body: { password },
+    });
+    setLeads((data?.leads as Lead[]) || []);
+    setLeadsLoading(false);
+  };
+
+
   const handleLogin = async () => {
     setLoginError(null);
     setLoading(true);
