@@ -1,4 +1,4 @@
-import logo from "@/assets/logo-savecar.png";
+import logoAsset from "@/assets/logo-savecar.png.asset.json";
 import { Link } from "react-router-dom";
 
 interface HeaderProps {

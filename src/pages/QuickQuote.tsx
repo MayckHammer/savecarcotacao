@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useQuote } from "@/contexts/QuoteContext";
 import { useWhatsAppNumber } from "@/contexts/AttendantContext";
-import logo from "@/assets/logo-savecar.png";
+import logoAsset from "@/assets/logo-savecar.png.asset.json";
 
 const UFS = [
   "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT",

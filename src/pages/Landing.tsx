@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import logo from "@/assets/logo-savecar.png";
+import logoAsset from "@/assets/logo-savecar.png.asset.json";
 import heroEstrada from "@/assets/hero-estrada-2.svg.asset.json";
 import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import SectionHeading from "@/components/lp/SectionHeading";
