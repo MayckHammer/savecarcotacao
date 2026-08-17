@@ -125,18 +125,29 @@ const Landing = () => {
           </motion.p>
 
           <motion.div variants={fadeUp} className="mt-10 flex w-full max-w-md flex-col gap-3 sm:mt-12 sm:flex-row">
-            <Button
-              variant="cta"
-              size="xl"
-              className="group w-full sm:flex-1"
-              onClick={() => {
-                trackQuoteClick("hero");
-                navigate("/cotacao");
-              }}
+            <BorderGlow
+              className="w-full sm:flex-1"
+              backgroundColor="transparent"
+              borderRadius={14}
+              glowRadius={30}
+              glowColor="45 95 60"
+              edgeSensitivity={20}
+              colors={["#F2B705", "#FFE082", "#0D5C3E"]}
             >
-              Fazer minha cotação agora
-              <ArrowRight className="transition-transform group-hover:translate-x-1" />
-            </Button>
+              <Button
+                variant="cta"
+                size="xl"
+                className="group w-full"
+                onClick={() => {
+                  trackQuoteClick("hero");
+                  navigate("/cotacao");
+                }}
+              >
+                Fazer minha cotação agora
+                <ArrowRight className="transition-transform group-hover:translate-x-1" />
+              </Button>
+            </BorderGlow>
+
             <Button
               variant="onDark"
               size="xl"
