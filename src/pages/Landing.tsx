@@ -8,13 +8,6 @@ import {
   Linkedin,
   MapPin,
   Phone,
-  Zap,
-  Unlock,
-  Smartphone,
-  Headphones,
-  UsersRound,
-  BadgeCheck,
-  type LucideIcon,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
