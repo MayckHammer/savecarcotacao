@@ -172,7 +172,7 @@ const Landing = () => {
           </motion.div>
 
           <motion.p variants={fadeUp} className="mt-6 text-sm text-white/70">
-            Grátis · Sem compromisso · Resposta na hora
+            Resposta na hora
           </motion.p>
 
           <motion.a
