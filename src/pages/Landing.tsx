@@ -171,7 +171,7 @@ const Landing = () => {
             </Button>
           </motion.div>
 
-          <motion.p variants={fadeUp} className="mt-6 text-sm text-white/70">
+          <motion.p variants={fadeUp} className="mt-6 text-sm font-bold text-white/70">
             Resposta na hora
           </motion.p>
 
