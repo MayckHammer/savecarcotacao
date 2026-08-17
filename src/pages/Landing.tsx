@@ -20,6 +20,8 @@ import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
 import FaqSection from "@/components/lp/FaqSection";
 import BenefitsCarousel from "@/components/lp/BenefitsCarousel";
+import BorderGlow from "@/components/BorderGlow";
+
 import { FAQ, SITE, STATS } from "@/lib/lp-content";
 import { trackQuoteClick, trackWhatsAppClick } from "@/lib/analytics";
 
