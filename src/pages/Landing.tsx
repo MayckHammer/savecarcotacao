@@ -98,7 +98,7 @@ const Landing = () => {
           variants={container}
           initial="hidden"
           animate="show"
-          className="container-page relative z-10 flex flex-col items-center pt-24 pb-12 text-center sm:pt-28 sm:pb-16"
+          className="container-page relative z-10 flex flex-col items-center pt-28 pb-16 text-center sm:pt-32 sm:pb-20"
         >
 
 
