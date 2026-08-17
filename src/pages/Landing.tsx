@@ -193,7 +193,7 @@ const Landing = () => {
 
           <motion.div
             variants={fadeUp}
-            className="mt-12 grid w-full grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] bg-white/10 sm:mt-14 lg:grid-cols-4"
+            className="mt-14 grid w-full grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] bg-white/10 sm:mt-16 lg:grid-cols-4"
           >
             {STATS.map((stat) => (
               <div key={stat.label} className="bg-teal-900 px-6 py-7 text-center">
