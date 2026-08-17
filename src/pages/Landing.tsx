@@ -106,7 +106,7 @@ const Landing = () => {
 
           <motion.span
             variants={fadeUp}
-            className="mb-5 inline-flex items-center rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-500"
+            className="mb-5 inline-flex items-center rounded-full border border-white/20 bg-black/25 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-500 backdrop-blur-md"
           >
             13 anos protegendo quem dirige
           </motion.span>
