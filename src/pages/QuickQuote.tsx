@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuote } from "@/contexts/QuoteContext";
-import { useWhatsAppNumber } from "@/contexts/AttendantContext";
+import { useWhatsAppNumber, DEFAULT_WHATSAPP_MESSAGE } from "@/contexts/AttendantContext";
 import logoAsset from "@/assets/logo-savecar.png.asset.json";
 
 const UFS = [
@@ -111,7 +111,7 @@ const QuickQuote = () => {
 
   const handleWhatsApp = () => {
     window.open(
-      `https://wa.me/${whatsapp}?text=Olá!%20Quero%20cotar%20meu%20veículo%20com%20a%20SaveCar%20Brasil.`,
+      `https://wa.me/${whatsapp}?text=${encodeURIComponent(DEFAULT_WHATSAPP_MESSAGE)}`,
       "_blank",
     );
   };

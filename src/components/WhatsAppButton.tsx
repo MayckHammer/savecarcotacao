@@ -1,11 +1,11 @@
-import { useWhatsAppNumber } from "@/contexts/AttendantContext";
+import { useWhatsAppNumber, DEFAULT_WHATSAPP_MESSAGE } from "@/contexts/AttendantContext";
 import { trackWhatsAppClick } from "@/lib/analytics";
 
 const WhatsAppButton = () => {
   const phone = useWhatsAppNumber();
   return (
     <a
-      href={`https://wa.me/${phone}?text=${encodeURIComponent("Olá tenho interesse na proteção da Save Car Brasil!")}`}
+      href={`https://wa.me/${phone}?text=${encodeURIComponent(DEFAULT_WHATSAPP_MESSAGE)}`}
       target="_blank"
       rel="noopener noreferrer"
       onClick={() => trackWhatsAppClick("botao_flutuante", { page_path: window.location.pathname })}
