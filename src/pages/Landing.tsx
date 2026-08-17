@@ -124,7 +124,7 @@ const Landing = () => {
             </span>
           </motion.p>
 
-          <motion.div variants={fadeUp} className="mt-8 flex w-full max-w-md flex-col gap-3 sm:flex-row">
+          <motion.div variants={fadeUp} className="mt-10 flex w-full max-w-md flex-col gap-3 sm:mt-12 sm:flex-row">
             <Button
               variant="cta"
               size="xl"
