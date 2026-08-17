@@ -13,6 +13,8 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import logoAsset from "@/assets/logo-savecar.png.asset.json";
 import heroEstrada from "@/assets/hero-estrada-2.svg.asset.json";
+import reclameAquiBadge from "@/assets/selo-reclame-aqui.webp.asset.json";
+import susepBadge from "@/assets/susep.png.asset.json";
 import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
@@ -169,8 +171,31 @@ const Landing = () => {
 
           <motion.div
             variants={fadeUp}
-            className="mt-14 grid w-full grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] bg-white/10 sm:mt-10 lg:grid-cols-4"
+            className="mt-10 flex w-full items-center justify-center gap-4 sm:gap-6"
           >
+            <div className="flex h-14 flex-1 items-center justify-center rounded-[var(--radius-card)] bg-white/95 px-4 py-2 sm:max-w-[220px]">
+              <img
+                src={reclameAquiBadge.url}
+                alt="Empresa verificada pelo Reclame Aqui"
+                className="max-h-10 w-auto object-contain"
+                loading="lazy"
+              />
+            </div>
+            <div className="flex h-14 flex-1 items-center justify-center rounded-[var(--radius-card)] bg-white/95 px-4 py-2 sm:max-w-[220px]">
+              <img
+                src={susepBadge.url}
+                alt="Regulamentada pela SUSEP"
+                className="max-h-10 w-auto object-contain"
+                loading="lazy"
+              />
+            </div>
+          </motion.div>
+
+          <motion.div
+            variants={fadeUp}
+            className="mt-8 grid w-full grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] bg-white/10 sm:mt-8 lg:grid-cols-4"
+          >
+
             {STATS.map((stat) => (
               <div key={stat.label} className="bg-teal-900 px-6 py-7 text-center">
                 <p className="font-display text-3xl font-extrabold text-amber-500 sm:text-4xl">
