@@ -113,7 +113,7 @@ const Landing = () => {
             variants={fadeUp}
             className="max-w-3xl font-display text-3xl font-extrabold leading-[1.05] text-white sm:text-5xl"
           >
-            Sua proteção veicular cotada em <span className="text-amber-500">30 segundos</span>.
+            Sua proteção veicular cotada em <span className="text-amber-500">2 minutos</span>.
           </motion.h1>
 
           <motion.p variants={fadeUp} className="mt-4 max-w-2xl text-base text-white/75">
@@ -256,7 +256,7 @@ const Landing = () => {
       <div className="container-page py-14">
         <div className="rounded-[var(--radius-hero)] bg-teal-900 px-6 py-12 text-center">
           <h2 className="font-display text-2xl font-extrabold text-white sm:text-4xl">
-            Descubra sua mensalidade em 30 segundos
+            Descubra sua mensalidade em 2 minutos
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-white/70">
             Sem burocracia e sem compromisso. Você vê o valor na hora.
