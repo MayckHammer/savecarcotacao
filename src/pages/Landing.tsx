@@ -87,7 +87,11 @@ const Landing = () => {
           aria-hidden="true"
         />
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900 via-teal-900/60 to-transparent"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900 via-teal-900/85 to-transparent"
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900/70 via-teal-900/40 to-transparent"
           aria-hidden="true"
         />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,255,255,0.10),transparent_65%)]" aria-hidden="true" />
@@ -102,7 +106,7 @@ const Landing = () => {
 
           <motion.span
             variants={fadeUp}
-            className="mb-5 inline-flex items-center rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-500"
+            className="mb-5 inline-flex items-center rounded-full border border-white/20 bg-black/25 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-500 backdrop-blur-md"
           >
             13 anos protegendo quem dirige
           </motion.span>
