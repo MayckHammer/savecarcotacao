@@ -366,6 +366,23 @@ const CrmQuoteForm = () => {
           <Checkbox checked={isWork} onCheckedChange={(v) => setIsWork(Boolean(v))} />
           Veículo de trabalho (Táxi/Uber)
         </label>
+
+        <label className="flex items-start gap-2 text-sm rounded-xl border border-border/60 bg-muted/30 p-3">
+          <Checkbox
+            className="mt-0.5"
+            checked={lgpdConsent}
+            onCheckedChange={(v) => {
+              const val = Boolean(v);
+              setLgpdConsent(val);
+              if (val) setTimeout(() => void captureLead(), 0);
+            }}
+          />
+          <span className="leading-snug text-muted-foreground">
+            <span className="font-medium text-foreground">Autorizo a coleta das minhas informações</span> para
+            contato e envio da cotação, conforme a LGPD (Lei nº 13.709/2018).
+          </span>
+        </label>
+
       </div>
 
       <Button type="submit" disabled={!canSubmit} className="w-full h-12 rounded-xl font-bold">
