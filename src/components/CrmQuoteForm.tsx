@@ -268,7 +268,7 @@ const CrmQuoteForm = () => {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="phone">Telefone *</Label>
-            <Input id="phone" value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} placeholder="(__) _____-____" />
+            <Input id="phone" value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} onBlur={() => void captureLead()} placeholder="(__) _____-____" />
           </div>
           <div>
             <Label htmlFor="email">E-mail</Label>
