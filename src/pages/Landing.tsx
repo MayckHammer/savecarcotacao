@@ -167,7 +167,8 @@ const Landing = () => {
             className="mt-3 inline-flex items-center gap-2 text-sm text-white/80 hover:text-white"
           >
             <Clock className="size-4 text-amber-500" />
-            Assistência 24h: {SITE.phones.assistance.display}
+            <span>Assistência 24h:</span>
+            <span className="font-semibold text-amber-500">{SITE.phones.assistance.display}</span>
           </motion.a>
 
           <motion.div
