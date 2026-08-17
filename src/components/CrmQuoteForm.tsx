@@ -375,7 +375,7 @@ const CrmQuoteForm = () => {
             onCheckedChange={(v) => {
               const val = Boolean(v);
               setLgpdConsent(val);
-              if (val) setTimeout(() => void captureLead(), 0);
+              if (val) void captureLead(false, true);
             }}
           />
           <span className="leading-snug text-muted-foreground">
