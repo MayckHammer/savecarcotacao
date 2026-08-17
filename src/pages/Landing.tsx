@@ -19,7 +19,7 @@ import {
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo-savecar.png";
-import heroEstrada from "@/assets/hero-estrada.jpg";
+import heroEstrada from "@/assets/hero-estrada-2.svg.asset.json";
 import { useWhatsAppNumber } from "@/contexts/AttendantContext";
 import SectionHeading from "@/components/lp/SectionHeading";
 import CoverageGrid from "@/components/lp/CoverageGrid";
@@ -76,18 +76,18 @@ const Landing = () => {
       {/* 1. HERO */}
       <section className="surface-dark relative overflow-hidden">
         <img
-          src={heroEstrada}
+          src={heroEstrada.url}
           alt="Carro percorrendo estrada em meio a montanhas ao entardecer"
-          width={1920}
-          height={1024}
+          width={1600}
+          height={1104}
           className="pointer-events-none absolute inset-0 size-full select-none object-cover"
         />
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-b from-teal-900/95 via-teal-900/85 to-teal-900/95"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-b from-teal-900/90 via-teal-900/75 to-teal-900/95"
           aria-hidden="true"
         />
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0D5C3E]/90 via-[#0D5C3E]/40 to-transparent"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-teal-900 via-teal-900/60 to-transparent"
           aria-hidden="true"
         />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,255,255,0.10),transparent_65%)]" aria-hidden="true" />
