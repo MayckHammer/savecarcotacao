@@ -31,8 +31,10 @@ Deno.serve(async (req) => {
         req,
         details: { reason: "bad_password", attempted_length: password.length },
       });
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      // Return 200 with an explicit flag so the client can show "wrong password"
+      // without the SDK surfacing a runtime HTTP error.
+      return new Response(JSON.stringify({ authorized: false, error: "Unauthorized" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
