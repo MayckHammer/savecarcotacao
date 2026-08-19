@@ -71,6 +71,8 @@ const App = () => (
               <Route path="/confirmacao" element={<Confirmation />} />
               
               <Route path="/simulacao" element={<QuickQuote />} />
+              {/* Legacy traffic redirect */}
+              <Route path="/kenia" element={<Navigate to="/" replace />} />
               {/* Personalized attendant link: /josi, /joao, etc. */}
               <Route path="/:attendantSlug" element={<AttendantLanding />} />
               <Route path="*" element={<NotFound />} />
