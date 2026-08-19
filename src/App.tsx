@@ -24,19 +24,9 @@ import AttendantLanding from "./pages/AttendantLanding";
 import ScrollToTop from "./components/ScrollToTop";
 import GradualBlur from "./components/GradualBlur";
 import ScrollHint from "./components/ScrollHint";
-import { initGTM, GTMBodyNoScript } from "@/lib/gtm";
 
 const queryClient = new QueryClient();
 
-const GtmLoader = () => {
-  const { pathname } = useLocation();
-  const enabled = !pathname.startsWith("/admin");
-  useEffect(() => {
-    if (enabled) initGTM();
-  }, [enabled]);
-  if (!enabled) return null;
-  return <GTMBodyNoScript />;
-};
 
 const GlobalOverlays = () => {
   const { pathname } = useLocation();
@@ -66,7 +56,6 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <ScrollToTop />
-            <GtmLoader />
             <GlobalOverlays />
             <Routes>
               <Route path="/" element={<NeutralLanding />} />
