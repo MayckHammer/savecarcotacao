@@ -24,6 +24,7 @@ import AttendantLanding from "./pages/AttendantLanding";
 import ScrollToTop from "./components/ScrollToTop";
 import GradualBlur from "./components/GradualBlur";
 import ScrollHint from "./components/ScrollHint";
+import { initGTM, GTMBodyNoScript } from "@/lib/gtm";
 
 const queryClient = new QueryClient();
 
