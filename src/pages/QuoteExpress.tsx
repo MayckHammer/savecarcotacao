@@ -2,14 +2,10 @@ import { motion } from "framer-motion";
 import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import CrmQuoteForm from "@/components/CrmQuoteForm";
-import { useGTM, GTMBodyNoScript } from "@/lib/gtm";
 
 const QuoteExpress = () => {
-  useGTM();
-
   return (
     <>
-      <GTMBodyNoScript />
       <div className="flex min-h-screen flex-col bg-background pb-20">
         <Header dark />
         <main className="flex-1 px-4 py-6 max-w-xl mx-auto w-full">
