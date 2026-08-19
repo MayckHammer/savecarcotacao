@@ -27,6 +27,16 @@ import ScrollHint from "./components/ScrollHint";
 
 const queryClient = new QueryClient();
 
+const GtmLoader = () => {
+  const { pathname } = useLocation();
+  const enabled = !pathname.startsWith("/admin");
+  useEffect(() => {
+    if (enabled) initGTM();
+  }, [enabled]);
+  if (!enabled) return null;
+  return <GTMBodyNoScript />;
+};
+
 const GlobalOverlays = () => {
   const { pathname } = useLocation();
   if (pathname === "/") return null;
