@@ -56,7 +56,6 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <ScrollToTop />
-            <GtmLoader />
             <GlobalOverlays />
             <Routes>
               <Route path="/" element={<NeutralLanding />} />
