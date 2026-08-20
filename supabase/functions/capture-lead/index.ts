@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     if (phoneDigits.length < 10 || phoneDigits.length > 13) {
       return json({ error: "telefone inválido" }, 400);
     }
-    if (!consent) return json({ error: "consentimento LGPD obrigatório" }, 400);
+
 
     const clean = (v: unknown, max = 255) =>
       typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
           email: clean(body?.email),
           attendant_slug: clean(body?.attendantSlug, 60),
           vehicle_info: typeof body?.vehicleInfo === "object" && body?.vehicleInfo ? body.vehicleInfo : {},
-          lgpd_consent: true,
+          lgpd_consent: consent,
           converted: Boolean(body?.converted),
           updated_at: new Date().toISOString(),
         },

@@ -19,6 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuote } from "@/contexts/QuoteContext";
 import { useAttendant } from "@/contexts/AttendantContext";
 import { maskPhone, maskPlate } from "@/lib/masks";
+import { useLeadCapture } from "@/hooks/useLeadCapture";
 
 type Opt = { id: number | string; text: string };
 
@@ -81,28 +82,25 @@ const CrmQuoteForm = () => {
     return id;
   };
 
-  // Captura o lead parcial assim que houver telefone válido + consentimento LGPD
-  const captureLead = async (converted = false, consentOverride?: boolean) => {
-    const digits = phone.replace(/\D/g, "");
-    if (!(consentOverride ?? lgpdConsent) || digits.length < 10) return;
+  // Garante um sessionId estável para a captura de leads
+  useEffect(() => {
+    ensureSessionId();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    try {
-      await supabase.functions.invoke("capture-lead", {
-        body: {
-          sessionId: ensureSessionId(),
-          phone: digits,
-          name,
-          email,
-          attendantSlug: attendant?.slug || null,
-          lgpdConsent: true,
-          converted,
-          vehicleInfo: { plate, vehicleType, brand, year, model, stateId, cityId, isWork },
-        },
-      });
-    } catch (e) {
-      console.error("capture-lead error", e);
-    }
-  };
+  // Captura o lead parcial assim que houver telefone válido (debounce + saída da página)
+  const { capture } = useLeadCapture({
+    sessionId: quote.sessionId || null,
+    phone,
+    name,
+    email,
+    attendantSlug: attendant?.slug || null,
+    lgpdConsent,
+    vehicleInfo: { plate, vehicleType, brand, year, model, stateId, cityId, isWork },
+  });
+
+  const captureLead = (converted = false) => void capture(converted, true);
+
 
 
   // load states once
@@ -191,7 +189,7 @@ const CrmQuoteForm = () => {
       return;
     }
     setSubmitting(true);
-    void captureLead(true);
+    captureLead(true);
     try {
 
       // 1) Cria cotação oficial no PowerCRM
@@ -375,7 +373,7 @@ const CrmQuoteForm = () => {
             onCheckedChange={(v) => {
               const val = Boolean(v);
               setLgpdConsent(val);
-              if (val) void captureLead(false, true);
+              if (val) captureLead(false);
             }}
           />
           <span className="leading-snug text-muted-foreground">

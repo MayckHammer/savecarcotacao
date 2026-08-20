@@ -15,7 +15,9 @@ import { useAttendant } from "@/contexts/AttendantContext";
 import { toast } from "sonner";
 import { maskCPF, maskPhone, maskCEP, maskPlate, validateCPF } from "@/lib/masks";
 import { supabase } from "@/integrations/supabase/client";
+import { useLeadCapture } from "@/hooks/useLeadCapture";
 import { Helmet } from "react-helmet-async";
+
 
 interface FipeOption {
   code: string;
@@ -32,6 +34,39 @@ const Quote = () => {
   const [plateLoading, setPlateLoading] = useState(false);
   const [plateConsulted, setPlateConsulted] = useState(false);
   const [confirmingModel, setConfirmingModel] = useState(false);
+
+  // Garante sessionId para captura de leads parciais
+  useEffect(() => {
+    if (quote.sessionId) return;
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setSessionId(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Captura lead parcial (telefone) mesmo se o usuário não concluir a cotação
+  useLeadCapture({
+    sessionId: quote.sessionId || null,
+    phone: quote.personal.phone,
+    name: quote.personal.name,
+    email: quote.personal.email,
+    attendantSlug: attendant?.slug || null,
+    lgpdConsent: false,
+    vehicleInfo: {
+      plate: quote.vehicle.plate,
+      type: quote.vehicle.type,
+      brand: quote.vehicle.brand,
+      model: quote.vehicle.model,
+      year: quote.vehicle.year,
+      city: quote.address.city,
+      state: quote.address.state,
+      source: "cotacao-detalhada",
+    },
+  });
+
+
 
   // FIPE cascade state
   const [brands, setBrands] = useState<FipeOption[]>([]);
