@@ -19,6 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuote } from "@/contexts/QuoteContext";
 import { useAttendant } from "@/contexts/AttendantContext";
 import { maskPhone, maskPlate } from "@/lib/masks";
+import { useLeadCapture } from "@/hooks/useLeadCapture";
 
 type Opt = { id: number | string; text: string };
 
