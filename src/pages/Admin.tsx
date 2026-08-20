@@ -219,13 +219,23 @@ const Admin = () => {
         </TabsList>
 
         <TabsContent value="leads" className="space-y-3 mt-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => loadLeads()} disabled={leadsLoading}>
               {leadsLoading ? "Carregando..." : "Atualizar"}
             </Button>
             <span className="text-sm text-muted-foreground">{leads.length} lead(s)</span>
+            <span className="text-sm text-muted-foreground">
+              · {leads.filter((l) => l.converted).length} convertido(s)
+            </span>
+            <span className="text-sm text-muted-foreground">
+              · {leads.filter((l) => Date.now() - new Date(l.created_at).getTime() < 7 * 864e5).length} nos últimos 7 dias
+            </span>
           </div>
-          {leads.map((l) => (
+          {leads.map((l) => {
+            const v = (l.vehicle_info || {}) as Record<string, unknown>;
+            const vehicleLine = [v.brand, v.model, v.year].filter(Boolean).join(" ");
+            const placeLine = [v.city, v.state].filter(Boolean).join("/");
+            return (
             <div key={l.id} className="rounded-xl border border-border p-3 text-sm space-y-1">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-foreground">{l.name || "Sem nome"}</span>
@@ -239,12 +249,22 @@ const Admin = () => {
                 </a>
                 {l.email ? ` · ${l.email}` : ""}
               </div>
-              <div className="text-xs text-muted-foreground">
-                {new Date(l.created_at).toLocaleString("pt-BR")}
-                {l.attendant_slug ? ` · atendente: ${l.attendant_slug}` : ""}
+              {(vehicleLine || placeLine || v.plate) && (
+                <div className="text-xs text-muted-foreground">
+                  {[v.plate, vehicleLine, placeLine].filter(Boolean).join(" · ") as string}
+                </div>
+              )}
+              <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                <span>{new Date(l.created_at).toLocaleString("pt-BR")}</span>
+                {l.attendant_slug ? <span>· atendente: {l.attendant_slug}</span> : null}
+                <span className={l.lgpd_consent ? "text-emerald-600" : "text-muted-foreground"}>
+                  · LGPD: {l.lgpd_consent ? "autorizado" : "sem consentimento"}
+                </span>
               </div>
             </div>
-          ))}
+            );
+          })}
+
           {!leadsLoading && leads.length === 0 && (
             <p className="text-sm text-muted-foreground">Nenhum lead capturado ainda.</p>
           )}
