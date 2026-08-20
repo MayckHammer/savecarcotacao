@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     if (phoneDigits.length < 10 || phoneDigits.length > 13) {
       return json({ error: "telefone inválido" }, 400);
     }
-    if (!consent) return json({ error: "consentimento LGPD obrigatório" }, 400);
+
 
     const clean = (v: unknown, max = 255) =>
       typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
