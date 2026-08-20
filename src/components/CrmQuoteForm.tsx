@@ -189,7 +189,7 @@ const CrmQuoteForm = () => {
       return;
     }
     setSubmitting(true);
-    void captureLead(true);
+    captureLead(true);
     try {
 
       // 1) Cria cotação oficial no PowerCRM
@@ -373,7 +373,7 @@ const CrmQuoteForm = () => {
             onCheckedChange={(v) => {
               const val = Boolean(v);
               setLgpdConsent(val);
-              if (val) void captureLead(false, true);
+              if (val) captureLead(false);
             }}
           />
           <span className="leading-snug text-muted-foreground">
