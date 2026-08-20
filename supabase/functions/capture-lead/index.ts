@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
           email: clean(body?.email),
           attendant_slug: clean(body?.attendantSlug, 60),
           vehicle_info: typeof body?.vehicleInfo === "object" && body?.vehicleInfo ? body.vehicleInfo : {},
-          lgpd_consent: true,
+          lgpd_consent: consent,
           converted: Boolean(body?.converted),
           updated_at: new Date().toISOString(),
         },
