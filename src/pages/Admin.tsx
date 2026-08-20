@@ -63,7 +63,9 @@ const Admin = () => {
   interface Lead {
     id: string; name: string | null; phone: string; email: string | null;
     attendant_slug: string | null; converted: boolean; created_at: string;
+    lgpd_consent?: boolean; vehicle_info?: Record<string, unknown> | null;
   }
+
   const [leads, setLeads] = useState<Lead[]>([]);
   const [leadsLoading, setLeadsLoading] = useState(false);
 
