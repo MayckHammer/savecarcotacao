@@ -24,7 +24,7 @@ const QuoteExpress = () => {
           </motion.div>
           <CrmQuoteForm />
         </main>
-        <WhatsAppButton />
+        <WhatsAppButton badgeLabel="Desconto" />
       </div>
     </>
   );
