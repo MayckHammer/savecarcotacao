@@ -173,7 +173,7 @@ const Landing = () => {
                 <WhatsAppBadge size="lg" position="bottom-right" className="sm:hidden" />
                 <WhatsAppBadge size="lg" className="hidden sm:block" />
                 <MessageCircle />
-                <span className="sm:hidden">Desconto</span>
+                <span className="sm:hidden">Falar no WhatsApp</span>
                 <span className="hidden sm:inline">Falar no WhatsApp</span>
               </a>
             </Button>
