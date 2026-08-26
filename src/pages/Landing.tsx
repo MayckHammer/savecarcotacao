@@ -24,7 +24,7 @@ import FaqSection from "@/components/lp/FaqSection";
 import BenefitsCarousel from "@/components/lp/BenefitsCarousel";
 import BorderGlow from "@/components/BorderGlow";
 import CountUp from "@/components/CountUp";
-import WhatsAppBadge from "@/components/WhatsAppBadge";
+
 
 import { FAQ, SITE, STATS } from "@/lib/lp-content";
 import { trackQuoteClick, trackWhatsAppClick } from "@/lib/analytics";
@@ -170,8 +170,6 @@ const Landing = () => {
                 rel="noopener noreferrer"
                 onClick={() => trackWhatsAppClick("hero")}
               >
-                <WhatsAppBadge size="lg" position="bottom-right" className="sm:hidden" />
-                <WhatsAppBadge size="lg" className="hidden sm:block" />
                 <MessageCircle />
                 <span className="sm:hidden">Falar no WhatsApp</span>
                 <span className="hidden sm:inline">Falar no WhatsApp</span>
@@ -369,7 +367,6 @@ const Landing = () => {
                 onClick={() => trackWhatsAppClick("rodape")}
                 className="relative flex items-start gap-3"
               >
-                <WhatsAppBadge size="sm" />
                 <MessageCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />
                 <span>
                   <span className="block font-semibold text-white">Falar no WhatsApp</span>
@@ -436,7 +433,6 @@ const Landing = () => {
               rel="noopener noreferrer"
               onClick={() => trackWhatsAppClick("sticky_mobile")}
             >
-              <WhatsAppBadge size="sm" label="Desconto" />
               <MessageCircle />
             </a>
           </Button>
