@@ -228,7 +228,9 @@ const CrmQuoteForm = () => {
       return;
     }
     captureLead(false);
+    if (step === 1) sendCrmPartialLead();
     setStep((s) => (s === 1 ? 2 : 3));
+
   };
 
   const handleBack = () => setStep((s) => (s === 3 ? 2 : 1));
