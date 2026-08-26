@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import Header from "@/components/Header";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import CrmQuoteForm from "@/components/CrmQuoteForm";
 
 const QuoteExpress = () => {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+
   return (
     <>
       <div className="flex min-h-screen flex-col bg-background pb-20">
@@ -22,9 +25,9 @@ const QuoteExpress = () => {
               na hora.
             </p>
           </motion.div>
-          <CrmQuoteForm />
+          <CrmQuoteForm onStepChange={setStep} />
         </main>
-        <WhatsAppButton badgeLabel="Desconto" />
+        <WhatsAppButton badgeLabel={step === 1 ? null : "Desconto"} />
       </div>
     </>
   );
