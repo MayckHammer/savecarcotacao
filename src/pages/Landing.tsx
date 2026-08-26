@@ -161,7 +161,7 @@ const Landing = () => {
             <Button
               variant="onDark"
               size="xl"
-              className="w-full border-white/20 bg-black/25 backdrop-blur-md hover:bg-black/35 sm:flex-1"
+              className="relative w-full border-white/20 bg-black/25 backdrop-blur-md hover:bg-black/35 sm:flex-1"
               asChild
             >
               <a
@@ -170,6 +170,7 @@ const Landing = () => {
                 rel="noopener noreferrer"
                 onClick={() => trackWhatsAppClick("hero")}
               >
+                <WhatsAppBadge size="lg" />
                 <MessageCircle />
                 Falar no WhatsApp
               </a>
