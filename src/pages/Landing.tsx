@@ -427,7 +427,6 @@ const Landing = () => {
               navigate("/cotacao");
             }}
           >
-            <WhatsAppBadge size="sm" position="top-right" label="Desconto" />
             Fazer cotação
           </Button>
           <Button variant="outline" size="icon" className="relative h-12 w-12" aria-label="Falar no WhatsApp" asChild>
@@ -437,7 +436,7 @@ const Landing = () => {
               rel="noopener noreferrer"
               onClick={() => trackWhatsAppClick("sticky_mobile")}
             >
-              <WhatsAppBadge size="sm" />
+              <WhatsAppBadge size="sm" label="Desconto" />
               <MessageCircle />
             </a>
           </Button>
