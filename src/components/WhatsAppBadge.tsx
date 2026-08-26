@@ -14,7 +14,7 @@ const sizeClasses = {
 
 const positionClasses = {
   "top-center": "left-1/2 -translate-x-1/2 -top-2.5 after:absolute after:-bottom-1 after:left-1/2 after:h-2 after:w-2 after:-translate-x-1/2 after:rotate-45 after:bg-red-600",
-  "bottom-right": "right-0 bottom-0 translate-x-1/4 translate-y-1/4 after:absolute after:-top-1 after:right-3 after:h-2 after:w-2 after:rotate-45 after:bg-red-600",
+  "bottom-right": "right-2 bottom-0 translate-y-1/2 after:absolute after:-top-1 after:right-3 after:h-2 after:w-2 after:rotate-45 after:bg-red-600",
 };
 
 export const WhatsAppBadge = ({ className, size = "md", position = "top-center" }: WhatsAppBadgeProps) => {
