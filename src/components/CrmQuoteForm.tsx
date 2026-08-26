@@ -164,33 +164,65 @@ const CrmQuoteForm = () => {
       .finally(() => setLoading(null));
   }, [stateId]);
 
-  const getValidationErrors = (): string[] => {
+  const getStepErrors = (s: 1 | 2 | 3): string[] => {
     const errors: string[] = [];
-    if (name.trim().length <= 1) errors.push("Nome");
-    if (phone.replace(/\D/g, "").length < 10) errors.push("Telefone");
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errors.push("E-mail inválido");
-    if (!vehicleType) errors.push("Tipo do veículo");
-    if (!brand) errors.push("Marca");
-    if (!year) errors.push("Ano");
-    if (!model) errors.push("Modelo");
-    if (!stateId) errors.push("Estado");
-    if (!cityId) errors.push("Cidade");
-    if (!lgpdConsent) errors.push("Autorização LGPD");
+    if (s === 1) {
+      if (name.trim().length <= 1) errors.push("Nome");
+      if (phone.replace(/\D/g, "").length < 10) errors.push("Telefone");
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errors.push("E-mail inválido");
+      if (!lgpdConsent) errors.push("Autorização LGPD");
+    }
+    if (s === 2) {
+      if (!vehicleType) errors.push("Tipo do veículo");
+      if (!brand) errors.push("Marca");
+      if (!year) errors.push("Ano");
+      if (!model) errors.push("Modelo");
+    }
+    if (s === 3) {
+      if (!stateId) errors.push("Estado");
+      if (!cityId) errors.push("Cidade");
+    }
     return errors;
   };
 
+  const getValidationErrors = (): string[] => [
+    ...getStepErrors(1),
+    ...getStepErrors(2),
+    ...getStepErrors(3),
+  ];
+
   const canSubmit = !submitting;
+
+  const showErrors = (errors: string[]) =>
+    toast.error("Informações incompletas ou erradas para gerar cotação", {
+      description: `Verifique: ${errors.join(", ")}`,
+    });
+
+  const handleNext = () => {
+    const errors = getStepErrors(step);
+    if (errors.length > 0) {
+      showErrors(errors);
+      return;
+    }
+    captureLead(false);
+    setStep((s) => (s === 1 ? 2 : 3));
+  };
+
+  const handleBack = () => setStep((s) => (s === 3 ? 2 : 1));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
-    const errors = getValidationErrors();
-    if (errors.length > 0) {
-      toast.error("Informações incompletas ou erradas para gerar cotação", {
-        description: `Verifique: ${errors.join(", ")}`,
-      });
+    if (step !== 3) {
+      handleNext();
       return;
     }
+    const errors = getValidationErrors();
+    if (errors.length > 0) {
+      showErrors(errors);
+      return;
+    }
+
     setSubmitting(true);
     captureLead(true);
     try {
