@@ -63,6 +63,8 @@ const CrmQuoteForm = () => {
   const [cityId, setCityId] = useState("");
   const [isWork, setIsWork] = useState(false);
   const [lgpdConsent, setLgpdConsent] = useState(false);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+
 
   const [brands, setBrands] = useState<Opt[]>([]);
   const [years, setYears] = useState<Opt[]>([]);
