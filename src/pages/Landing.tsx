@@ -421,12 +421,13 @@ const Landing = () => {
         <div className="fixed inset-x-0 bottom-0 z-50 flex gap-2 border-t border-border bg-card/95 p-3 backdrop-blur sm:hidden">
           <Button
             variant="cta"
-            className="h-12 flex-1"
+            className="relative h-12 flex-1"
             onClick={() => {
               trackQuoteClick("sticky_mobile");
               navigate("/cotacao");
             }}
           >
+            <WhatsAppBadge size="sm" position="top-right" label="Desconto" />
             Fazer cotação
           </Button>
           <Button variant="outline" size="icon" className="relative h-12 w-12" aria-label="Falar no WhatsApp" asChild>
