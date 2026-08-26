@@ -367,7 +367,7 @@ const Landing = () => {
                 onClick={() => trackWhatsAppClick("rodape")}
                 className="relative flex items-start gap-3"
               >
-                <WhatsAppBadge size="sm" className="-top-2 -right-1" />
+                <WhatsAppBadge size="sm" />
                 <MessageCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />
                 <span>
                   <span className="block font-semibold text-white">Falar no WhatsApp</span>
@@ -434,7 +434,7 @@ const Landing = () => {
               rel="noopener noreferrer"
               onClick={() => trackWhatsAppClick("sticky_mobile")}
             >
-              <WhatsAppBadge size="sm" className="-top-1.5 -right-1.5" />
+              <WhatsAppBadge size="sm" />
               <MessageCircle />
             </a>
           </Button>
