@@ -365,8 +365,9 @@ const Landing = () => {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => trackWhatsAppClick("rodape")}
-                className="flex items-start gap-3"
+                className="relative flex items-start gap-3"
               >
+                <WhatsAppBadge size="sm" className="-top-2 -right-1" />
                 <MessageCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />
                 <span>
                   <span className="block font-semibold text-white">Falar no WhatsApp</span>
