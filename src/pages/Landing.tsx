@@ -24,6 +24,7 @@ import FaqSection from "@/components/lp/FaqSection";
 import BenefitsCarousel from "@/components/lp/BenefitsCarousel";
 import BorderGlow from "@/components/BorderGlow";
 import CountUp from "@/components/CountUp";
+import WhatsAppBadge from "@/components/WhatsAppBadge";
 
 import { FAQ, SITE, STATS } from "@/lib/lp-content";
 import { trackQuoteClick, trackWhatsAppClick } from "@/lib/analytics";
@@ -160,7 +161,7 @@ const Landing = () => {
             <Button
               variant="onDark"
               size="xl"
-              className="w-full border-white/20 bg-black/25 backdrop-blur-md hover:bg-black/35 sm:flex-1"
+              className="relative w-full border-white/20 bg-black/25 backdrop-blur-md hover:bg-black/35 sm:flex-1"
               asChild
             >
               <a
@@ -169,6 +170,7 @@ const Landing = () => {
                 rel="noopener noreferrer"
                 onClick={() => trackWhatsAppClick("hero")}
               >
+                <WhatsAppBadge size="lg" />
                 <MessageCircle />
                 Falar no WhatsApp
               </a>
@@ -363,8 +365,9 @@ const Landing = () => {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => trackWhatsAppClick("rodape")}
-                className="flex items-start gap-3"
+                className="relative flex items-start gap-3"
               >
+                <WhatsAppBadge size="sm" className="-top-2 -right-1" />
                 <MessageCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />
                 <span>
                   <span className="block font-semibold text-white">Falar no WhatsApp</span>
@@ -424,13 +427,14 @@ const Landing = () => {
           >
             Fazer cotação
           </Button>
-          <Button variant="outline" size="icon" className="h-12 w-12" aria-label="Falar no WhatsApp" asChild>
+          <Button variant="outline" size="icon" className="relative h-12 w-12" aria-label="Falar no WhatsApp" asChild>
             <a
               href={waHref}
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => trackWhatsAppClick("sticky_mobile")}
             >
+              <WhatsAppBadge size="sm" className="-top-1.5 -right-1.5" />
               <MessageCircle />
             </a>
           </Button>
