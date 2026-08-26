@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useQuote } from "@/contexts/QuoteContext";
 import { useWhatsAppNumber, DEFAULT_WHATSAPP_MESSAGE } from "@/contexts/AttendantContext";
+import WhatsAppBadge from "@/components/WhatsAppBadge";
 import logoAsset from "@/assets/logo-savecar.png.asset.json";
 
 const UFS = [
