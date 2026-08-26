@@ -104,6 +104,29 @@ const CrmQuoteForm = () => {
 
   const captureLead = (converted = false) => void capture(converted, true);
 
+  // Cria o card no CRM já no passo 1 (não bloqueia a navegação)
+  const crmLeadSent = useRef(false);
+  const sendCrmPartialLead = () => {
+    if (crmLeadSent.current) return;
+    if (name.trim().length <= 1) return;
+    if (phone.replace(/\D/g, "").length < 10) return;
+    crmLeadSent.current = true;
+    void call("submit_lead", {
+      payload: {
+        clientName: name,
+        clientEmail: email,
+        clientPhone: phone,
+        vehiclePlate: plate,
+      },
+      sessionId: quote.sessionId || null,
+      attendantSlug: attendant?.slug || null,
+    }).catch((err) => {
+      crmLeadSent.current = false;
+      console.error("submit_lead error", err);
+    });
+  };
+
+
 
 
   // load states once
