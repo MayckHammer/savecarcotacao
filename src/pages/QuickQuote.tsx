@@ -137,7 +137,7 @@ const QuickQuote = () => {
           onClick={handleWhatsApp}
           className="relative flex items-center gap-1.5 text-xs font-medium text-primary"
         >
-          <WhatsAppBadge size="sm" className="-top-2 -right-1" />
+          <WhatsAppBadge size="sm" />
           <MessageCircle className="h-4 w-4" />
           Falar com consultor
         </button>
@@ -361,7 +361,7 @@ const QuickQuote = () => {
               onClick={handleWhatsApp}
               className="relative text-xs font-bold text-[#25D366] px-3 py-2 rounded-lg border border-[#25D366]/30 hover:bg-[#25D366]/10 transition-colors"
             >
-              <WhatsAppBadge size="sm" className="-top-2 -right-2" />
+              <WhatsAppBadge size="sm" />
               WhatsApp
             </button>
           </div>
