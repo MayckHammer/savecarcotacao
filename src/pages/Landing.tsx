@@ -24,6 +24,7 @@ import FaqSection from "@/components/lp/FaqSection";
 import BenefitsCarousel from "@/components/lp/BenefitsCarousel";
 import BorderGlow from "@/components/BorderGlow";
 import CountUp from "@/components/CountUp";
+import WhatsAppBadge from "@/components/WhatsAppBadge";
 
 import { FAQ, SITE, STATS } from "@/lib/lp-content";
 import { trackQuoteClick, trackWhatsAppClick } from "@/lib/analytics";
