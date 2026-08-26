@@ -135,8 +135,9 @@ const QuickQuote = () => {
         />
         <button
           onClick={handleWhatsApp}
-          className="flex items-center gap-1.5 text-xs font-medium text-primary"
+          className="relative flex items-center gap-1.5 text-xs font-medium text-primary"
         >
+          <WhatsAppBadge size="sm" className="-top-2 -right-1" />
           <MessageCircle className="h-4 w-4" />
           Falar com consultor
         </button>
