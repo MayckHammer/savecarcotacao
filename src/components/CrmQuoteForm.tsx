@@ -377,9 +377,13 @@ const CrmQuoteForm = () => {
                 onCheckedChange={(v) => {
                   const val = Boolean(v);
                   setLgpdConsent(val);
-                  if (val) captureLead(false);
+                  if (val) {
+                    captureLead(false);
+                    sendCrmPartialLead();
+                  }
                 }}
               />
+
               <span className="leading-snug text-muted-foreground">
                 <span className="font-medium text-foreground">Autorizo a coleta das minhas informações</span> para
                 contato e envio da cotação, conforme a LGPD (Lei nº 13.709/2018).
