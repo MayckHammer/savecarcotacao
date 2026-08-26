@@ -23,7 +23,7 @@ export const WhatsAppBadge = ({ className, size = "md", position = "top-center",
   return (
     <span
       className={cn(
-        "absolute z-10 whitespace-nowrap rounded-md bg-red-600 font-extrabold uppercase tracking-wide text-black shadow-lg pointer-events-none animate-pulse",
+        "absolute z-10 whitespace-nowrap rounded-md bg-red-600 font-extrabold tracking-wide text-black shadow-lg pointer-events-none animate-pulse",
         sizeClasses[size],
         positionClasses[position],
         className
