@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 type WhatsAppBadgeProps = {
   className?: string;
   size?: "sm" | "md" | "lg";
-  position?: "top-center" | "bottom-right";
+  position?: "top-center" | "top-right" | "bottom-right";
+  label?: string;
 };
 
 const sizeClasses = {
@@ -14,10 +15,11 @@ const sizeClasses = {
 
 const positionClasses = {
   "top-center": "left-1/2 -translate-x-1/2 -top-2.5 after:absolute after:-bottom-1 after:left-1/2 after:h-2 after:w-2 after:-translate-x-1/2 after:rotate-45 after:bg-red-600",
+  "top-right": "-top-2 right-2 after:absolute after:-bottom-1 after:right-3 after:h-2 after:w-2 after:rotate-45 after:bg-red-600",
   "bottom-right": "right-2 bottom-0 translate-y-1/2 after:absolute after:-top-1 after:right-3 after:h-2 after:w-2 after:rotate-45 after:bg-red-600",
 };
 
-export const WhatsAppBadge = ({ className, size = "md", position = "top-center" }: WhatsAppBadgeProps) => {
+export const WhatsAppBadge = ({ className, size = "md", position = "top-center", label = "Descontos Especial!" }: WhatsAppBadgeProps) => {
   return (
     <span
       className={cn(
@@ -28,7 +30,7 @@ export const WhatsAppBadge = ({ className, size = "md", position = "top-center" 
       )}
       aria-hidden="true"
     >
-      Descontos Especial!
+      {label}
     </span>
   );
 };
