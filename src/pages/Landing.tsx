@@ -170,9 +170,11 @@ const Landing = () => {
                 rel="noopener noreferrer"
                 onClick={() => trackWhatsAppClick("hero")}
               >
-                <WhatsAppBadge size="lg" />
+                <WhatsAppBadge size="lg" position="bottom-right" className="sm:hidden" />
+                <WhatsAppBadge size="lg" className="hidden sm:block" />
                 <MessageCircle />
-                Falar no WhatsApp
+                <span className="sm:hidden">Desconto</span>
+                <span className="hidden sm:inline">Falar no WhatsApp</span>
               </a>
             </Button>
           </motion.div>
