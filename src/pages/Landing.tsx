@@ -427,13 +427,14 @@ const Landing = () => {
           >
             Fazer cotação
           </Button>
-          <Button variant="outline" size="icon" className="h-12 w-12" aria-label="Falar no WhatsApp" asChild>
+          <Button variant="outline" size="icon" className="relative h-12 w-12" aria-label="Falar no WhatsApp" asChild>
             <a
               href={waHref}
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => trackWhatsAppClick("sticky_mobile")}
             >
+              <WhatsAppBadge size="sm" className="-top-1.5 -right-1.5" />
               <MessageCircle />
             </a>
           </Button>
