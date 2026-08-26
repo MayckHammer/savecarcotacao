@@ -359,8 +359,9 @@ const QuickQuote = () => {
             </div>
             <button
               onClick={handleWhatsApp}
-              className="text-xs font-bold text-[#25D366] px-3 py-2 rounded-lg border border-[#25D366]/30 hover:bg-[#25D366]/10 transition-colors"
+              className="relative text-xs font-bold text-[#25D366] px-3 py-2 rounded-lg border border-[#25D366]/30 hover:bg-[#25D366]/10 transition-colors"
             >
+              <WhatsAppBadge size="sm" className="-top-2 -right-2" />
               WhatsApp
             </button>
           </div>
