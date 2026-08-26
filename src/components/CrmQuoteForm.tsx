@@ -39,7 +39,11 @@ const call = async (action: string, extra: Record<string, unknown> = {}) => {
   return data;
 };
 
-const CrmQuoteForm = () => {
+type CrmQuoteFormProps = {
+  onStepChange?: (step: 1 | 2 | 3) => void;
+};
+
+const CrmQuoteForm = ({ onStepChange }: CrmQuoteFormProps) => {
   const navigate = useNavigate();
   const {
     quote,
@@ -64,6 +68,11 @@ const CrmQuoteForm = () => {
   const [isWork, setIsWork] = useState(false);
   const [lgpdConsent, setLgpdConsent] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
+
+  useEffect(() => {
+    onStepChange?.(step);
+  }, [step, onStepChange]);
+
 
 
   const [brands, setBrands] = useState<Opt[]>([]);
