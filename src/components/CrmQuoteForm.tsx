@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, ArrowRight, ArrowLeft, Search, ShieldCheck } from "lucide-react";
@@ -104,6 +104,29 @@ const CrmQuoteForm = () => {
 
   const captureLead = (converted = false) => void capture(converted, true);
 
+  // Cria o card no CRM já no passo 1 (não bloqueia a navegação)
+  const crmLeadSent = useRef(false);
+  const sendCrmPartialLead = () => {
+    if (crmLeadSent.current) return;
+    if (name.trim().length <= 1) return;
+    if (phone.replace(/\D/g, "").length < 10) return;
+    crmLeadSent.current = true;
+    void call("submit_lead", {
+      payload: {
+        clientName: name,
+        clientEmail: email,
+        clientPhone: phone,
+        vehiclePlate: plate,
+      },
+      sessionId: quote.sessionId || null,
+      attendantSlug: attendant?.slug || null,
+    }).catch((err) => {
+      crmLeadSent.current = false;
+      console.error("submit_lead error", err);
+    });
+  };
+
+
 
 
   // load states once
@@ -205,7 +228,9 @@ const CrmQuoteForm = () => {
       return;
     }
     captureLead(false);
+    if (step === 1) sendCrmPartialLead();
     setStep((s) => (s === 1 ? 2 : 3));
+
   };
 
   const handleBack = () => setStep((s) => (s === 3 ? 2 : 1));
@@ -352,9 +377,13 @@ const CrmQuoteForm = () => {
                 onCheckedChange={(v) => {
                   const val = Boolean(v);
                   setLgpdConsent(val);
-                  if (val) captureLead(false);
+                  if (val) {
+                    captureLead(false);
+                    sendCrmPartialLead();
+                  }
                 }}
               />
+
               <span className="leading-snug text-muted-foreground">
                 <span className="font-medium text-foreground">Autorizo a coleta das minhas informações</span> para
                 contato e envio da cotação, conforme a LGPD (Lei nº 13.709/2018).

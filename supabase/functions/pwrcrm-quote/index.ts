@@ -274,8 +274,86 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ---------- SUBMIT PARCIAL (passo 1) ----------
+    // Cria o card no CRM assim que temos nome + telefone, mesmo que o usuário
+    // não conclua as etapas 2 e 3. Usa placeholders de veículo/cidade exigidos
+    // pelo formulário oficial do PowerCRM.
+    if (action === "submit_lead") {
+      const p = (body.payload || {}) as Partial<SubmitPayload>;
+      const phone = String(p.clientPhone || "").replace(/\D/g, "");
+      if (!p.clientName || phone.length < 10) {
+        return new Response(JSON.stringify({ error: "Nome e telefone obrigatórios" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const partialBody = {
+        ...FORM_HASHES,
+        clientName: String(p.clientName),
+        clientEmail: p.clientEmail || "",
+        clientPhone: phone,
+        clientCity: String(p.clientCity || 2389), // Uberlândia/MG (placeholder)
+        vehiclePlate: (p.vehiclePlate || "").toUpperCase(),
+        vehicleType: String(p.vehicleType || 1),
+        vehicleBranch: String(p.vehicleBranch || 27), // Fiat
+        vehicleModel: String(p.vehicleModel || 917), // Argo 1.0
+        vehicleYear: String(p.vehicleYear || 2020),
+        vehicleIsWork: false,
+        observation: "",
+        companyUserCode: "",
+        affiliateCode: "",
+        utmParameters: p.utmParameters || {},
+      };
+
+      const r = await fetch(`${PWRCRM_BASE}/svQttnDynmcFrm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(partialBody),
+      });
+      const text = await r.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { raw: text };
+      }
+
+      if (!r.ok || !data?.success) {
+        return new Response(
+          JSON.stringify({ error: data?.message || "Falha ao criar lead no CRM" }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      try {
+        const sb = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        );
+        await sb.rpc("log_quote_audit", {
+          p_action: "crm_partial_lead",
+          p_function_name: "pwrcrm-quote",
+          p_session_id: String(body.sessionId || data.qttnCd || ""),
+          p_ip: req.headers.get("x-forwarded-for") || null,
+          p_user_agent: req.headers.get("user-agent") || null,
+          p_details: {
+            attendant_slug: typeof body.attendantSlug === "string" ? body.attendantSlug : null,
+            qttnCd: data.qttnCd,
+          },
+        });
+      } catch (e) {
+        console.error("audit log failed:", e);
+      }
+
+      return new Response(JSON.stringify({ qttnCd: data.qttnCd, ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ---------- SUBMIT ----------
     if (action === "submit") {
+
       const p = body.payload as SubmitPayload;
       if (
         !p ||
