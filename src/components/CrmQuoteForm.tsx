@@ -113,19 +113,30 @@ const CrmQuoteForm = ({ onStepChange }: CrmQuoteFormProps) => {
 
   const captureLead = (converted = false) => void capture(converted, true);
 
-  // Cria o card no CRM já no passo 1 (não bloqueia a navegação)
+  // Lead de abandono: só cria card no CRM se o usuário sair sem concluir a cotação.
+  // Envia os dados reais já preenchidos (veículo/cidade) quando existirem.
   const crmLeadSent = useRef(false);
-  const sendCrmPartialLead = () => {
-    if (crmLeadSent.current) return;
-    if (name.trim().length <= 1) return;
-    if (phone.replace(/\D/g, "").length < 10) return;
+  const crmFullSubmitted = useRef(false);
+  const latest = useRef<Record<string, string | boolean>>({});
+  latest.current = { name, phone, email, plate, vehicleType, brand, model, year, cityId, isWork };
+
+  const sendCrmAbandonLead = () => {
+    if (crmLeadSent.current || crmFullSubmitted.current) return;
+    const l = latest.current as Record<string, string>;
+    if (String(l.name || "").trim().length <= 1) return;
+    if (String(l.phone || "").replace(/\D/g, "").length < 10) return;
     crmLeadSent.current = true;
     void call("submit_lead", {
       payload: {
-        clientName: name,
-        clientEmail: email,
-        clientPhone: phone,
-        vehiclePlate: plate,
+        clientName: l.name,
+        clientEmail: l.email,
+        clientPhone: l.phone,
+        vehiclePlate: l.plate,
+        clientCity: l.cityId || undefined,
+        vehicleType: l.vehicleType || undefined,
+        vehicleBranch: l.brand || undefined,
+        vehicleModel: l.model || undefined,
+        vehicleYear: l.year || undefined,
       },
       sessionId: quote.sessionId || null,
       attendantSlug: attendant?.slug || null,
@@ -134,6 +145,20 @@ const CrmQuoteForm = ({ onStepChange }: CrmQuoteFormProps) => {
       console.error("submit_lead error", err);
     });
   };
+
+  useEffect(() => {
+    const onLeave = () => {
+      if (document.visibilityState === "hidden") sendCrmAbandonLead();
+    };
+    document.addEventListener("visibilitychange", onLeave);
+    window.addEventListener("pagehide", sendCrmAbandonLead);
+    return () => {
+      document.removeEventListener("visibilitychange", onLeave);
+      window.removeEventListener("pagehide", sendCrmAbandonLead);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
 
 
