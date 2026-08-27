@@ -45,13 +45,34 @@
         "url": "https://savecarcotacao.com/"
       }
     </script>
-    <!-- Google Tag Manager -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-    })(window,document,'script','dataLayer','GTM-MW77WPBJ');</script>
+    <!-- Google Tag Manager (deferred until idle/first interaction) -->
+    <script>
+      (function (w, d, s, l, i) {
+        w[l] = w[l] || [];
+        var loaded = false;
+        function load() {
+          if (loaded) return;
+          loaded = true;
+          w[l].push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
+          var f = d.getElementsByTagName(s)[0],
+            j = d.createElement(s),
+            dl = l != 'dataLayer' ? '&l=' + l : '';
+          j.async = true;
+          j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl;
+          f.parentNode.insertBefore(j, f);
+        }
+        ['scroll', 'pointerdown', 'keydown', 'touchstart'].forEach(function (e) {
+          w.addEventListener(e, load, { once: true, passive: true });
+        });
+        if ('requestIdleCallback' in w) {
+          w.requestIdleCallback(load, { timeout: 5000 });
+        } else {
+          w.setTimeout(load, 3500);
+        }
+      })(window, document, 'script', 'dataLayer', 'GTM-MW77WPBJ');
+    </script>
     <!-- End Google Tag Manager -->
+
   </head>
 
   <body>
