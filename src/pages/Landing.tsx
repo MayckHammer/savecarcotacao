@@ -12,7 +12,8 @@ import {
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import logoAsset from "@/assets/logo-savecar.png.asset.json";
-import heroEstrada from "@/assets/hero-estrada-2.svg.asset.json";
+import heroEstrada1600 from "@/assets/hero-estrada-1600.webp";
+import heroEstrada800 from "@/assets/hero-estrada-800.webp";
 import reclameAquiBadge from "@/assets/selo-reclame-aqui.webp.asset.json";
 import susepBadge from "@/assets/susep.png.asset.json";
 import certidaoSusep from "@/assets/certidao-susep.pdf.asset.json";
