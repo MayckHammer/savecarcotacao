@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,24 +7,25 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-route
 import { QuoteProvider } from "@/contexts/QuoteContext";
 import { AttendantProvider, useAttendant } from "@/contexts/AttendantContext";
 import Landing from "./pages/Landing";
-import Quote from "./pages/Quote";
-import Result from "./pages/Result";
 
-import Aguardando from "./pages/Aguardando";
-import Payment from "./pages/Payment";
-import Inspection from "./pages/Inspection";
-import Admin from "./pages/Admin";
-import Confirmation from "./pages/Confirmation";
-import NotFound from "./pages/NotFound";
+const Quote = lazy(() => import("./pages/Quote"));
+const Result = lazy(() => import("./pages/Result"));
+const Aguardando = lazy(() => import("./pages/Aguardando"));
+const Payment = lazy(() => import("./pages/Payment"));
+const Inspection = lazy(() => import("./pages/Inspection"));
+const Admin = lazy(() => import("./pages/Admin"));
+const Confirmation = lazy(() => import("./pages/Confirmation"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const QuickQuote = lazy(() => import("./pages/QuickQuote"));
+const QuoteExpress = lazy(() => import("./pages/QuoteExpress"));
+const PlansFromCrm = lazy(() => import("./pages/PlansFromCrm"));
+const AttendantLanding = lazy(() => import("./pages/AttendantLanding"));
 
-import QuickQuote from "./pages/QuickQuote";
-import QuoteExpress from "./pages/QuoteExpress";
-import PlansFromCrm from "./pages/PlansFromCrm";
-import AttendantLanding from "./pages/AttendantLanding";
 import ScrollToTop from "./components/ScrollToTop";
 import GradualBlur from "./components/GradualBlur";
 import ScrollHint from "./components/ScrollHint";
 import { KeniaRedirect } from "./components/KeniaRedirect";
+
 
 const queryClient = new QueryClient();
 
