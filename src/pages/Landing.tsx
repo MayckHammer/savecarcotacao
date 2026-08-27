@@ -12,7 +12,8 @@ import {
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import logoAsset from "@/assets/logo-savecar.png.asset.json";
-import heroEstrada from "@/assets/hero-estrada-2.svg.asset.json";
+import heroEstrada1600 from "@/assets/hero-estrada-1600.webp";
+import heroEstrada800 from "@/assets/hero-estrada-800.webp";
 import reclameAquiBadge from "@/assets/selo-reclame-aqui.webp.asset.json";
 import susepBadge from "@/assets/susep.png.asset.json";
 import certidaoSusep from "@/assets/certidao-susep.pdf.asset.json";
@@ -69,13 +70,20 @@ const Landing = () => {
 
       {/* 1. HERO */}
       <section className="surface-dark relative overflow-hidden">
-        <img
-          src={heroEstrada.url}
-          alt="Carro percorrendo estrada em meio a montanhas ao entardecer"
-          width={1600}
-          height={1104}
-          className="pointer-events-none absolute inset-0 size-full select-none object-cover"
-        />
+        <picture>
+          <source media="(max-width: 640px)" srcSet={heroEstrada800} type="image/webp" />
+          <source srcSet={heroEstrada1600} type="image/webp" />
+          <img
+            src={heroEstrada1600}
+            alt="Carro percorrendo estrada em meio a montanhas ao entardecer"
+            width={1600}
+            height={1104}
+            fetchPriority="high"
+            decoding="async"
+            className="pointer-events-none absolute inset-0 size-full select-none object-cover"
+          />
+        </picture>
+
         <div
           className="pointer-events-none absolute inset-0 bg-gradient-to-b from-teal-900/98 via-teal-900/92 to-teal-900/98"
           aria-hidden="true"
@@ -99,8 +107,12 @@ const Landing = () => {
             <img
               src={logoAsset.url}
               alt="SaveCar Brasil"
+              width={320}
+              height={90}
+              fetchPriority="high"
               className="h-[90px] w-auto max-w-none object-contain sm:h-20"
             />
+
           </Link>
         </header>
 
@@ -214,9 +226,13 @@ const Landing = () => {
                 <img
                   src={reclameAquiBadge.url}
                   alt="Empresa verificada pelo Reclame Aqui"
+                  width={160}
+                  height={44}
                   className="max-h-11 w-auto object-contain"
                   loading="lazy"
+                  decoding="async"
                 />
+
               </a>
             </BorderGlow>
             <BorderGlow
@@ -238,9 +254,13 @@ const Landing = () => {
                 <img
                   src={susepBadge.url}
                   alt="Regulamentada pela SUSEP"
+                  width={160}
+                  height={44}
                   className="max-h-11 w-auto object-contain"
                   loading="lazy"
+                  decoding="async"
                 />
+
               </a>
 
             </BorderGlow>
@@ -339,7 +359,7 @@ const Landing = () => {
           <div className="grid gap-10 md:grid-cols-3">
             <div className="space-y-3">
               <div className="inline-block rounded-2xl bg-white px-4 py-2">
-                <img src={logoAsset.url} alt="SaveCar Brasil" className="h-14 object-contain" />
+                <img src={logoAsset.url} alt="SaveCar Brasil" width={200} height={56} loading="lazy" decoding="async" className="h-14 object-contain" />
               </div>
               <p className="text-sm text-white/75">Associação de proteção veicular desde {SITE.foundedYear}.</p>
               <p className="flex items-center gap-2 text-sm text-white/75">
