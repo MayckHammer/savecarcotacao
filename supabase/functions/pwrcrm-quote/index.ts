@@ -288,23 +288,30 @@ Deno.serve(async (req) => {
         });
       }
 
+      const missingVehicle = !p.vehicleBranch || !p.vehicleModel || !p.vehicleYear;
+      const missingCity = !p.clientCity;
+
       const partialBody = {
         ...FORM_HASHES,
         clientName: String(p.clientName),
         clientEmail: p.clientEmail || "",
         clientPhone: phone,
-        clientCity: String(p.clientCity || 2389), // Uberlândia/MG (placeholder)
+        clientCity: String(p.clientCity || 2389), // placeholder exigido pelo formulário
         vehiclePlate: (p.vehiclePlate || "").toUpperCase(),
         vehicleType: String(p.vehicleType || 1),
-        vehicleBranch: String(p.vehicleBranch || 27), // Fiat
-        vehicleModel: String(p.vehicleModel || 917), // Argo 1.0
+        vehicleBranch: String(p.vehicleBranch || 27),
+        vehicleModel: String(p.vehicleModel || 917),
         vehicleYear: String(p.vehicleYear || 2020),
         vehicleIsWork: false,
-        observation: "",
+        observation:
+          missingVehicle || missingCity
+            ? `LEAD INCOMPLETO (cotação abandonada). ${missingVehicle ? "Veículo NÃO informado pelo cliente (dados de veículo neste card são apenas preenchimento automático). " : ""}${missingCity ? "Cidade NÃO informada (cidade deste card é apenas preenchimento automático). " : ""}Confirmar veículo e cidade com o cliente.`
+            : "LEAD INCOMPLETO (cotação abandonada).",
         companyUserCode: "",
         affiliateCode: "",
         utmParameters: p.utmParameters || {},
       };
+
 
       const r = await fetch(`${PWRCRM_BASE}/svQttnDynmcFrm`, {
         method: "POST",
