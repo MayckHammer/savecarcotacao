@@ -41,6 +41,29 @@ const GlobalOverlays = () => {
   );
 };
 
+const RouteFallback = () => (
+  <div className="flex min-h-screen items-center justify-center bg-[#06403a]">
+    <div className="h-1.5 w-44 overflow-hidden rounded-full bg-white/20">
+      <div className="h-full w-2/5 animate-pulse rounded-full bg-[#F2B705]" />
+    </div>
+  </div>
+);
+
+const RoutePrefetch = () => {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (pathname !== "/") return;
+    const prefetch = () => {
+      import("./pages/QuoteExpress");
+      import("./pages/PlansFromCrm");
+    };
+    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
+    const id = w.requestIdleCallback ? w.requestIdleCallback(prefetch) : window.setTimeout(prefetch, 2500);
+    return () => window.clearTimeout(id as number);
+  }, [pathname]);
+  return null;
+};
+
 const NeutralLanding = () => {
   const { clear } = useAttendant();
   useEffect(() => {
@@ -59,7 +82,8 @@ const App = () => (
           <BrowserRouter>
             <ScrollToTop />
             <GlobalOverlays />
-            <Suspense fallback={<div className="min-h-screen bg-background" />}>
+            <RoutePrefetch />
+            <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<NeutralLanding />} />
                 <Route path="/cotacao" element={<QuoteExpress />} />
