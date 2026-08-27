@@ -281,6 +281,7 @@ const CrmQuoteForm = ({ onStepChange }: CrmQuoteFormProps) => {
       return;
     }
 
+    crmFullSubmitted.current = true;
     setSubmitting(true);
     captureLead(true);
     try {
