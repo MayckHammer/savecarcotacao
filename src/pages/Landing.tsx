@@ -359,7 +359,7 @@ const Landing = () => {
           <div className="grid gap-10 md:grid-cols-3">
             <div className="space-y-3">
               <div className="inline-block rounded-2xl bg-white px-4 py-2">
-                <img src={logoAsset.url} alt="SaveCar Brasil" className="h-14 object-contain" />
+                <img src={logoAsset.url} alt="SaveCar Brasil" width={200} height={56} loading="lazy" decoding="async" className="h-14 object-contain" />
               </div>
               <p className="text-sm text-white/75">Associação de proteção veicular desde {SITE.foundedYear}.</p>
               <p className="flex items-center gap-2 text-sm text-white/75">
