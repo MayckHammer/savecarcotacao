@@ -69,13 +69,20 @@ const Landing = () => {
 
       {/* 1. HERO */}
       <section className="surface-dark relative overflow-hidden">
-        <img
-          src={heroEstrada.url}
-          alt="Carro percorrendo estrada em meio a montanhas ao entardecer"
-          width={1600}
-          height={1104}
-          className="pointer-events-none absolute inset-0 size-full select-none object-cover"
-        />
+        <picture>
+          <source media="(max-width: 640px)" srcSet={heroEstrada800} type="image/webp" />
+          <source srcSet={heroEstrada1600} type="image/webp" />
+          <img
+            src={heroEstrada1600}
+            alt="Carro percorrendo estrada em meio a montanhas ao entardecer"
+            width={1600}
+            height={1104}
+            fetchPriority="high"
+            decoding="async"
+            className="pointer-events-none absolute inset-0 size-full select-none object-cover"
+          />
+        </picture>
+
         <div
           className="pointer-events-none absolute inset-0 bg-gradient-to-b from-teal-900/98 via-teal-900/92 to-teal-900/98"
           aria-hidden="true"
