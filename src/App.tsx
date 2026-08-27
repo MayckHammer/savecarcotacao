@@ -59,26 +59,29 @@ const App = () => (
           <BrowserRouter>
             <ScrollToTop />
             <GlobalOverlays />
-            <Routes>
-              <Route path="/" element={<NeutralLanding />} />
-              <Route path="/cotacao" element={<QuoteExpress />} />
-              <Route path="/cotacao-detalhada" element={<Quote />} />
-              <Route path="/planos" element={<PlansFromCrm />} />
-              <Route path="/resultado" element={<Result />} />
+            <Suspense fallback={<div className="min-h-screen bg-background" />}>
+              <Routes>
+                <Route path="/" element={<NeutralLanding />} />
+                <Route path="/cotacao" element={<QuoteExpress />} />
+                <Route path="/cotacao-detalhada" element={<Quote />} />
+                <Route path="/planos" element={<PlansFromCrm />} />
+                <Route path="/resultado" element={<Result />} />
 
-              <Route path="/aguardando" element={<Aguardando />} />
-              <Route path="/pagamento" element={<Payment />} />
-              <Route path="/vistoria" element={<Inspection />} />
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/confirmacao" element={<Confirmation />} />
-              
-              <Route path="/simulacao" element={<QuickQuote />} />
-              {/* Legacy traffic redirect — noindex + canonical to root */}
-              <Route path="/kenia" element={<KeniaRedirect />} />
-              {/* Personalized attendant link: /josi, /joao, etc. */}
-              <Route path="/:attendantSlug" element={<AttendantLanding />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+                <Route path="/aguardando" element={<Aguardando />} />
+                <Route path="/pagamento" element={<Payment />} />
+                <Route path="/vistoria" element={<Inspection />} />
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/confirmacao" element={<Confirmation />} />
+
+                <Route path="/simulacao" element={<QuickQuote />} />
+                {/* Legacy traffic redirect — noindex + canonical to root */}
+                <Route path="/kenia" element={<KeniaRedirect />} />
+                {/* Personalized attendant link: /josi, /joao, etc. */}
+                <Route path="/:attendantSlug" element={<AttendantLanding />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+
           </BrowserRouter>
         </QuoteProvider>
       </AttendantProvider>
