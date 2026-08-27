@@ -262,7 +262,6 @@ const CrmQuoteForm = ({ onStepChange }: CrmQuoteFormProps) => {
       return;
     }
     captureLead(false);
-    if (step === 1) sendCrmPartialLead();
     setStep((s) => (s === 1 ? 2 : 3));
 
   };
@@ -413,7 +412,6 @@ const CrmQuoteForm = ({ onStepChange }: CrmQuoteFormProps) => {
                   setLgpdConsent(val);
                   if (val) {
                     captureLead(false);
-                    sendCrmPartialLead();
                   }
                 }}
               />
