@@ -254,9 +254,13 @@ const Landing = () => {
                 <img
                   src={susepBadge.url}
                   alt="Regulamentada pela SUSEP"
+                  width={160}
+                  height={44}
                   className="max-h-11 w-auto object-contain"
                   loading="lazy"
+                  decoding="async"
                 />
+
               </a>
 
             </BorderGlow>
