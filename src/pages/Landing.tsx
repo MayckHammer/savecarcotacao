@@ -107,8 +107,12 @@ const Landing = () => {
             <img
               src={logoAsset.url}
               alt="SaveCar Brasil"
+              width={320}
+              height={90}
+              fetchPriority="high"
               className="h-[90px] w-auto max-w-none object-contain sm:h-20"
             />
+
           </Link>
         </header>
 
