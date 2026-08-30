@@ -120,13 +120,10 @@ const CrmQuoteForm = ({ onStepChange }: CrmQuoteFormProps) => {
   const latest = useRef<Record<string, string | boolean>>({});
   latest.current = { name, phone, email, plate, vehicleType, brand, model, year, cityId, isWork };
 
-  const sendCrmAbandonLead = () => {
-    if (crmLeadSent.current || crmFullSubmitted.current) return;
+  const buildAbandonBody = () => {
     const l = latest.current as Record<string, string>;
-    if (String(l.name || "").trim().length <= 1) return;
-    if (String(l.phone || "").replace(/\D/g, "").length < 10) return;
-    crmLeadSent.current = true;
-    void call("submit_lead", {
+    return JSON.stringify({
+      action: "submit_lead",
       payload: {
         clientName: l.name,
         clientEmail: l.email,
@@ -140,6 +137,33 @@ const CrmQuoteForm = ({ onStepChange }: CrmQuoteFormProps) => {
       },
       sessionId: quote.sessionId || null,
       attendantSlug: attendant?.slug || null,
+    });
+  };
+
+  const hasMinimumLead = () => {
+    const l = latest.current as Record<string, string>;
+    return (
+      String(l.name || "").trim().length > 1 &&
+      String(l.phone || "").replace(/\D/g, "").length >= 10
+    );
+  };
+
+  // Envio resiliente: usa keepalive para sobreviver ao unload da página.
+  const sendCrmAbandonLead = () => {
+    if (crmLeadSent.current || crmFullSubmitted.current) return;
+    if (!hasMinimumLead()) return;
+    crmLeadSent.current = true;
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pwrcrm-quote`;
+    const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    fetch(url, {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+      },
+      body: buildAbandonBody(),
     }).catch((err) => {
       crmLeadSent.current = false;
       console.error("submit_lead error", err);
@@ -158,6 +182,17 @@ const CrmQuoteForm = ({ onStepChange }: CrmQuoteFormProps) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Rede de segurança: se a pessoa ficar 45s inativa com nome + telefone válidos
+  // e ainda não tiver concluído a cotação, o card é criado mesmo sem o unload.
+  useEffect(() => {
+    if (crmLeadSent.current || crmFullSubmitted.current) return;
+    if (!hasMinimumLead()) return;
+    const t = window.setTimeout(() => sendCrmAbandonLead(), 45000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, phone, email, plate, vehicleType, brand, model, year, cityId, step]);
+
 
 
 
