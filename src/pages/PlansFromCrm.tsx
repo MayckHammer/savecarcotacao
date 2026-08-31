@@ -82,7 +82,14 @@ const PlansFromCrm = () => {
         setCoverages(data?.coverages || []);
         setPlanNames(data?.planNames || (data?.plans || []).map((p: Plan) => p.name));
         setClient(data?.client || null);
-        setFallbackUrl(data?.fallbackUrl || "");
+        setFallbackUrl(
+          data?.fallbackUrl ||
+            `https://app.powercrm.com.br/compareTables?h=${encodeURIComponent(qttnCd)}`,
+        );
+        if (data?.error || !(data?.plans || []).length) {
+          console.error("plans unavailable", data?.error);
+          toast.error("Não conseguimos carregar os valores agora.");
+        }
       } catch (e) {
         console.error(e);
         toast.error("Não foi possível carregar os planos agora.");
@@ -94,6 +101,7 @@ const PlansFromCrm = () => {
       }
     })();
   }, [qttnCd, navigate]);
+
 
   // Ordena com PREMIUM primeiro mas preservando indices originais para coverages.
   // Quando o modelo existe em mais de uma categoria do CRM (ex.: leve/utilitário),
@@ -185,16 +193,37 @@ const PlansFromCrm = () => {
           </div>
         ) : plans.length === 0 ? (
           <div className="rounded-2xl border border-border bg-card p-6 text-center space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Não conseguimos exibir os valores aqui. Abra a cotação oficial:
+            <p className="text-sm font-semibold text-foreground">
+              Sua cotação foi registrada, mas os valores não carregaram aqui.
             </p>
-            <Button
-              onClick={() => window.open(fallbackUrl, "_blank", "noopener,noreferrer")}
-              className="rounded-xl"
-            >
-              <ExternalLink className="mr-2 h-4 w-4" /> Abrir cotação oficial
-            </Button>
+            <p className="text-sm text-muted-foreground">
+              Abra a cotação oficial ou fale com um consultor — sua cotação #{qttnCd} está salva.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() => window.open(fallbackUrl, "_blank", "noopener,noreferrer")}
+                className="rounded-xl"
+              >
+                <ExternalLink className="mr-2 h-4 w-4" /> Abrir cotação oficial
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-xl border-[#F2B705] text-[#0D5C3E] hover:bg-[#F2B705]/10"
+                onClick={() =>
+                  window.open(
+                    `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(
+                      `Olá! Não consegui ver os valores dos planos. Minha cotação: ${qttnCd}`,
+                    )}`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }
+              >
+                <MessageCircle className="mr-2 h-4 w-4" /> Falar com um consultor
+              </Button>
+            </div>
           </div>
+
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

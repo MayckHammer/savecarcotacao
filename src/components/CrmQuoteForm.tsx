@@ -183,15 +183,28 @@ const CrmQuoteForm = ({ onStepChange }: CrmQuoteFormProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Rede de segurança: se a pessoa ficar 45s inativa com nome + telefone válidos
-  // e ainda não tiver concluído a cotação, o card é criado mesmo sem o unload.
+  // Rede de segurança: só dispara após inatividade REAL do usuário (sem clique,
+  // digitação, scroll ou toque) por 5 minutos. Ler a tela ou preencher campos
+  // reinicia o contador, evitando card duplicado para quem conclui a cotação.
   useEffect(() => {
-    if (crmLeadSent.current || crmFullSubmitted.current) return;
-    if (!hasMinimumLead()) return;
-    const t = window.setTimeout(() => sendCrmAbandonLead(), 45000);
-    return () => window.clearTimeout(t);
+    let t: number | undefined;
+    const schedule = () => {
+      if (t) window.clearTimeout(t);
+      if (crmLeadSent.current || crmFullSubmitted.current) return;
+      t = window.setTimeout(() => {
+        if (!crmFullSubmitted.current) sendCrmAbandonLead();
+      }, 300000);
+    };
+    const events = ["pointerdown", "keydown", "scroll", "touchstart", "mousemove"];
+    events.forEach((e) => window.addEventListener(e, schedule, { passive: true }));
+    schedule();
+    return () => {
+      if (t) window.clearTimeout(t);
+      events.forEach((e) => window.removeEventListener(e, schedule));
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, phone, email, plate, vehicleType, brand, model, year, cityId, step]);
+  }, []);
+
 
 
 
