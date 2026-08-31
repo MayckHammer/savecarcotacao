@@ -481,11 +481,16 @@ Deno.serve(async (req) => {
 
       let parsed: Awaited<ReturnType<typeof fetchPlansData>> | null = null;
       let sourceUrl = "";
+      let plansError: string | null = null;
       try {
         parsed = await fetchPlansData(String(qttnCd));
         sourceUrl = `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(String(qttnCd))}`;
       } catch (e) {
         console.error("fetchPlansData error", e);
+        plansError = e instanceof Error ? e.message : String(e);
+      }
+      if (!plansError && !(parsed?.plans || []).length) {
+        plansError = "no plans returned by CRM";
       }
 
       return new Response(
@@ -495,10 +500,12 @@ Deno.serve(async (req) => {
           planNames: parsed?.planNames || [],
           client: parsed?.client || null,
           sourceUrl,
+          error: plansError,
           fallbackUrl: `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(String(qttnCd))}`,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+
     }
 
     return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
