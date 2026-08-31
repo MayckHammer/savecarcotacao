@@ -82,7 +82,14 @@ const PlansFromCrm = () => {
         setCoverages(data?.coverages || []);
         setPlanNames(data?.planNames || (data?.plans || []).map((p: Plan) => p.name));
         setClient(data?.client || null);
-        setFallbackUrl(data?.fallbackUrl || "");
+        setFallbackUrl(
+          data?.fallbackUrl ||
+            `https://app.powercrm.com.br/compareTables?h=${encodeURIComponent(qttnCd)}`,
+        );
+        if (data?.error || !(data?.plans || []).length) {
+          console.error("plans unavailable", data?.error);
+          toast.error("Não conseguimos carregar os valores agora.");
+        }
       } catch (e) {
         console.error(e);
         toast.error("Não foi possível carregar os planos agora.");
@@ -94,6 +101,7 @@ const PlansFromCrm = () => {
       }
     })();
   }, [qttnCd, navigate]);
+
 
   // Ordena com PREMIUM primeiro mas preservando indices originais para coverages.
   // Quando o modelo existe em mais de uma categoria do CRM (ex.: leve/utilitário),
