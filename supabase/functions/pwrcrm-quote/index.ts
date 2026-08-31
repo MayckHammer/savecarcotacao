@@ -99,13 +99,27 @@ interface ApiPlan {
 
 async function fetchPlansData(qttnCd: string) {
   const pageUrl = `${PWRCRM_BASE}/compareTables?h=${encodeURIComponent(qttnCd)}`;
-  const pageRes = await fetch(pageUrl, { headers: BROWSER_HEADERS });
-  if (!pageRes.ok) throw new Error(`page fetch ${pageRes.status}`);
-  const html = await pageRes.text();
+  let html = "";
+  let lastStatus = 0;
+  // Retry: falhas intermitentes / anti-bot do CRM.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const pageRes = await fetch(pageUrl, { headers: BROWSER_HEADERS });
+    lastStatus = pageRes.status;
+    if (pageRes.ok) {
+      html = await pageRes.text();
+      if (/quotationTablesAndPlans/.test(html)) break;
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+  }
+  if (!html) throw new Error(`page fetch ${lastStatus}`);
 
-  const idMatch = html.match(/\/quotationTablesAndPlans\?i=(\d+)/);
+  const idMatch =
+    html.match(/\/quotationTablesAndPlans\?i=(\d+)/) ||
+    html.match(/quotationTablesAndPlans[^0-9]{0,20}(\d+)/) ||
+    html.match(/["'](?:quotationId|qttnId|idQuotation)["']\s*[:=]\s*["']?(\d+)/i);
   if (!idMatch) throw new Error("internal quotation id not found in page");
   const internalId = idMatch[1];
+
 
   const clientNameMatch = html.match(/<h2[^>]*>\s*([^<]+?)\s*<\/h2>/);
   const clientName = clientNameMatch
