@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import LeadSheet from "@/components/admin/LeadSheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
@@ -224,7 +225,12 @@ const Admin = () => {
           <TabsTrigger value="atendentes">Atendentes</TabsTrigger>
           <TabsTrigger value="relatorio" onClick={() => loadReport()}>Relatório</TabsTrigger>
           <TabsTrigger value="leads" onClick={() => loadLeads()}>Leads</TabsTrigger>
+          <TabsTrigger value="planilha">Planilha</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="planilha" className="mt-4">
+          <LeadSheet password={password} email={email} />
+        </TabsContent>
 
         <TabsContent value="leads" className="space-y-3 mt-4">
           <div className="flex items-center gap-3 flex-wrap">

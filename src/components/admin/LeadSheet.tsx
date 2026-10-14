@@ -100,7 +100,7 @@ export default function LeadSheet({ password, email }: { password: string; email
     );
     const select = (f: Field, opts: string[], w: string) => (
       <td className={`${cell} ${w}`}>
-        <select className={sel} value={r[f] ?? ""} onChange={(e) => { onChange(f, e.target.value); }} onBlur={onCommit}>
+        <select className={sel} value={r[f] ?? ""} onChange={(e) => { onChange(f, e.target.value); if (!isDraft && r.id) save({ ...r, [f]: e.target.value }); }}>
           <option value="">—</option>
           {[...new Set([...opts, r[f]].filter(Boolean))].map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
