@@ -22,9 +22,15 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const password = typeof body?.password === "string" ? body.password : "";
+    const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
     const expected = Deno.env.get("ADMIN_PASSWORD") || "";
+    const ALLOWED_EMAILS = [
+      "mayckhammersavecar@gmail.com",
+      "karolfernandessavecar@gmail.com",
+      "keduzei@gmail.com",
+    ];
 
-    if (!expected || !timingSafeEqual(password, expected)) {
+    if (!expected || !ALLOWED_EMAILS.includes(email) || !timingSafeEqual(password, expected)) {
       await logQuoteAudit({
         action: "edge_fn_denied",
         functionName: "admin-list-quotes",

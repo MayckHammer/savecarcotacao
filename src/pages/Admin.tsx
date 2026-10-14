@@ -34,6 +34,7 @@ interface Attendant {
 const Admin = () => {
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(false);
   const [linkInputs, setLinkInputs] = useState<Record<string, string>>({});
@@ -83,11 +84,11 @@ const Admin = () => {
     setLoginError(null);
     setLoading(true);
     const { data, error } = await supabase.functions.invoke("admin-list-quotes", {
-      body: { password },
+      body: { password, email },
     });
     setLoading(false);
     if (error || !data?.quotes) {
-      setLoginError("Senha incorreta.");
+      setLoginError("E-mail ou senha incorretos.");
       return;
     }
     setAuthenticated(true);
@@ -98,7 +99,7 @@ const Admin = () => {
   const fetchQuotes = async () => {
     setLoading(true);
     const { data } = await supabase.functions.invoke("admin-list-quotes", {
-      body: { password },
+      body: { password, email },
     });
     setQuotes((data?.quotes as Quote[]) || []);
     setLoading(false);
@@ -179,6 +180,13 @@ const Admin = () => {
         <Card className="w-full max-w-sm">
           <CardContent className="p-6 space-y-4">
             <h1 className="text-lg font-bold text-foreground text-center">Admin — Save Car</h1>
+            <Input
+              type="email"
+              placeholder="E-mail"
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
             <Input
               type="password"
               placeholder="Senha"

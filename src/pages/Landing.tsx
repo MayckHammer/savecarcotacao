@@ -103,7 +103,20 @@ const Landing = () => {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(255,255,255,0.08),transparent_60%)]" aria-hidden="true" />
 
         <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-center px-4 py-4 sm:justify-start sm:px-6 lg:px-8">
-          <Link to="/" aria-label="SaveCar Brasil - Página inicial">
+          <Link
+            to="/"
+            aria-label="SaveCar Brasil - Página inicial"
+            onClick={(e) => {
+              const now = Date.now();
+              const w = window as Window & { __logoClicks?: number[] };
+              w.__logoClicks = [...(w.__logoClicks || []).filter((t) => now - t < 1500), now];
+              if (w.__logoClicks.length >= 3) {
+                e.preventDefault();
+                w.__logoClicks = [];
+                navigate("/admin");
+              }
+            }}
+          >
             <img
               src={logoAsset.url}
               alt="SaveCar Brasil"
