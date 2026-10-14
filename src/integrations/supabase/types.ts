@@ -44,6 +44,57 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_sheet: {
+        Row: {
+          campanha: string
+          canal: string
+          consultora: string
+          created_at: string
+          data_lead: string
+          id: string
+          modelo_ano: string
+          nome: string
+          observacoes: string
+          origem_ref: string | null
+          status: string
+          telefone: string
+          tipo_veiculo: string
+          updated_at: string
+        }
+        Insert: {
+          campanha?: string
+          canal?: string
+          consultora?: string
+          created_at?: string
+          data_lead?: string
+          id?: string
+          modelo_ano?: string
+          nome?: string
+          observacoes?: string
+          origem_ref?: string | null
+          status?: string
+          telefone?: string
+          tipo_veiculo?: string
+          updated_at?: string
+        }
+        Update: {
+          campanha?: string
+          canal?: string
+          consultora?: string
+          created_at?: string
+          data_lead?: string
+          id?: string
+          modelo_ano?: string
+          nome?: string
+          observacoes?: string
+          origem_ref?: string | null
+          status?: string
+          telefone?: string
+          tipo_veiculo?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       partial_leads: {
         Row: {
           attendant_slug: string | null
